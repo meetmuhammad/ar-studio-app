@@ -42,10 +42,15 @@ export function OrderForm({ order, onSubmit, onCancel }: OrderFormProps) {
 
   const form = useForm<CreateOrderInput>({
     resolver: zodResolver(CreateOrderSchema) as any,
+    mode: "onTouched", // Only validate after field is touched
     defaultValues: {
       customerId: order?.customer_id || "",
       bookingDate: order?.booking_date ? new Date(order.booking_date) : new Date(),
-      deliveryDate: order?.delivery_date ? new Date(order.delivery_date) : undefined,
+      deliveryDate: order?.delivery_date ? new Date(order.delivery_date) : (() => {
+        const defaultDelivery = new Date()
+        defaultDelivery.setDate(defaultDelivery.getDate() + 7) // Default to 1 week from now
+        return defaultDelivery
+      })(),
       comments: order?.comments || "",
       // Measurements
       chest: order?.chest || undefined,

@@ -77,10 +77,13 @@ export function OrderPaymentStep() {
                     type="number"
                     step="0.01"
                     min="0"
-                    placeholder="20000"
+                    placeholder="0"
                     {...field}
-                    value={field.value || ''}
-                    onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                    value={field.value !== undefined ? field.value : ''}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      field.onChange(value === '' ? undefined : parseFloat(value) || 0)
+                    }}
                     className="pr-12"
                   />
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm font-medium">
@@ -106,10 +109,13 @@ export function OrderPaymentStep() {
                     type="number"
                     step="0.01"
                     min="0"
-                    placeholder="10000"
+                    placeholder="0"
                     {...field}
-                    value={field.value || ''}
-                    onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                    value={field.value !== undefined ? field.value : ''}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      field.onChange(value === '' ? undefined : parseFloat(value) || 0)
+                    }}
                     className="pr-12"
                   />
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm font-medium">
@@ -135,7 +141,7 @@ export function OrderPaymentStep() {
                     type="number"
                     step="0.01"
                     min="0"
-                    placeholder="0.00"
+                    placeholder="0"
                     {...field}
                     value={field.value !== undefined ? field.value.toFixed(2) : ''}
                     readOnly

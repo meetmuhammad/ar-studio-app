@@ -35,10 +35,15 @@ export function OrderMultiStepForm({
 
   const form = useForm<CreateOrderInput>({
     resolver: zodResolver(CreateOrderSchema) as any,
+    mode: "onTouched", // Only validate after field is touched
     defaultValues: {
       customerId: order?.customer_id || "",
       bookingDate: order ? new Date(order.booking_date) : new Date(),
-      deliveryDate: order ? new Date(order.delivery_date) : undefined,
+      deliveryDate: order ? new Date(order.delivery_date) : (() => {
+        const defaultDelivery = new Date()
+        defaultDelivery.setDate(defaultDelivery.getDate() + 7) // Default to 1 week from now
+        return defaultDelivery
+      })(),
       comments: order?.comments || "",
       // Payment fields
       totalAmount: order?.total_amount || undefined,
