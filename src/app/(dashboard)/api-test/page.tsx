@@ -106,7 +106,7 @@ export default function ApiTestPage() {
           <CardTitle>Results</CardTitle>
         </CardHeader>
         <CardContent>
-          <pre className="bg-gray-100 p-4 rounded text-sm overflow-auto max-h-96">
+          <pre className="bg-muted p-4 rounded text-sm overflow-auto max-h-96">
             {loading ? 'Loading...' : results || 'No results yet. Click a button above to test an API endpoint.'}
           </pre>
         </CardContent>

@@ -101,8 +101,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(order, { status: 201 })
   } catch (error) {
     console.error('POST /api/orders error:', error)
+    
+    // Check if it's a validation error
+    if (error instanceof Error && error.name === 'ZodError') {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.message },
+        { status: 400 }
+      )
+    }
+    
+    // Return the actual error message for debugging
+    const errorMessage = error instanceof Error ? error.message : 'Failed to create order'
     return NextResponse.json(
-      { error: 'Failed to create order' },
+      { error: errorMessage },
       { status: 500 }
     )
   }

@@ -9,11 +9,11 @@ export default function DashboardLayout({
 }) {
   return (
     <RouteGuard requireAuth={true} requiredRoles={['admin', 'staff']}>
-      <div className="flex h-screen bg-gray-100">
+      <div className="flex h-screen bg-background">
         <Sidebar />
         <div className="flex flex-col flex-1 overflow-hidden">
           <Header />
-          <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-6">
+          <main className="flex-1 overflow-x-hidden overflow-y-auto bg-muted/40 p-6">
             {children}
           </main>
         </div>

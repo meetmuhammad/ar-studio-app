@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { isStaffOrAdmin } from '@/lib/auth'
@@ -19,11 +19,24 @@ export function RouteGuard({
 }: RouteGuardProps) {
   const { user, loading } = useAuth()
   const router = useRouter()
+  const [minLoadingComplete, setMinLoadingComplete] = useState(false)
+
+  // Ensure minimum loading time to prevent flash redirects
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setMinLoadingComplete(true)
+    }, 500) // Wait at least 500ms
+
+    return () => clearTimeout(timer)
+  }, [])
 
   useEffect(() => {
-    if (!loading) {
+    // Only redirect after both loading is complete AND minimum time has passed
+    if (!loading && minLoadingComplete) {
+      console.log('RouteGuard check:', { user: !!user, loading, minLoadingComplete, requireAuth })
+      
       if (requireAuth && !user) {
-        // User is not authenticated, redirect to sign in
+        console.log('Redirecting to sign-in: no user after loading complete')
         router.push('/sign-in')
         return
       }
@@ -32,17 +45,16 @@ export function RouteGuard({
         // Check if user has required role
         const hasRequiredRole = requiredRoles.includes(user.role)
         if (!hasRequiredRole) {
-          // User doesn't have required role, could redirect to unauthorized page
-          // For now, redirect to sign in
+          console.log('Redirecting to sign-in: insufficient role')
           router.push('/sign-in')
           return
         }
       }
     }
-  }, [user, loading, requireAuth, requiredRoles, router])
+  }, [user, loading, minLoadingComplete, requireAuth, requiredRoles, router])
 
-  // Show loading while checking authentication
-  if (loading) {
+  // Show loading while checking authentication or waiting for minimum time
+  if (loading || !minLoadingComplete) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="text-center">
@@ -51,6 +63,11 @@ export function RouteGuard({
         </div>
       </div>
     )
+  }
+
+  // If still loading, don't render children yet
+  if (!minLoadingComplete || loading) {
+    return null
   }
 
   // If auth is required but user is not authenticated, don't render children

@@ -35,7 +35,10 @@ export async function signOut() {
 export async function getCurrentUser(): Promise<AuthUser | null> {
   const { data: { session }, error } = await supabase.auth.getSession()
   
+  console.log('getCurrentUser - session check:', { hasSession: !!session, error, userId: session?.user?.id })
+  
   if (error || !session) {
+    console.log('getCurrentUser - no session or error:', error)
     return null
   }
 
@@ -46,16 +49,22 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     .eq('id', session.user.id)
     .single()
 
+  console.log('getCurrentUser - profile query:', { userProfile, profileError })
+
   if (profileError || !userProfile) {
+    console.log('getCurrentUser - no profile or error:', profileError)
     return null
   }
 
-  return {
+  const authUser = {
     id: userProfile.id,
     email: userProfile.email,
     name: userProfile.name,
     role: userProfile.role,
   }
+  
+  console.log('getCurrentUser - returning user:', authUser)
+  return authUser
 }
 
 // Check if user has required role

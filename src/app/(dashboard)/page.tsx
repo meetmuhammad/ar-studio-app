@@ -16,7 +16,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">View and manage all customers.</p>
-            <Link href="/customers" className="text-blue-600 hover:underline text-sm">Go to Customers →</Link>
+            <Link href="/customers" className="text-primary hover:underline text-sm">Go to Customers →</Link>
           </CardContent>
         </Card>
 
@@ -26,7 +26,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">Track and manage all orders.</p>
-            <Link href="/orders" className="text-blue-600 hover:underline text-sm">Go to Orders →</Link>
+            <Link href="/orders" className="text-primary hover:underline text-sm">Go to Orders →</Link>
           </CardContent>
         </Card>
       </div>

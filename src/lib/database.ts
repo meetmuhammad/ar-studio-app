@@ -1,21 +1,33 @@
 import { createAdminSupabaseClient } from './supabase'
 import type { Customer, Order, OrderWithCustomer, Counter } from './supabase'
 
-// Order number generation using Supabase RPC
+// Order number generation using a simpler approach
 export async function nextOrderNumber(): Promise<string> {
   const supabase = createAdminSupabaseClient()
 
-  // Use Supabase RPC to atomically increment counter
-  const { data, error } = await supabase.rpc('increment_counter', {
-    counter_id: 1
-  })
+  // Get the latest order number to increment
+  const { data: latestOrder, error } = await supabase
+    .from('orders')
+    .select('order_number')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
   if (error) {
-    console.error('Error incrementing counter:', error)
+    console.error('Error fetching latest order:', error)
     throw new Error('Failed to generate order number')
   }
 
-  const orderNumber = `AR-${data.toString().padStart(5, '0')}`
+  let nextNumber = 1
+  if (latestOrder?.order_number) {
+    // Extract number from order_number (e.g., "AR-00001" -> 1)
+    const match = latestOrder.order_number.match(/AR-(\d+)/)
+    if (match) {
+      nextNumber = parseInt(match[1]) + 1
+    }
+  }
+
+  const orderNumber = `AR-${nextNumber.toString().padStart(5, '0')}`
   return orderNumber
 }
 
@@ -38,7 +50,7 @@ export async function getCustomers({
 
   let query = supabase
     .from('customers')
-    .select('*, orders(count)', { count: 'exact' })
+    .select('*', { count: 'exact' })
 
   // Add search filter
   if (q) {
@@ -55,6 +67,37 @@ export async function getCustomers({
 
   if (error) {
     throw new Error(`Failed to fetch customers: ${error.message}`)
+  }
+
+  // Get order counts for each customer in a single optimized query
+  if (customers && customers.length > 0) {
+    const customerIds = customers.map(c => c.id)
+    
+    // Get all order counts in one query
+    const { data: orderCounts } = await supabase
+      .from('orders')
+      .select('customer_id')
+      .in('customer_id', customerIds)
+    
+    // Count orders per customer
+    const orderCountMap: Record<string, number> = {}
+    orderCounts?.forEach(order => {
+      orderCountMap[order.customer_id] = (orderCountMap[order.customer_id] || 0) + 1
+    })
+    
+    // Add order counts to customers
+    const customersWithOrderCounts = customers.map(customer => ({
+      ...customer,
+      orders: { count: orderCountMap[customer.id] || 0 }
+    }))
+    
+    return {
+      data: customersWithOrderCounts,
+      total: count || 0,
+      page,
+      pageSize,
+      pages: Math.ceil((count || 0) / pageSize)
+    }
   }
 
   return {
