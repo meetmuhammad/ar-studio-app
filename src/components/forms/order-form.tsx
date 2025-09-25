@@ -230,7 +230,7 @@ export function OrderForm({ order, onSubmit, onCancel }: OrderFormProps) {
                     <MeasurementField
                       key={field.name}
                       control={form.control}
-                      name={field.name as any}
+                      name={field.name as keyof CreateOrderInput}
                       label={field.label}
                       disabled={isSubmitting}
                     />

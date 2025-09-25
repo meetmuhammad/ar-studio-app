@@ -71,7 +71,7 @@ async function main() {
       
       // Random delivery date (1-30 days after booking)
       const deliveryDate = faker.helpers.maybe(() => 
-        faker.date.future({ days: 30, refDate: bookingDate })
+        faker.date.soon({ days: 30, refDate: bookingDate })
       , { probability: 0.8 })
 
       // Generate random measurements (only some fields filled)

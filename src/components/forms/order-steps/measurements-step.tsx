@@ -59,8 +59,8 @@ export function OrderMeasurementsStep() {
       <div className="bg-muted/50 p-4 rounded-lg">
         <h4 className="font-medium text-sm mb-2">Step 2: Measurements</h4>
         <p className="text-sm text-muted-foreground">
-          Enter the customer's measurements in centimeters. All measurements are optional, 
-          but providing accurate measurements ensures a perfect fit. Don't forget to add any 
+          Enter the customer&apos;s measurements in centimeters. All measurements are optional, 
+          but providing accurate measurements ensures a perfect fit. Don&apos;t forget to add any 
           specific fitting preferences or style notes.
         </p>
       </div>

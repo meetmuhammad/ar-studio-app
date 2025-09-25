@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
       ...finalOrderData
     } = orderData
 
-    const order = await createOrder(finalOrderData as Record<string, unknown>)
+    const order = await createOrder(finalOrderData)
 
     return NextResponse.json(order, { status: 201 })
   } catch (error) {

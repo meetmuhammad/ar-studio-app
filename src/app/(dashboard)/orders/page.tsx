@@ -26,7 +26,7 @@ export default function OrdersPage() {
   
   const [detailsDialog, setDetailsDialog] = useState<{
     open: boolean
-    order?: OrderWithCustomer | null
+    order: OrderWithCustomer | null
   }>({ open: false, order: null })
   
   const [deleteDialog, setDeleteDialog] = useState<{

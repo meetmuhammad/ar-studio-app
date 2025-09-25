@@ -5,10 +5,11 @@ import { UpdateCustomerSchema } from '@/lib/validators'
 // GET /api/customers/[id] - Get customer by ID
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const customer = await getCustomer(params.id)
+    const { id } = await params
+    const customer = await getCustomer(id)
 
     if (!customer) {
       return NextResponse.json(
@@ -30,13 +31,14 @@ export async function GET(
 // PATCH /api/customers/[id] - Update customer
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
     const validatedData = UpdateCustomerSchema.parse(body)
 
-    const customer = await updateCustomer(params.id, validatedData)
+    const customer = await updateCustomer(id, validatedData)
 
     return NextResponse.json(customer)
   } catch (error) {
@@ -59,10 +61,11 @@ export async function PATCH(
 // DELETE /api/customers/[id] - Delete customer
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await deleteCustomer(params.id)
+    const { id } = await params
+    await deleteCustomer(id)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('DELETE /api/customers/[id] error:', error)

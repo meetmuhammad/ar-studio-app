@@ -5,10 +5,11 @@ import { UpdateOrderSchema } from '@/lib/validators'
 // GET /api/orders/[id] - Get order by ID
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const order = await getOrder(params.id)
+    const { id } = await params
+    const order = await getOrder(id)
 
     if (!order) {
       return NextResponse.json(
@@ -30,9 +31,10 @@ export async function GET(
 // PATCH /api/orders/[id] - Update order
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
     
     // Transform date strings to proper format for validation
@@ -89,7 +91,7 @@ export async function PATCH(
       ...finalUpdateData
     } = updateData
 
-    const order = await updateOrder(params.id, finalUpdateData as any)
+    const order = await updateOrder(id, finalUpdateData)
 
     return NextResponse.json(order)
   } catch (error) {
@@ -104,10 +106,11 @@ export async function PATCH(
 // DELETE /api/orders/[id] - Delete order
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await deleteOrder(params.id)
+    const { id } = await params
+    await deleteOrder(id)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('DELETE /api/orders/[id] error:', error)

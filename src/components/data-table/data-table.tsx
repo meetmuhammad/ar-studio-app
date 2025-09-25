@@ -12,7 +12,6 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
-  GlobalFilterFn,
 } from "@tanstack/react-table"
 import { ChevronDown, Search } from "lucide-react"
 
@@ -34,7 +33,7 @@ import {
 } from "@/components/ui/table"
 
 // Global filter function for searching across all columns
-const globalFilterFn: GlobalFilterFn<any> = (row, columnId, value) => {
+const globalFilterFn = (row: any, columnId: string, value: string) => {
   const search = value.toLowerCase()
   
   // Search in the row's values, including nested objects

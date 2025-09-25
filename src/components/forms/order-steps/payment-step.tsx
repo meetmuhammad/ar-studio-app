@@ -11,20 +11,11 @@ import {
 import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent } from "@/components/ui/card"
-import { Calculator, Banknote, CreditCard, Wallet } from "lucide-react"
+import { Banknote, CreditCard, Wallet } from "lucide-react"
 import { CreateOrderInput } from "@/lib/validators"
 
 export function OrderPaymentStep() {
   const form = useFormContext<CreateOrderInput>()
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'decimal',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount)
-  }
 
   return (
     <div className="space-y-6">
