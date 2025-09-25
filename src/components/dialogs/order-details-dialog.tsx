@@ -135,6 +135,66 @@ export function OrderDetailsDialog({
             </Card>
           )}
 
+          {/* Payment Information */}
+          {(order.total_amount || order.advance_paid || order.payment_method) && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  💰 Payment Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {order.payment_method && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Method:</span>
+                    <span className="text-sm font-semibold capitalize">
+                      {order.payment_method === 'bank' ? 'Bank Transfer' : order.payment_method}
+                    </span>
+                  </div>
+                )}
+                
+                {order.total_amount && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Total:</span>
+                    <span className="text-sm font-mono font-bold text-green-600">
+                      PKR {order.total_amount.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                
+                {order.advance_paid !== undefined && order.advance_paid !== null && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Advance:</span>
+                    <span className="text-sm font-mono font-bold text-foreground">
+                      PKR {order.advance_paid.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                
+                {order.total_amount && order.advance_paid !== undefined && order.advance_paid !== null && (
+                  <div className="flex items-center justify-between border-t pt-3">
+                    <span className="text-sm font-medium text-muted-foreground">Balance:</span>
+                    <span className="text-sm font-mono font-bold text-red-600">
+                      PKR {Math.max(0, order.total_amount - order.advance_paid).toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                
+                {/* Show overpaid warning if applicable */}
+                {order.total_amount && order.advance_paid && order.advance_paid > order.total_amount && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-yellow-800">Overpaid Amount:</span>
+                      <span className="text-sm font-mono font-bold text-yellow-600">
+                        PKR {(order.advance_paid - order.total_amount).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Measurements */}
           <Card>
             <CardHeader>

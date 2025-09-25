@@ -28,8 +28,13 @@ export interface Order {
   order_number: string
   customer_id: string
   booking_date: string
-  delivery_date?: string | null
+  delivery_date: string // Now mandatory
   comments?: string | null
+  // Payment fields
+  total_amount?: number | null
+  advance_paid?: number | null
+  balance?: number | null
+  payment_method?: 'cash' | 'bank' | 'other' | null
   // Measurement fields
   chest?: number | null
   waist?: number | null

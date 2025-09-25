@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { OrderForm } from "@/components/forms/order-form"
+import { OrderMultiStepForm } from "@/components/forms/order-multistep-form"
 import { CreateOrderInput } from "@/lib/validators"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
 
@@ -36,7 +36,8 @@ export function OrderDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
-        className="max-w-6xl max-h-[95vh] overflow-y-auto"
+        className="w-[95vw] max-w-none sm:w-[90vw] md:w-[80vw] lg:w-[70vw] xl:w-[70vw] 2xl:w-[60vw] max-h-[95vh] overflow-y-auto"
+        style={{ width: '70vw', maxWidth: 'none' }}
         onInteractOutside={(e) => e.preventDefault()}
       >
         <DialogHeader>
@@ -45,11 +46,11 @@ export function OrderDialog({
           </DialogTitle>
           <DialogDescription>
             {order
-              ? "Update the order information and measurements below."
-              : "Create a new order with customer information and measurements."}
+              ? "Update the order information, measurements, and payment details."
+              : "Create a new order with customer information, measurements, and payment details."}
           </DialogDescription>
         </DialogHeader>
-        <OrderForm
+        <OrderMultiStepForm
           order={order}
           onSubmit={handleSubmit}
           onCancel={handleCancel}

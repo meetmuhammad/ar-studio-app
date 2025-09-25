@@ -27,12 +27,42 @@ const measurementField = z.union([
   z.undefined()
 ]).optional()
 
+// Payment method enum
+const PaymentMethodSchema = z.enum(["cash", "bank", "other"])
+
 // Order schemas
 export const CreateOrderSchema = z.object({
   customerId: z.string().uuid("Invalid customer ID"),
   bookingDate: z.date(),
-  deliveryDate: z.date().optional().nullable(),
+  deliveryDate: z.date(), // Now mandatory
   comments: z.string().max(1000, "Comments too long").optional().or(z.literal("")),
+  // Payment fields
+  totalAmount: z.union([
+    z.string().transform((val) => {
+      if (!val || val === '') return undefined
+      const num = parseFloat(val)
+      return isNaN(num) ? undefined : num
+    }),
+    z.number().positive("Total amount must be positive")
+  ]).refine(val => val !== undefined, "Total amount is required"),
+  advancePaid: z.union([
+    z.string().transform((val) => {
+      if (!val || val === '') return undefined
+      const num = parseFloat(val)
+      return isNaN(num) ? undefined : num
+    }),
+    z.number().min(0, "Advance paid cannot be negative")
+  ]).refine(val => val !== undefined, "Advance paid is required"),
+  balance: z.union([
+    z.string().transform((val) => {
+      if (!val) return undefined
+      const num = parseFloat(val)
+      return isNaN(num) ? undefined : num
+    }),
+    z.number().min(0, "Balance cannot be negative"),
+    z.undefined()
+  ]).optional(),
+  paymentMethod: PaymentMethodSchema.optional(),
   // Measurement fields
   chest: measurementField,
   waist: measurementField,
@@ -56,13 +86,20 @@ export const CreateOrderSchema = z.object({
   turbanLength: measurementField,
   fittingPreferences: z.string().max(1000, "Fitting preferences too long").optional().or(z.literal(""))
 }).refine((data) => {
-  if (data.deliveryDate && data.bookingDate) {
-    return data.deliveryDate >= data.bookingDate
-  }
-  return true
+  // Delivery date must be on or after booking date
+  return data.deliveryDate >= data.bookingDate
 }, {
   message: "Delivery date must be on or after booking date",
   path: ["deliveryDate"]
+}).refine((data) => {
+  // If total amount and advance paid are provided, advance cannot exceed total
+  if (data.totalAmount && data.advancePaid) {
+    return data.advancePaid <= data.totalAmount
+  }
+  return true
+}, {
+  message: "Advance paid cannot exceed total amount",
+  path: ["advancePaid"]
 })
 
 export const UpdateOrderSchema = CreateOrderSchema.partial().extend({

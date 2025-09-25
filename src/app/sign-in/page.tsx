@@ -1,36 +1,44 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { signIn } from '@/lib/auth'
+import { useAuth } from '@/contexts/auth-context'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function SignInPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
+  const { signIn, loading: authLoading, user } = useAuth()
+
+  // Redirect if already signed in
+  useEffect(() => {
+    if (user && !authLoading) {
+      router.replace('/')
+    }
+  }, [user, authLoading, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
+    setIsSubmitting(true)
 
     try {
       await signIn(email, password)
       toast.success('Successfully signed in!')
       router.push('/')
-      router.refresh()
     } catch (error) {
+      console.error('Sign in error:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to sign in')
     } finally {
-      setLoading(false)
+      setIsSubmitting(false)
     }
   }
 
@@ -60,7 +68,7 @@ export default function SignInPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  disabled={loading}
+                  disabled={isSubmitting || authLoading}
                 />
               </div>
 
@@ -74,7 +82,7 @@ export default function SignInPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    disabled={loading}
+                    disabled={isSubmitting || authLoading}
                   />
                   <Button
                     type="button"
@@ -82,7 +90,7 @@ export default function SignInPage() {
                     size="icon"
                     className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                     onClick={() => setShowPassword(!showPassword)}
-                    disabled={loading}
+                    disabled={isSubmitting || authLoading}
                   >
                     {showPassword ? (
                       <EyeOff className="h-4 w-4" />
@@ -96,9 +104,9 @@ export default function SignInPage() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={loading}
+                disabled={isSubmitting || authLoading}
               >
-                {loading ? (
+                {(isSubmitting || authLoading) ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Signing in...

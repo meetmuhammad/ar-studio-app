@@ -65,8 +65,13 @@ export async function POST(request: NextRequest) {
     const orderData = {
       ...validatedData,
       booking_date: validatedData.bookingDate.toISOString().split('T')[0],
-      delivery_date: validatedData.deliveryDate?.toISOString().split('T')[0] || null,
+      delivery_date: validatedData.deliveryDate.toISOString().split('T')[0], // Now mandatory
       customer_id: validatedData.customerId,
+      // Payment fields
+      total_amount: validatedData.totalAmount || null,
+      advance_paid: validatedData.advancePaid || null,
+      balance: validatedData.balance || null,
+      payment_method: validatedData.paymentMethod || null,
       // Transform measurement field names to match database schema (snake_case)
       cross_back: validatedData.crossBack,
       three_piece_waistcoat: validatedData.threePieceWaistcoat,
@@ -84,6 +89,10 @@ export async function POST(request: NextRequest) {
       customerId,
       bookingDate,
       deliveryDate,
+      totalAmount,
+      advancePaid,
+      balance,
+      paymentMethod,
       crossBack,
       threePieceWaistcoat,
       waistcoatLength,
@@ -96,7 +105,7 @@ export async function POST(request: NextRequest) {
       ...finalOrderData
     } = orderData
 
-    const order = await createOrder(finalOrderData as any)
+    const order = await createOrder(finalOrderData as Record<string, unknown>)
 
     return NextResponse.json(order, { status: 201 })
   } catch (error) {

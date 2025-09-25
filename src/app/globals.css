@@ -119,4 +119,33 @@
   body {
     @apply bg-background text-foreground;
   }
+  
+  /* Custom link styles */
+  a {
+    @apply underline;
+    color: #171717; /* Light mode - dark gray */
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+  }
+  
+  /* Dark mode links */
+  .dark a {
+    color: white;
+  }
+  
+  /* Hover effects */
+  a:hover {
+    @apply opacity-80;
+  }
+  
+  /* No underline override for navigation and UI links */
+  .no-underline,
+  a.no-underline {
+    text-decoration: none !important;
+  }
+  
+  .no-underline:hover,
+  a.no-underline:hover {
+    @apply opacity-100;
+  }
 }

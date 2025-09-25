@@ -49,8 +49,13 @@ export async function PATCH(
     const updateData = {
       ...validatedData,
       booking_date: validatedData.bookingDate?.toISOString().split('T')[0],
-      delivery_date: validatedData.deliveryDate?.toISOString().split('T')[0] || null,
+      delivery_date: validatedData.deliveryDate?.toISOString().split('T')[0],
       customer_id: validatedData.customerId,
+      // Payment fields
+      total_amount: validatedData.totalAmount || null,
+      advance_paid: validatedData.advancePaid || null,
+      balance: validatedData.balance || null,
+      payment_method: validatedData.paymentMethod || null,
       // Transform measurement field names to match database schema (snake_case)
       cross_back: validatedData.crossBack,
       three_piece_waistcoat: validatedData.threePieceWaistcoat,
@@ -68,6 +73,10 @@ export async function PATCH(
       customerId,
       bookingDate,
       deliveryDate,
+      totalAmount,
+      advancePaid,
+      balance,
+      paymentMethod,
       crossBack,
       threePieceWaistcoat,
       waistcoatLength,

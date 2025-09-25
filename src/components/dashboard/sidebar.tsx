@@ -10,9 +10,6 @@ import {
   Home, 
   Users, 
   ShoppingBag, 
-  BarChart3,
-  Settings,
-  Code,
   LogOut
 } from 'lucide-react'
 
@@ -32,21 +29,6 @@ const navigation = [
     href: '/orders',
     icon: ShoppingBag,
   },
-  {
-    name: 'API Test',
-    href: '/api-test',
-    icon: Code,
-  },
-  {
-    name: 'Analytics',
-    href: '/analytics',
-    icon: BarChart3,
-  },
-  {
-    name: 'Settings',
-    href: '/settings',
-    icon: Settings,
-  },
 ]
 
 export function Sidebar() {
@@ -56,6 +38,7 @@ export function Sidebar() {
   const handleSignOut = async () => {
     try {
       await signOut()
+      window.location.href = '/sign-in'
     } catch (error) {
       console.error('Error signing out:', error)
     }
@@ -77,7 +60,7 @@ export function Sidebar() {
               key={item.name}
               href={item.href}
               className={cn(
-                'group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors',
+                'group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors no-underline',
                 isActive
                   ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
@@ -99,12 +82,12 @@ export function Sidebar() {
         <div className="flex items-center">
           <div className="flex-shrink-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center">
             <span className="text-primary-foreground text-sm font-medium">
-              {user?.name?.[0] || user?.email[0].toUpperCase()}
+              {user?.email?.[0]?.toUpperCase() || 'U'}
             </span>
           </div>
           <div className="ml-3 flex-1">
             <p className="text-sm font-medium text-foreground truncate">
-              {user?.name || 'User'}
+              {user?.email?.split('@')[0] || 'User'}
             </p>
             <div className="flex items-center gap-1">
               <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
