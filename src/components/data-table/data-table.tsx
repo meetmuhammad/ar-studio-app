@@ -12,6 +12,7 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
+  Row,
 } from "@tanstack/react-table"
 import { ChevronDown, Search } from "lucide-react"
 
@@ -33,7 +34,8 @@ import {
 } from "@/components/ui/table"
 
 // Global filter function for searching across all columns
-const globalFilterFn = (row: { original: Record<string, unknown> }, columnId: string, value: string) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const globalFilterFn = (row: any, columnId: string, value: string) => {
   const search = value.toLowerCase()
   
   // Search in the row's values, including nested objects
@@ -70,7 +72,7 @@ export function DataTable<TData, TValue>({
   const [globalFilter, setGlobalFilter] = React.useState("")
 
   const table = useReactTable({
-    data,
+    data: data as Record<string, unknown>[],
     columns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
