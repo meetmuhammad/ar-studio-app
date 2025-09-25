@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "tsx scripts/seed-supabase.ts"
+    "seed": "tsx scripts/seed-supabase.ts",
+    "create-users": "tsx scripts/create-demo-users.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

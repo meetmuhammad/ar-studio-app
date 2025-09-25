@@ -3,13 +3,17 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/contexts/auth-context'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { 
   Home, 
   Users, 
   ShoppingBag, 
   BarChart3,
   Settings,
-  Code
+  Code,
+  LogOut
 } from 'lucide-react'
 
 const navigation = [
@@ -47,6 +51,15 @@ const navigation = [
 
 export function Sidebar() {
   const pathname = usePathname()
+  const { user, signOut } = useAuth()
+
+  const handleSignOut = async () => {
+    try {
+      await signOut()
+    } catch (error) {
+      console.error('Error signing out:', error)
+    }
+  }
 
   return (
     <div className="flex flex-col w-64 bg-white shadow-lg">
@@ -82,14 +95,35 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200">
+      <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 space-y-3">
         <div className="flex items-center">
-          <div className="flex-shrink-0 w-8 h-8 bg-gray-300 rounded-full"></div>
-          <div className="ml-3">
-            <p className="text-sm font-medium text-gray-700">Admin User</p>
-            <p className="text-xs text-gray-500">admin@example.com</p>
+          <div className="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+            <span className="text-white text-sm font-medium">
+              {user?.name?.[0] || user?.email[0].toUpperCase()}
+            </span>
+          </div>
+          <div className="ml-3 flex-1">
+            <p className="text-sm font-medium text-gray-700 truncate">
+              {user?.name || 'User'}
+            </p>
+            <div className="flex items-center gap-1">
+              <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+              <Badge variant={user?.role === 'admin' ? 'default' : 'secondary'} className="text-xs">
+                {user?.role}
+              </Badge>
+            </div>
           </div>
         </div>
+        
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={handleSignOut}
+          className="w-full justify-start text-gray-600 hover:text-gray-900"
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          Sign Out
+        </Button>
       </div>
     </div>
   )
