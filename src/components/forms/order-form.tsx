@@ -41,11 +41,11 @@ export function OrderForm({ order, onSubmit, onCancel }: OrderFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const form = useForm<CreateOrderInput>({
-    resolver: zodResolver(CreateOrderSchema),
+    resolver: zodResolver(CreateOrderSchema) as any,
     defaultValues: {
       customerId: order?.customer_id || "",
       bookingDate: order?.booking_date ? new Date(order.booking_date) : new Date(),
-      deliveryDate: order?.delivery_date ? new Date(order.delivery_date) : null,
+      deliveryDate: order?.delivery_date ? new Date(order.delivery_date) : undefined,
       comments: order?.comments || "",
       // Measurements
       chest: order?.chest || undefined,
@@ -69,6 +69,11 @@ export function OrderForm({ order, onSubmit, onCancel }: OrderFormProps) {
       shoeSize: order?.shoe_size || undefined,
       turbanLength: order?.turban_length || undefined,
       fittingPreferences: order?.fitting_preferences || "",
+      // Payment fields with default values
+      totalAmount: order?.total_amount || 0,
+      advancePaid: order?.advance_paid || 0,
+      balance: order?.balance || 0,
+      paymentMethod: order?.payment_method || "cash",
     },
   })
 

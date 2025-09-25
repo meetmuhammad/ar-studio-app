@@ -31,7 +31,6 @@ export function OrderGeneralInfoStep() {
                   <CustomerCombobox
                     value={field.value}
                     onValueChange={field.onChange}
-                    placeholder="Select or add a customer..."
                   />
                 </FormControl>
                 <FormMessage />

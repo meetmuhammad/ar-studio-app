@@ -26,7 +26,8 @@ export function OrderMeasurementsStep() {
               {section.fields.map((field) => (
                 <MeasurementField
                   key={field.name}
-                  name={field.name}
+                  control={form.control}
+                  name={field.name as keyof CreateOrderInput}
                   label={field.label}
                 />
               ))}

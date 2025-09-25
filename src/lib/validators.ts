@@ -39,28 +39,27 @@ export const CreateOrderSchema = z.object({
   // Payment fields
   totalAmount: z.union([
     z.string().transform((val) => {
-      if (!val || val === '') return undefined
+      if (!val || val === '') return 0
       const num = parseFloat(val)
-      return isNaN(num) ? undefined : num
+      return isNaN(num) ? 0 : num
     }),
-    z.number().positive("Total amount must be positive")
-  ]).refine(val => val !== undefined, "Total amount is required"),
+    z.number().min(0, "Total amount must be positive")
+  ]),
   advancePaid: z.union([
     z.string().transform((val) => {
-      if (!val || val === '') return undefined
+      if (!val || val === '') return 0
       const num = parseFloat(val)
-      return isNaN(num) ? undefined : num
+      return isNaN(num) ? 0 : num
     }),
     z.number().min(0, "Advance paid cannot be negative")
-  ]).refine(val => val !== undefined, "Advance paid is required"),
+  ]),
   balance: z.union([
     z.string().transform((val) => {
-      if (!val) return undefined
+      if (!val || val === '') return 0
       const num = parseFloat(val)
-      return isNaN(num) ? undefined : num
+      return isNaN(num) ? 0 : num
     }),
-    z.number().min(0, "Balance cannot be negative"),
-    z.undefined()
+    z.number().min(0, "Balance cannot be negative")
   ]).optional(),
   paymentMethod: PaymentMethodSchema.optional(),
   // Measurement fields

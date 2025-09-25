@@ -34,7 +34,7 @@ export function OrderMultiStepForm({
   const [completedSteps, setCompletedSteps] = useState<number[]>([])
 
   const form = useForm<CreateOrderInput>({
-    resolver: zodResolver(CreateOrderSchema),
+    resolver: zodResolver(CreateOrderSchema) as any,
     defaultValues: {
       customerId: order?.customer_id || "",
       bookingDate: order ? new Date(order.booking_date) : new Date(),
