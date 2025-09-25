@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/table"
 
 // Global filter function for searching across all columns
-const globalFilterFn = (row: unknown, columnId: string, value: string) => {
+const globalFilterFn = (row: { original: Record<string, unknown> }, columnId: string, value: string) => {
   const search = value.toLowerCase()
   
   // Search in the row's values, including nested objects
