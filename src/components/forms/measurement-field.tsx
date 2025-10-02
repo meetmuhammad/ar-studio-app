@@ -25,7 +25,7 @@ export function MeasurementField<T extends FieldValues>({
   label,
   placeholder = "0.0",
   disabled = false,
-  unit = "cm",
+  unit = "in",
 }: MeasurementFieldProps<T>) {
   return (
     <FormField
@@ -40,7 +40,7 @@ export function MeasurementField<T extends FieldValues>({
                 type="number"
                 step="0.1"
                 min="0"
-                max="999.9"
+                max="99.9"
                 placeholder={placeholder}
                 disabled={disabled}
                 {...field}
@@ -49,6 +49,7 @@ export function MeasurementField<T extends FieldValues>({
                   const value = e.target.value
                   field.onChange(value ? parseFloat(value) : undefined)
                 }}
+                onWheel={(e) => e.currentTarget.blur()}
                 className="pr-8"
               />
               <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">

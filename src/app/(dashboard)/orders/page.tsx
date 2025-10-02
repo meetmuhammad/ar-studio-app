@@ -12,6 +12,7 @@ import { OrderDialog } from '@/components/dialogs/order-dialog'
 import { OrderDetailsDialog } from '@/components/dialogs/order-details-dialog'
 import { DeleteConfirmationDialog } from '@/components/dialogs/delete-confirmation-dialog'
 import { CreateOrderInput } from '@/lib/validators'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { OrderWithCustomer } from '@/lib/supabase-client'
 
 export default function OrdersPage() {
@@ -141,10 +142,15 @@ export default function OrdersPage() {
     setDeleteDialog({ open: true, order })
   }
 
+  const handleRowClick = (order: OrderWithCustomer) => {
+    setDetailsDialog({ open: true, order })
+  }
+
   const columns = createOrderColumns({
     onView: handleView,
     onEdit: handleEdit,
     onDelete: handleDelete,
+    onRowClick: handleRowClick,
   })
 
   if (loading) {
@@ -180,11 +186,19 @@ export default function OrdersPage() {
         </Button>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={orders}
-        searchPlaceholder="Search by order number, customer name, or phone..."
-      />
+      <Card>
+        <CardHeader>
+          <CardTitle>All Orders</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DataTable
+            columns={columns}
+            data={orders}
+            searchPlaceholder="Search by order number, customer name, or phone..."
+            onRowClick={handleRowClick}
+          />
+        </CardContent>
+      </Card>
 
       {/* Create/Edit Order Dialog */}
       <OrderDialog

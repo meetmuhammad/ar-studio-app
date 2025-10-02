@@ -10,6 +10,7 @@ import {
   Home, 
   Users, 
   ShoppingBag, 
+  Ruler,
   LogOut
 } from 'lucide-react'
 
@@ -28,6 +29,11 @@ const navigation = [
     name: 'Orders',
     href: '/orders',
     icon: ShoppingBag,
+  },
+  {
+    name: 'Measurements',
+    href: '/measurements',
+    icon: Ruler,
   },
 ]
 

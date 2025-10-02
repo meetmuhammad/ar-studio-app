@@ -9,8 +9,10 @@ import { useDebouncedCallback } from 'use-debounce'
 import { DataTable } from '@/components/data-table/data-table'
 import { createCustomerColumns } from '@/components/data-table/columns/customer-columns'
 import { CustomerDialog } from '@/components/dialogs/customer-dialog'
+import { CustomerDetailDialog } from '@/components/dialogs/customer-detail-dialog'
 import { DeleteConfirmationDialog } from '@/components/dialogs/delete-confirmation-dialog'
 import { CreateCustomerInput } from '@/lib/validators'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { Customer } from '@/lib/supabase-client'
 
 interface CustomerWithOrderCount extends Customer {
@@ -28,6 +30,11 @@ export default function CustomersPage() {
   }>({ open: false, customer: null })
   
   const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean
+    customer?: CustomerWithOrderCount | null
+  }>({ open: false, customer: null })
+  
+  const [detailDialog, setDetailDialog] = useState<{
     open: boolean
     customer?: CustomerWithOrderCount | null
   }>({ open: false, customer: null })
@@ -135,9 +142,14 @@ export default function CustomersPage() {
     setDeleteDialog({ open: true, customer })
   }
 
+  const handleRowClick = (customer: CustomerWithOrderCount) => {
+    setDetailDialog({ open: true, customer })
+  }
+
   const columns = createCustomerColumns({
     onEdit: handleEdit,
     onDelete: handleDelete,
+    onRowClick: handleRowClick,
   })
 
   if (loading) {
@@ -173,11 +185,19 @@ export default function CustomersPage() {
         </Button>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={customers}
-        searchPlaceholder="Search customers by name or phone..."
-      />
+      <Card>
+        <CardHeader>
+          <CardTitle>All Customers</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DataTable
+            columns={columns}
+            data={customers}
+            searchPlaceholder="Search customers by name or phone..."
+            onRowClick={handleRowClick}
+          />
+        </CardContent>
+      </Card>
 
       {/* Create/Edit Customer Dialog */}
       <CustomerDialog
@@ -185,6 +205,13 @@ export default function CustomersPage() {
         onOpenChange={(open) => setCustomerDialog({ open, customer: null })}
         customer={customerDialog.customer}
         onSubmit={customerDialog.customer ? handleUpdateCustomer : handleCreateCustomer}
+      />
+
+      {/* Customer Detail Dialog */}
+      <CustomerDetailDialog
+        open={detailDialog.open}
+        onOpenChange={(open) => setDetailDialog({ open, customer: null })}
+        customer={detailDialog.customer || null}
       />
 
       {/* Delete Confirmation Dialog */}

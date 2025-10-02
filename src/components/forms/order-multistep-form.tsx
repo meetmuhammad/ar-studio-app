@@ -50,32 +50,16 @@ export function OrderMultiStepForm({
       advancePaid: order?.advance_paid || undefined,
       balance: order?.balance || undefined,
       paymentMethod: order?.payment_method || "other",
-      // Measurement fields
-      chest: order?.chest || undefined,
-      waist: order?.waist || undefined,
-      hips: order?.hips || undefined,
-      sleeves: order?.sleeves || undefined,
-      neck: order?.neck || undefined,
-      shoulder: order?.shoulder || undefined,
-      crossBack: order?.cross_back || undefined,
-      biceps: order?.biceps || undefined,
-      wrist: order?.wrist || undefined,
-      coatLength: order?.coat_length || undefined,
-      threePieceWaistcoat: order?.three_piece_waistcoat || undefined,
-      waistcoatLength: order?.waistcoat_length || undefined,
-      sherwaniLength: order?.sherwani_length || undefined,
-      pantWaist: order?.pant_waist || undefined,
-      pantLength: order?.pant_length || undefined,
-      thigh: order?.thigh || undefined,
-      knee: order?.knee || undefined,
-      bottom: order?.bottom || undefined,
-      shoeSize: order?.shoe_size || undefined,
-      turbanLength: order?.turban_length || undefined,
-      fittingPreferences: order?.fitting_preferences || "",
+      // Reference to measurements table
+      measurementId: order?.measurement_id || undefined,
+      fittingPreferences: "",
     },
   })
 
   const { handleSubmit, trigger, watch, formState: { errors, isSubmitting }, setValue } = form
+  
+  // Store form reference for debugging
+  const formRef = form
 
   // Watch totalAmount and advancePaid to calculate balance
   const totalAmount = watch("totalAmount")
@@ -112,6 +96,12 @@ export function OrderMultiStepForm({
     
     if (!isValid) {
       console.log('Form errors:', errors)
+      // Log specific field values for debugging
+      if (currentStep === 1) {
+        console.log('Customer ID value:', formRef.getValues('customerId'))
+        console.log('Booking date value:', formRef.getValues('bookingDate'))
+        console.log('Delivery date value:', formRef.getValues('deliveryDate'))
+      }
     }
     
     if (isValid && !completedSteps.includes(currentStep)) {

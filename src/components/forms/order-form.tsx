@@ -26,7 +26,6 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CustomerCombobox } from "@/components/combobox/customer-combobox"
-import { MeasurementField, measurementSections } from "./measurement-field"
 import { CreateOrderSchema, CreateOrderInput } from "@/lib/validators"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
 import { cn } from "@/lib/utils"
@@ -52,28 +51,9 @@ export function OrderForm({ order, onSubmit, onCancel }: OrderFormProps) {
         return defaultDelivery
       })(),
       comments: order?.comments || "",
-      // Measurements
-      chest: order?.chest || undefined,
-      waist: order?.waist || undefined,
-      hips: order?.hips || undefined,
-      sleeves: order?.sleeves || undefined,
-      neck: order?.neck || undefined,
-      shoulder: order?.shoulder || undefined,
-      crossBack: order?.cross_back || undefined,
-      biceps: order?.biceps || undefined,
-      wrist: order?.wrist || undefined,
-      coatLength: order?.coat_length || undefined,
-      threePieceWaistcoat: order?.three_piece_waistcoat || undefined,
-      waistcoatLength: order?.waistcoat_length || undefined,
-      sherwaniLength: order?.sherwani_length || undefined,
-      pantWaist: order?.pant_waist || undefined,
-      pantLength: order?.pant_length || undefined,
-      thigh: order?.thigh || undefined,
-      knee: order?.knee || undefined,
-      bottom: order?.bottom || undefined,
-      shoeSize: order?.shoe_size || undefined,
-      turbanLength: order?.turban_length || undefined,
-      fittingPreferences: order?.fitting_preferences || "",
+      // Reference to measurements table
+      measurementId: order?.measurement_id || undefined,
+      fittingPreferences: "",
       // Payment fields with default values
       totalAmount: order?.total_amount || 0,
       advancePaid: order?.advance_paid || 0,
@@ -223,60 +203,13 @@ export function OrderForm({ order, onSubmit, onCancel }: OrderFormProps) {
           </CardContent>
         </Card>
 
-        {/* Measurements */}
+        {/* Note about measurements */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Measurements</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              All measurements are optional. Enter values in centimeters.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {Object.entries(measurementSections).map(([key, section]) => (
-              <div key={key}>
-                <h4 className="font-medium text-sm mb-3">{section.title}</h4>
-                <div className="grid grid-cols-3 gap-3">
-                  {section.fields.map((field) => (
-                    <MeasurementField
-                      key={field.name}
-                      control={form.control}
-                      name={field.name as keyof CreateOrderInput}
-                      label={field.label}
-                      disabled={isSubmitting}
-                    />
-                  ))}
-                </div>
-                {key !== "accessories" && <Separator className="mt-4" />}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Fitting Preferences */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Fitting Preferences</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <FormField
-              control={form.control}
-              name="fittingPreferences"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Fitting Preferences & Notes</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Specify fitting style, adjustments, or special requirements"
-                      className="resize-none"
-                      rows={3}
-                      {...field}
-                      disabled={isSubmitting}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+          <CardContent className="py-4">
+            <div className="text-center text-sm text-muted-foreground">
+              <p>📏 Measurements are now managed separately in the <strong>Measurements</strong> tab.</p>
+              <p>Use the multi-step order form to include measurements with orders.</p>
+            </div>
           </CardContent>
         </Card>
 

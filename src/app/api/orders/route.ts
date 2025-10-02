@@ -72,15 +72,9 @@ export async function POST(request: NextRequest) {
       advance_paid: validatedData.advancePaid || null,
       balance: validatedData.balance || null,
       payment_method: validatedData.paymentMethod || null,
-      // Transform measurement field names to match database schema (snake_case)
-      cross_back: validatedData.crossBack,
-      three_piece_waistcoat: validatedData.threePieceWaistcoat,
-      waistcoat_length: validatedData.waistcoatLength,
-      sherwani_length: validatedData.sherwaniLength,
-      pant_waist: validatedData.pantWaist,
-      pant_length: validatedData.pantLength,
-      shoe_size: validatedData.shoeSize,
-      turban_length: validatedData.turbanLength,
+      // Reference to measurements table
+      measurement_id: validatedData.measurementId || null,
+      // Fitting preferences as separate field
       fitting_preferences: validatedData.fittingPreferences,
     }
 
@@ -93,14 +87,7 @@ export async function POST(request: NextRequest) {
       advancePaid,
       balance,
       paymentMethod,
-      crossBack,
-      threePieceWaistcoat,
-      waistcoatLength,
-      sherwaniLength,
-      pantWaist,
-      pantLength,
-      shoeSize,
-      turbanLength,
+      measurementId,
       fittingPreferences,
       ...finalOrderData
     } = orderData

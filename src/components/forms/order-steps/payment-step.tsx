@@ -84,6 +84,7 @@ export function OrderPaymentStep() {
                       const value = e.target.value
                       field.onChange(value === '' ? undefined : parseFloat(value) || 0)
                     }}
+                    onWheel={(e) => e.currentTarget.blur()}
                     className="pr-12"
                   />
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm font-medium">
@@ -116,6 +117,7 @@ export function OrderPaymentStep() {
                       const value = e.target.value
                       field.onChange(value === '' ? undefined : parseFloat(value) || 0)
                     }}
+                    onWheel={(e) => e.currentTarget.blur()}
                     className="pr-12"
                   />
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm font-medium">

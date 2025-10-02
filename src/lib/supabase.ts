@@ -71,28 +71,8 @@ export interface Order {
   advance_paid?: number | null
   balance?: number | null
   payment_method?: 'cash' | 'bank' | 'other' | null
-  // Measurement fields
-  chest?: number | null
-  waist?: number | null
-  hips?: number | null
-  sleeves?: number | null
-  neck?: number | null
-  shoulder?: number | null
-  cross_back?: number | null
-  biceps?: number | null
-  wrist?: number | null
-  coat_length?: number | null
-  three_piece_waistcoat?: number | null
-  waistcoat_length?: number | null
-  sherwani_length?: number | null
-  pant_waist?: number | null
-  pant_length?: number | null
-  thigh?: number | null
-  knee?: number | null
-  bottom?: number | null
-  shoe_size?: number | null
-  turban_length?: number | null
-  fitting_preferences?: string | null
+  // Reference to measurements table
+  measurement_id?: string | null
   created_at: string
   updated_at: string
 }

@@ -134,64 +134,69 @@ export function CustomerCombobox({ value, onValueChange, disabled }: CustomerCom
               placeholder="Search customers..."
               onValueChange={handleSearch}
             />
-            <CommandList>
-              {loading && (
-                <div className="p-2 text-sm text-muted-foreground">
-                  Loading customers...
-                </div>
-              )}
-              <CommandEmpty>
-                {searchValue ? (
-                  <div className="p-2 text-center">
-                    <p className="text-sm text-muted-foreground mb-2">
-                      No customers found for &quot;{searchValue}&quot;
-                    </p>
-                  </div>
-                ) : (
+            <div className="flex flex-col max-h-[300px]">
+              <CommandList className="flex-1 overflow-y-auto">
+                {loading && (
                   <div className="p-2 text-sm text-muted-foreground">
-                    No customers found.
+                    Loading customers...
                   </div>
                 )}
-              </CommandEmpty>
-              <CommandGroup>
-                {customers.map((customer) => (
-                  <CommandItem
-                    key={customer.id}
-                    value={customer.id}
-                    onSelect={(currentValue) => {
-                      onValueChange(currentValue === value ? "" : currentValue)
-                      setOpen(false)
-                    }}
-                  >
-                    <Check
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        value === customer.id ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{customer.name}</div>
-                      <div className="text-sm text-muted-foreground font-mono">
-                        {customer.phone}
-                      </div>
+                <CommandEmpty>
+                  {searchValue ? (
+                    <div className="p-2 text-center">
+                      <p className="text-sm text-muted-foreground mb-2">
+                        No customers found for &quot;{searchValue}&quot;
+                      </p>
                     </div>
+                  ) : (
+                    <div className="p-2 text-sm text-muted-foreground">
+                      No customers found.
+                    </div>
+                  )}
+                </CommandEmpty>
+                <CommandGroup>
+                  {customers.map((customer) => (
+                    <CommandItem
+                      key={customer.id}
+                      value={customer.id}
+                      onSelect={(currentValue) => {
+                        onValueChange(currentValue === value ? "" : currentValue)
+                        setOpen(false)
+                      }}
+                    >
+                      <Check
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          value === customer.id ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{customer.name}</div>
+                        <div className="text-sm text-muted-foreground font-mono">
+                          {customer.phone}
+                        </div>
+                      </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+              
+              {/* Sticky footer for Create new customer */}
+              <div className="border-t bg-background">
+                <CommandGroup>
+                  <CommandItem
+                    onSelect={() => {
+                      setOpen(false)
+                      setCustomerDialog(true)
+                    }}
+                    className="text-blue-600 font-medium"
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create new customer
                   </CommandItem>
-                ))}
-              </CommandGroup>
-              <CommandSeparator />
-              <CommandGroup>
-                <CommandItem
-                  onSelect={() => {
-                    setOpen(false)
-                    setCustomerDialog(true)
-                  }}
-                  className="text-blue-600"
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create new customer
-                </CommandItem>
-              </CommandGroup>
-            </CommandList>
+                </CommandGroup>
+              </div>
+            </div>
           </Command>
         </PopoverContent>
       </Popover>

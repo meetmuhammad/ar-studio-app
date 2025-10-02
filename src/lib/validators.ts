@@ -15,17 +15,7 @@ export const UpdateCustomerSchema = CreateCustomerSchema.partial()
 export type CreateCustomerInput = z.infer<typeof CreateCustomerSchema>
 export type UpdateCustomerInput = z.infer<typeof UpdateCustomerSchema>
 
-// Decimal validation for measurements (up to 999.99)
-const measurementField = z.union([
-  z.string().transform((val) => {
-    if (!val) return undefined
-    const num = parseFloat(val)
-    return isNaN(num) ? undefined : num
-  }),
-  z.number(),
-  z.null(),
-  z.undefined()
-]).optional()
+// This measurement validation is no longer needed - measurements are stored in separate table
 
 // Payment method enum
 const PaymentMethodSchema = z.enum(["cash", "bank", "other"])
@@ -62,27 +52,9 @@ export const CreateOrderSchema = z.object({
     z.number().min(0, "Balance cannot be negative")
   ]).optional(),
   paymentMethod: PaymentMethodSchema.optional(),
-  // Measurement fields
-  chest: measurementField,
-  waist: measurementField,
-  hips: measurementField,
-  sleeves: measurementField,
-  neck: measurementField,
-  shoulder: measurementField,
-  crossBack: measurementField,
-  biceps: measurementField,
-  wrist: measurementField,
-  coatLength: measurementField,
-  threePieceWaistcoat: measurementField,
-  waistcoatLength: measurementField,
-  sherwaniLength: measurementField,
-  pantWaist: measurementField,
-  pantLength: measurementField,
-  thigh: measurementField,
-  knee: measurementField,
-  bottom: measurementField,
-  shoeSize: measurementField,
-  turbanLength: measurementField,
+  // Reference to measurements table
+  measurementId: z.string().uuid().optional(),
+  // Fitting preferences moved to separate field
   fittingPreferences: z.string().max(1000, "Fitting preferences too long").optional().or(z.literal(""))
 }).refine((data) => {
   // Delivery date must be on or after booking date
