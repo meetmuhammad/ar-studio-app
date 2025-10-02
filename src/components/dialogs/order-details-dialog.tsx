@@ -12,7 +12,6 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
-import { measurementSections } from "@/components/forms/measurement-field"
 
 interface OrderDetailsDialogProps {
   open: boolean
@@ -27,29 +26,8 @@ export function OrderDetailsDialog({
 }: OrderDetailsDialogProps) {
   if (!order) return null
 
-  // Get all non-null measurements
-  const measurements = {
-    chest: order.chest,
-    waist: order.waist,
-    hips: order.hips,
-    sleeves: order.sleeves,
-    neck: order.neck,
-    shoulder: order.shoulder,
-    crossBack: order.cross_back,
-    biceps: order.biceps,
-    wrist: order.wrist,
-    coatLength: order.coat_length,
-    threePieceWaistcoat: order.three_piece_waistcoat,
-    waistcoatLength: order.waistcoat_length,
-    sherwaniLength: order.sherwani_length,
-    pantWaist: order.pant_waist,
-    pantLength: order.pant_length,
-    thigh: order.thigh,
-    knee: order.knee,
-    bottom: order.bottom,
-    shoeSize: order.shoe_size,
-    turbanLength: order.turban_length,
-  }
+  // Check if measurements are linked
+  const hasMeasurements = order.measurement_id !== null && order.measurement_id !== undefined
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -198,42 +176,35 @@ export function OrderDetailsDialog({
           {/* Measurements */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Measurements</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                📏 Measurements
+                {hasMeasurements ? (
+                  <Badge variant="default" className="text-xs">
+                    ✅ Linked
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-xs">
+                    ❌ None
+                  </Badge>
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              {Object.values(measurements).some(m => m !== null && m !== undefined) ? (
-                <div className="space-y-6">
-                  {Object.entries(measurementSections).map(([key, section]) => {
-                    // Filter out fields that have no values
-                    const sectionMeasurements = section.fields.filter(field => {
-                      const value = measurements[field.name as keyof typeof measurements]
-                      return value !== null && value !== undefined
-                    })
-
-                    if (sectionMeasurements.length === 0) return null
-
-                    return (
-                      <div key={key}>
-                        <h4 className="font-medium text-sm mb-3">{section.title}</h4>
-                        <div className="grid grid-cols-3 gap-4">
-                          {sectionMeasurements.map((field) => {
-                            const value = measurements[field.name as keyof typeof measurements]
-                            return (
-                              <div key={field.name} className="text-sm">
-                                <div className="text-muted-foreground">{field.label}</div>
-                                <div className="font-mono font-medium">{value} cm</div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                        {key !== "accessories" && sectionMeasurements.length > 0 && <Separator className="mt-4" />}
-                      </div>
-                    )
-                  })}
+              {hasMeasurements ? (
+                <div className="text-center py-6">
+                  <div className="text-sm text-muted-foreground mb-2">
+                    This order has measurements linked from the customer's measurement profile.
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Measurement ID: <span className="font-mono">{order.measurement_id}</span>
+                  </div>
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  No measurements recorded for this order.
+                <div className="text-center py-6 text-muted-foreground">
+                  <div className="text-sm mb-2">No measurements linked to this order.</div>
+                  <div className="text-xs">
+                    Measurements can be added from the order edit form or the Measurements page.
+                  </div>
                 </div>
               )}
             </CardContent>

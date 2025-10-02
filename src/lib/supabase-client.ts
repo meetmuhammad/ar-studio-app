@@ -37,6 +37,8 @@ export interface Order {
   payment_method?: 'cash' | 'bank' | 'other' | null
   // Reference to measurements table
   measurement_id?: string | null
+  // Fitting preferences
+  fitting_preferences?: string | null
   created_at: string
   updated_at: string
 }

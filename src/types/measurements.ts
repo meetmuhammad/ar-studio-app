@@ -85,7 +85,7 @@ export const measurementSchema = z.object({
   back_length: z.number().positive("Must be positive").max(50, "Must be under 50 inches").optional().or(z.literal("")),
   front_length: z.number().positive("Must be positive").max(50, "Must be under 50 inches").optional().or(z.literal("")),
   
-  is_default: z.boolean().default(false),
+  is_default: z.boolean().optional().default(false),
   notes: z.string().max(1000, "Notes too long").optional(),
 });
 

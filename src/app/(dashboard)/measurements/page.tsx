@@ -22,21 +22,12 @@ import { Customer } from "@/lib/supabase-client";
 import { Plus, Ruler } from "lucide-react";
 import { toast } from "sonner";
 
-interface MeasurementsResponse {
-  measurements: Measurement[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
 
 export default function MeasurementsPage() {
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   
   // Modal states
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -45,20 +36,14 @@ export default function MeasurementsPage() {
   const [selectedMeasurement, setSelectedMeasurement] = useState<Measurement | null>(null);
 
   // Fetch measurements
-  const fetchMeasurements = async (pageNum = 1) => {
+  const fetchMeasurements = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({
-        page: pageNum.toString(),
-        limit: "10",
-      });
-
-      const response = await fetch(`/api/measurements?${params}`);
+      const response = await fetch('/api/measurements?pageSize=1000'); // Get all measurements
       if (!response.ok) throw new Error("Failed to fetch measurements");
       
-      const data: MeasurementsResponse = await response.json();
-      setMeasurements(data.measurements);
-      setTotalPages(data.totalPages);
+      const data = await response.json();
+      setMeasurements(data.measurements || []);
     } catch (error) {
       console.error("Error fetching measurements:", error);
       toast.error("Failed to load measurements");
@@ -86,10 +71,6 @@ export default function MeasurementsPage() {
     fetchCustomers();
   }, []);
 
-  useEffect(() => {
-    fetchMeasurements(page);
-  }, [page]);
-
   // Create measurement
   const handleCreateMeasurement = async (data: MeasurementFormValues) => {
     try {
@@ -106,7 +87,7 @@ export default function MeasurementsPage() {
       }
 
       setShowAddDialog(false);
-      fetchMeasurements(page);
+      fetchMeasurements();
     } catch (error) {
       console.error("Error creating measurement:", error);
       throw error;
@@ -134,7 +115,7 @@ export default function MeasurementsPage() {
 
       setShowEditDialog(false);
       setSelectedMeasurement(null);
-      fetchMeasurements(page);
+      fetchMeasurements();
     } catch (error) {
       console.error("Error updating measurement:", error);
       throw error;
@@ -160,7 +141,7 @@ export default function MeasurementsPage() {
 
       setShowDeleteDialog(false);
       setSelectedMeasurement(null);
-      fetchMeasurements(page);
+      fetchMeasurements();
       toast.success("Measurement deleted successfully");
     } catch (error) {
       console.error("Error deleting measurement:", error);
@@ -213,13 +194,6 @@ export default function MeasurementsPage() {
             columns={columns}
             data={measurements}
             searchPlaceholder="Search measurements by customer name or measurement set name..."
-            loading={loading}
-            pagination={{
-              pageIndex: page - 1,
-              pageSize: 10,
-              pageCount: totalPages,
-              onPageChange: (pageIndex) => setPage(pageIndex + 1),
-            }}
           />
         </CardContent>
       </Card>

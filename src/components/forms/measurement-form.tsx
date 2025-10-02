@@ -42,7 +42,7 @@ export function MeasurementForm({
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
   const form = useForm<MeasurementFormValues>({
-    resolver: zodResolver(measurementSchema),
+    resolver: zodResolver(measurementSchema) as any,
     mode: "onTouched",
     defaultValues: {
       customer_id: measurement?.customer_id || "",
@@ -63,7 +63,7 @@ export function MeasurementForm({
       ankle: measurement?.ankle || undefined,
       back_length: measurement?.back_length || undefined,
       front_length: measurement?.front_length || undefined,
-      is_default: measurement?.is_default || false,
+      is_default: measurement?.is_default ?? false,
       notes: measurement?.notes || "",
     },
   });
