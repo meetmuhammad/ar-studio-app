@@ -78,6 +78,7 @@ export function createCustomerColumns({
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="-ml-2 h-auto p-2"
           >
             Name
             <ArrowUpDown className="ml-2 h-4 w-4" />
@@ -86,7 +87,7 @@ export function createCustomerColumns({
       },
       cell: ({ row }) => {
         return (
-          <div className="font-medium">
+          <div className="font-medium pl-2">
             {row.getValue("name")}
           </div>
         )
@@ -134,6 +135,7 @@ export function createCustomerColumns({
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="-ml-2 h-auto p-2"
           >
             Created
             <ArrowUpDown className="ml-2 h-4 w-4" />

@@ -81,6 +81,7 @@ export function createOrderColumns({
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="-ml-2 h-auto p-2"
           >
             Order #
             <ArrowUpDown className="ml-2 h-4 w-4" />
@@ -89,7 +90,7 @@ export function createOrderColumns({
       },
       cell: ({ row }) => {
         return (
-          <div className="font-mono font-medium">
+          <div className="font-mono font-medium pl-2">
             {row.getValue("order_number")}
           </div>
         )
@@ -117,6 +118,7 @@ export function createOrderColumns({
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="-ml-2 h-auto p-2"
           >
             Booking Date
             <ArrowUpDown className="ml-2 h-4 w-4" />
@@ -179,6 +181,7 @@ export function createOrderColumns({
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="-ml-2 h-auto p-2"
           >
             Created
             <ArrowUpDown className="ml-2 h-4 w-4" />

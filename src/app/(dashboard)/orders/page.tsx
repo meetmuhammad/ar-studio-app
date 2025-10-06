@@ -56,7 +56,18 @@ export default function OrdersPage() {
   // Initial load
   useEffect(() => {
     fetchOrders()
-  }, [])
+
+    // Listen for order creation events from header
+    const handleOrderCreated = () => {
+      fetchOrders()
+    }
+
+    window.addEventListener('orderCreated', handleOrderCreated)
+    
+    return () => {
+      window.removeEventListener('orderCreated', handleOrderCreated)
+    }
+  }, [fetchOrders])
 
   // Handle create order
   const handleCreateOrder = async (data: CreateOrderInput) => {

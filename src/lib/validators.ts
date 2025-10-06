@@ -22,7 +22,7 @@ const PaymentMethodSchema = z.enum(["cash", "bank", "other"])
 
 // Order schemas
 export const CreateOrderSchema = z.object({
-  customerId: z.string().uuid("Invalid customer ID"),
+  customerId: z.string().uuid("Please select a customer"),
   bookingDate: z.date(),
   deliveryDate: z.date(), // Now mandatory
   comments: z.string().max(1000, "Comments too long").optional().or(z.literal("")),
@@ -104,3 +104,25 @@ export const OrderQuerySchema = PaginationSchema.extend({
 
 export type CustomerQuery = z.infer<typeof CustomerQuerySchema>
 export type OrderQuery = z.infer<typeof OrderQuerySchema>
+
+// Payment schemas
+const PaymentMethodEnumSchema = z.enum(["cash", "bank", "other"])
+
+export const CreatePaymentSchema = z.object({
+  order_id: z.string().uuid("Please select an order"),
+  customer_id: z.string().uuid("Invalid customer ID"),
+  amount: z.number().positive("Amount must be positive"),
+  payment_method: PaymentMethodEnumSchema.default("other"),
+  payment_date: z.date(),
+  notes: z.string().max(500, "Notes too long").optional().or(z.literal(""))
+}).refine((data) => {
+  // Payment date must be today or in the past
+  const today = new Date()
+  today.setHours(23, 59, 59, 999) // End of today
+  return data.payment_date <= today
+}, {
+  message: "Payment date cannot be in the future",
+  path: ["payment_date"]
+})
+
+export type CreatePaymentInput = z.infer<typeof CreatePaymentSchema>

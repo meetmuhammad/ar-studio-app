@@ -1,6 +1,7 @@
 "use client"
 
 import { useFormContext } from "react-hook-form"
+import { useEffect } from "react"
 import { 
   FormControl,
   FormField,
@@ -15,6 +16,25 @@ import { CreateOrderInput } from "@/lib/validators"
 
 export function OrderGeneralInfoStep() {
   const form = useFormContext<CreateOrderInput>()
+  const { watch, setError, clearErrors } = form
+  
+  // Watch both dates for real-time validation
+  const bookingDate = watch("bookingDate")
+  const deliveryDate = watch("deliveryDate")
+  
+  // Real-time cross-field validation
+  useEffect(() => {
+    if (bookingDate && deliveryDate) {
+      if (new Date(bookingDate) > new Date(deliveryDate)) {
+        setError("deliveryDate", {
+          type: "manual",
+          message: "Delivery date must be on or after booking date"
+        })
+      } else {
+        clearErrors("deliveryDate")
+      }
+    }
+  }, [bookingDate, deliveryDate, setError, clearErrors])
 
   return (
     <div className="space-y-6">
@@ -52,6 +72,10 @@ export function OrderGeneralInfoStep() {
                   {...field}
                   value={field.value ? field.value.toISOString().split('T')[0] : ''}
                   onChange={(e) => field.onChange(new Date(e.target.value))}
+                  onBlur={() => {
+                    // Trigger validation when field loses focus
+                    form.trigger(["bookingDate", "deliveryDate"])
+                  }}
                 />
               </FormControl>
               <FormMessage />
@@ -72,6 +96,10 @@ export function OrderGeneralInfoStep() {
                   {...field}
                   value={field.value ? field.value.toISOString().split('T')[0] : ''}
                   onChange={(e) => field.onChange(new Date(e.target.value))}
+                  onBlur={() => {
+                    // Trigger validation when field loses focus
+                    form.trigger(["bookingDate", "deliveryDate"])
+                  }}
                 />
               </FormControl>
               <FormMessage />

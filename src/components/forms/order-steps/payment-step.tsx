@@ -79,10 +79,22 @@ export function OrderPaymentStep() {
                     min="0"
                     placeholder="0"
                     {...field}
-                    value={field.value !== undefined ? field.value : ''}
+                    value={field.value !== undefined && field.value !== null ? field.value.toString() : ''}
                     onChange={(e) => {
                       const value = e.target.value
-                      field.onChange(value === '' ? undefined : parseFloat(value) || 0)
+                      // Handle empty string or invalid input by defaulting to 0
+                      if (value === '' || value === null || value === undefined) {
+                        field.onChange(0)
+                      } else {
+                        const numValue = parseFloat(value)
+                        field.onChange(isNaN(numValue) ? 0 : numValue)
+                      }
+                    }}
+                    onBlur={() => {
+                      // Ensure we have a valid number on blur
+                      if (field.value === undefined || field.value === null || isNaN(field.value)) {
+                        field.onChange(0)
+                      }
                     }}
                     onWheel={(e) => e.currentTarget.blur()}
                     className="pr-12"
@@ -112,10 +124,22 @@ export function OrderPaymentStep() {
                     min="0"
                     placeholder="0"
                     {...field}
-                    value={field.value !== undefined ? field.value : ''}
+                    value={field.value !== undefined && field.value !== null ? field.value.toString() : ''}
                     onChange={(e) => {
                       const value = e.target.value
-                      field.onChange(value === '' ? undefined : parseFloat(value) || 0)
+                      // Handle empty string or invalid input by defaulting to 0
+                      if (value === '' || value === null || value === undefined) {
+                        field.onChange(0)
+                      } else {
+                        const numValue = parseFloat(value)
+                        field.onChange(isNaN(numValue) ? 0 : numValue)
+                      }
+                    }}
+                    onBlur={() => {
+                      // Ensure we have a valid number on blur
+                      if (field.value === undefined || field.value === null || isNaN(field.value)) {
+                        field.onChange(0)
+                      }
                     }}
                     onWheel={(e) => e.currentTarget.blur()}
                     className="pr-12"

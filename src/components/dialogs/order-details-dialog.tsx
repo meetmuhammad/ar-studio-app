@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { format } from "date-fns"
 import {
   Dialog,
@@ -9,9 +10,28 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
+
+interface Payment {
+  id: string
+  order_id: string
+  customer_id: string
+  amount: number
+  payment_method: string
+  payment_date: string
+  notes?: string
+  created_at: string
+}
 
 interface OrderDetailsDialogProps {
   open: boolean
@@ -24,10 +44,46 @@ export function OrderDetailsDialog({
   onOpenChange,
   order,
 }: OrderDetailsDialogProps) {
+  const [payments, setPayments] = useState<Payment[]>([])
+  const [loadingPayments, setLoadingPayments] = useState(false)
+
+  // Fetch payments when dialog opens and order changes
+  useEffect(() => {
+    if (open && order) {
+      fetchPayments(order.id)
+    }
+  }, [open, order])
+
+  // Early return after all hooks
   if (!order) return null
 
   // Check if measurements are linked
   const hasMeasurements = order.measurement_id !== null && order.measurement_id !== undefined
+
+  const fetchPayments = async (orderId: string) => {
+    try {
+      setLoadingPayments(true)
+      const response = await fetch(`/api/payments?order_id=${orderId}`)
+      if (!response.ok) throw new Error('Failed to fetch payments')
+      
+      const data = await response.json()
+      setPayments(data.payments || [])
+    } catch (error) {
+      console.error('Error fetching payments:', error)
+    } finally {
+      setLoadingPayments(false)
+    }
+  }
+
+  const calculateTotalPaid = () => {
+    const advancePaid = order.advance_paid || 0
+    const additionalPayments = payments.reduce((sum, payment) => sum + payment.amount, 0)
+    return advancePaid + additionalPayments
+  }
+
+  const calculateBalance = () => {
+    return (order.total_amount || 0) - calculateTotalPaid()
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -114,64 +170,112 @@ export function OrderDetailsDialog({
           )}
 
           {/* Payment Information */}
-          {(order.total_amount || order.advance_paid || order.payment_method) && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  💰 Payment Details
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {order.payment_method && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-muted-foreground">Method:</span>
-                    <span className="text-sm font-semibold capitalize">
-                      {order.payment_method === 'bank' ? 'Bank Transfer' : order.payment_method}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                💰 Payment Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* Payment Summary Table */}
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-left">Date</TableHead>
+                    <TableHead className="text-left">Description</TableHead>
+                    <TableHead className="text-right">Amount (PKR)</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {/* Show advance payment if paid */}
+                  {(order.advance_paid && order.advance_paid > 0) && (
+                    <TableRow>
+                      <TableCell className="font-mono text-sm">
+                        {format(new Date(order.booking_date), 'MMM d, yyyy')}
+                      </TableCell>
+                      <TableCell className="font-medium text-green-700">Advance Payment</TableCell>
+                      <TableCell className="text-right font-mono text-green-700">
+                        -{(order.advance_paid || 0).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {/* Show additional payments */}
+                  {loadingPayments ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center text-muted-foreground py-4">
+                        Loading payments...
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    payments.map((payment) => (
+                      <TableRow key={payment.id}>
+                        <TableCell className="font-mono text-sm">
+                          {format(new Date(payment.payment_date), 'MMM d, yyyy')}
+                        </TableCell>
+                        <TableCell className="font-medium text-green-700">
+                          {payment.notes || `Payment via ${payment.payment_method}`}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-green-700">
+                          -{payment.amount.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                  {/* Show message if no payments */}
+                  {!loadingPayments && (!order.advance_paid || order.advance_paid === 0) && payments.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center text-muted-foreground py-4">
+                        No payments recorded
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TableCell className="font-mono text-sm">
+                      {format(new Date(order.booking_date), 'MMM d, yyyy')}
+                    </TableCell>
+                    <TableCell className="font-bold">Total Order Amount</TableCell>
+                    <TableCell className="text-right font-mono font-bold">
+                      {(order.total_amount || 0).toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell></TableCell>
+                    <TableCell className="font-bold">Balance Due</TableCell>
+                    <TableCell className={`text-right font-mono font-bold ${
+                      calculateBalance() > 0 ? 'text-orange-600' : 
+                      calculateBalance() < 0 ? 'text-red-600' : 'text-green-600'
+                    }`}>
+                      {calculateBalance().toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                </TableFooter>
+              </Table>
+
+              {/* Payment Status Messages */}
+              {calculateBalance() === 0 && (
+                <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="default" className="bg-green-600">✓ Paid in Full</Badge>
+                    <span className="text-sm text-green-700 dark:text-green-400">
+                      This order has been completely paid.
                     </span>
                   </div>
-                )}
-                
-                {order.total_amount && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-muted-foreground">Total:</span>
-                    <span className="text-sm font-mono font-bold text-green-600">
-                      PKR {order.total_amount.toFixed(2)}
+                </div>
+              )}
+              {calculateBalance() < 0 && (
+                <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="destructive">Overpaid</Badge>
+                    <span className="text-sm text-red-700 dark:text-red-400">
+                      Customer has paid PKR {Math.abs(calculateBalance()).toFixed(2)} more than the order amount.
                     </span>
                   </div>
-                )}
-                
-                {order.advance_paid !== undefined && order.advance_paid !== null && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-muted-foreground">Advance:</span>
-                    <span className="text-sm font-mono font-bold text-foreground">
-                      PKR {order.advance_paid.toFixed(2)}
-                    </span>
-                  </div>
-                )}
-                
-                {order.total_amount && order.advance_paid !== undefined && order.advance_paid !== null && (
-                  <div className="flex items-center justify-between border-t pt-3">
-                    <span className="text-sm font-medium text-muted-foreground">Balance:</span>
-                    <span className="text-sm font-mono font-bold text-red-600">
-                      PKR {Math.max(0, order.total_amount - order.advance_paid).toFixed(2)}
-                    </span>
-                  </div>
-                )}
-                
-                {/* Show overpaid warning if applicable */}
-                {order.total_amount && order.advance_paid && order.advance_paid > order.total_amount && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-yellow-800">Overpaid Amount:</span>
-                      <span className="text-sm font-mono font-bold text-yellow-600">
-                        PKR {(order.advance_paid - order.total_amount).toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Measurements */}
           <Card>
@@ -193,7 +297,7 @@ export function OrderDetailsDialog({
               {hasMeasurements ? (
                 <div className="text-center py-6">
                   <div className="text-sm text-muted-foreground mb-2">
-                    This order has measurements linked from the customer's measurement profile.
+                    This order has measurements linked from the customer&apos;s measurement profile.
                   </div>
                   <div className="text-xs text-muted-foreground">
                     Measurement ID: <span className="font-mono">{order.measurement_id}</span>

@@ -35,7 +35,7 @@ export function OrderMultiStepForm({
 
   const form = useForm<CreateOrderInput>({
     resolver: zodResolver(CreateOrderSchema) as any,
-    mode: "onTouched", // Only validate after field is touched
+    mode: "onSubmit", // Only validate on submit or manual trigger
     defaultValues: {
       customerId: order?.customer_id || "",
       bookingDate: order ? new Date(order.booking_date) : new Date(),
@@ -46,9 +46,9 @@ export function OrderMultiStepForm({
       })(),
       comments: order?.comments || "",
       // Payment fields
-      totalAmount: order?.total_amount || undefined,
-      advancePaid: order?.advance_paid || undefined,
-      balance: order?.balance || undefined,
+      totalAmount: order?.total_amount || 0,
+      advancePaid: order?.advance_paid || 0,
+      balance: order?.balance || 0,
       paymentMethod: order?.payment_method || "other",
       // Reference to measurements table
       measurementId: order?.measurement_id || undefined,
@@ -93,6 +93,17 @@ export function OrderMultiStepForm({
     console.log('Validating fields for step', currentStep, ':', fieldsToValidate)
     const isValid = await trigger(fieldsToValidate)
     console.log('Validation result:', isValid)
+    
+    // For step 1, also check for any manual cross-field validation errors
+    if (currentStep === 1 && isValid) {
+      const bookingDate = formRef.getValues('bookingDate')
+      const deliveryDate = formRef.getValues('deliveryDate')
+      
+      if (bookingDate && deliveryDate && new Date(bookingDate) > new Date(deliveryDate)) {
+        console.log('Cross-field validation failed: booking date > delivery date')
+        return false
+      }
+    }
     
     if (!isValid) {
       console.log('Form errors:', errors)
