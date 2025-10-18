@@ -366,21 +366,31 @@ export function PaymentDialog({
                       </Table>
 
                       {calculateBalance() === 0 && (
-                        <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                        <div className="mt-4 p-3 bg-success/10 dark:bg-success/10 border border-success/20 dark:border-success/20 rounded-lg">
                           <div className="flex items-center gap-2">
-                            <Badge variant="default" className="bg-green-600">✓ Paid in Full</Badge>
-                            <span className="text-sm text-green-700 dark:text-green-400">
+                            <Badge variant="success">✓ Paid in Full</Badge>
+                            <span className="text-sm text-success-foreground">
                               This order has been completely paid.
                             </span>
                           </div>
                         </div>
                       )}
                       {calculateBalance() < 0 && (
-                        <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                        <div className="mt-4 p-3 bg-warning/10 dark:bg-warning/10 border border-warning/20 dark:border-warning/20 rounded-lg">
                           <div className="flex items-center gap-2">
-                            <Badge variant="destructive">Overpaid</Badge>
-                            <span className="text-sm text-red-700 dark:text-red-400">
+                            <Badge variant="warning">Overpaid</Badge>
+                            <span className="text-sm text-warning-foreground">
                               Customer has paid PKR {Math.abs(calculateBalance()).toFixed(2)} more than the order amount.
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                      {calculateBalance() > 0 && (
+                        <div className="mt-4 p-3 bg-info/10 dark:bg-info/10 border border-info/20 dark:border-info/20 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="info">Balance Due</Badge>
+                            <span className="text-sm text-info-foreground">
+                              PKR {calculateBalance().toFixed(2)} remaining to be paid.
                             </span>
                           </div>
                         </div>
@@ -518,6 +528,7 @@ export function PaymentDialog({
                 Cancel
               </Button>
               <Button
+                variant="brand"
                 type="submit"
                 disabled={isSubmitting || !selectedOrder}
               >

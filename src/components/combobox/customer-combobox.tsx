@@ -189,7 +189,7 @@ export function CustomerCombobox({ value, onValueChange, disabled }: CustomerCom
                       setOpen(false)
                       setCustomerDialog(true)
                     }}
-                    className="text-blue-600 font-medium"
+                    className="text-primary font-medium hover:bg-primary/10 focus:bg-primary/10"
                   >
                     <Plus className="mr-2 h-4 w-4" />
                     Create new customer

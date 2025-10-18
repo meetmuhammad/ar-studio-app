@@ -350,7 +350,7 @@ export default function DashboardPage() {
           <CardContent className="space-y-4">
             <Link href="/customers" className="block no-underline">
               <div className="flex items-center p-3 rounded-lg border hover:bg-accent transition-colors">
-                <Users className="h-5 w-5 mr-3 text-blue-500" />
+                <Users className="h-5 w-5 mr-3 text-primary" />
                 <div className="flex-1">
                   <div className="font-medium">Manage Customers</div>
                   <div className="text-sm text-muted-foreground">Add or edit customer information</div>

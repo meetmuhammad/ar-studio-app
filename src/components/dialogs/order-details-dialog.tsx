@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -20,6 +21,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Printer } from "lucide-react"
+import { openPrintPreview } from "@/lib/print-utils"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
 
 interface Payment {
@@ -93,11 +96,17 @@ export function OrderDetailsDialog({
         onInteractOutside={(e) => e.preventDefault()}
       >
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            Order Details
-            <Badge variant="secondary" className="font-mono">
-              {order.order_number}
-            </Badge>
+          <DialogTitle className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              Order Details
+              <Badge variant="secondary" className="font-mono">
+                {order.order_number}
+              </Badge>
+            </span>
+            <Button variant="outline" size="sm" onClick={() => openPrintPreview({ order, payments })}>
+              <Printer className="h-4 w-4 mr-2" />
+              Print Receipt
+            </Button>
           </DialogTitle>
           <DialogDescription>
             Complete order information including measurements and customer details.
