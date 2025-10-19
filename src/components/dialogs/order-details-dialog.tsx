@@ -21,9 +21,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Printer } from "lucide-react"
-import { openPrintPreview } from "@/lib/print-utils"
+import { Printer, FileText } from "lucide-react"
+import { openPrintPreview, openMeasurementPrintPreview } from "@/lib/print-utils"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
+import { Measurement } from "@/types/measurements"
 
 interface Payment {
   id: string
@@ -49,11 +50,16 @@ export function OrderDetailsDialog({
 }: OrderDetailsDialogProps) {
   const [payments, setPayments] = useState<Payment[]>([])
   const [loadingPayments, setLoadingPayments] = useState(false)
+  const [measurement, setMeasurement] = useState<Measurement | null>(null)
+  const [loadingMeasurement, setLoadingMeasurement] = useState(false)
 
-  // Fetch payments when dialog opens and order changes
+  // Fetch payments and measurements when dialog opens and order changes
   useEffect(() => {
     if (open && order) {
       fetchPayments(order.id)
+      if (order.measurement_id) {
+        fetchMeasurement(order.measurement_id)
+      }
     }
   }, [open, order])
 
@@ -75,6 +81,22 @@ export function OrderDetailsDialog({
       console.error('Error fetching payments:', error)
     } finally {
       setLoadingPayments(false)
+    }
+  }
+
+  const fetchMeasurement = async (measurementId: string) => {
+    try {
+      setLoadingMeasurement(true)
+      const response = await fetch(`/api/measurements/${measurementId}`)
+      if (!response.ok) throw new Error('Failed to fetch measurement')
+      
+      const data = await response.json()
+      setMeasurement(data.measurement || null)
+    } catch (error) {
+      console.error('Error fetching measurement:', error)
+      setMeasurement(null)
+    } finally {
+      setLoadingMeasurement(false)
     }
   }
 
@@ -103,10 +125,23 @@ export function OrderDetailsDialog({
                 {order.order_number}
               </Badge>
             </span>
-            <Button variant="outline" size="sm" onClick={() => openPrintPreview({ order, payments })}>
-              <Printer className="h-4 w-4 mr-2" />
-              Print Receipt
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => openPrintPreview({ order, payments })}>
+                <Printer className="h-4 w-4 mr-2" />
+                Print Receipt
+              </Button>
+              {hasMeasurements && measurement && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => openMeasurementPrintPreview({ order, measurement })}
+                  disabled={loadingMeasurement}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Print Measurement
+                </Button>
+              )}
+            </div>
           </DialogTitle>
           <DialogDescription>
             Complete order information including measurements and customer details.
@@ -352,13 +387,56 @@ export function OrderDetailsDialog({
             </CardHeader>
             <CardContent>
               {hasMeasurements ? (
-                <div className="text-center py-6">
-                  <div className="text-sm text-muted-foreground mb-2">
-                    This order has measurements linked from the customer&apos;s measurement profile.
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Measurement ID: <span className="font-mono">{order.measurement_id}</span>
-                  </div>
+                <div className="py-6">
+                  {loadingMeasurement ? (
+                    <div className="text-center text-muted-foreground">
+                      <div className="text-sm mb-2">Loading measurement details...</div>
+                    </div>
+                  ) : measurement ? (
+                    <div className="space-y-4">
+                      <div className="text-center">
+                        <div className="text-sm text-muted-foreground mb-1">
+                          Measurement set is linked to this order
+                        </div>
+                        <div className="font-medium text-lg">{measurement.name}</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Created: {format(new Date(measurement.created_at), "MMM d, yyyy")}
+                        </div>
+                      </div>
+                      
+                      <div className="bg-muted/30 p-3 rounded-lg">
+                        <div className="text-sm text-muted-foreground mb-2">Available Measurements:</div>
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(measurement)
+                            .filter(([key, value]) => 
+                              key !== 'id' && key !== 'customer_id' && key !== 'name' && 
+                              key !== 'is_default' && key !== 'notes' && key !== 'created_at' && 
+                              key !== 'updated_at' && key !== 'customer' && 
+                              value !== null && value !== undefined
+                            )
+                            .map(([key]) => (
+                              <span key={key} className="text-xs bg-background px-2 py-1 rounded border">
+                                {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                              </span>
+                            ))
+                          }
+                        </div>
+                        {measurement.notes && (
+                          <div className="mt-3">
+                            <div className="text-xs text-muted-foreground mb-1">Notes:</div>
+                            <div className="text-sm italic">{measurement.notes}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 text-orange-600">
+                      <div className="text-sm mb-2">⚠️ Measurement linked but could not be loaded</div>
+                      <div className="text-xs text-muted-foreground">
+                        Measurement ID: <span className="font-mono">{order.measurement_id}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-6 text-muted-foreground">

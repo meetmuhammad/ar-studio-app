@@ -144,16 +144,18 @@ export function OrderMeasurementsStep() {
         
         // Check maximum limits based on field type
         let maxValue = 100 // default
-        if (field.key.includes('shoulder') || field.key.includes('arm') || field.key.includes('length') || field.key.includes('seam')) {
-          maxValue = field.key === 'outseam' ? 60 : 50
-        } else if (field.key.includes('chest') || field.key.includes('waist') || field.key.includes('hip') || field.key.includes('thigh')) {
-          maxValue = 100
-        } else if (field.key.includes('neck') || field.key.includes('bicep') || field.key.includes('knee') || field.key.includes('calf')) {
-          maxValue = 30
-        } else if (field.key.includes('wrist')) {
-          maxValue = 15
-        } else if (field.key.includes('ankle')) {
+        if (field.key === 'shoe_size') {
           maxValue = 20
+        } else if (field.key.includes('length') || field.key.includes('coat') || field.key.includes('sherwani') || field.key.includes('kameez')) {
+          maxValue = 60
+        } else if (field.key.includes('chest') || field.key.includes('waist') || field.key.includes('hip') || field.key.includes('pent')) {
+          maxValue = 100
+        } else if (field.key.includes('biceps') || field.key.includes('neck') || field.key.includes('knee') || field.key.includes('bottom')) {
+          maxValue = 30
+        } else if (field.key.includes('wrist') || field.key.includes('turban')) {
+          maxValue = 20
+        } else {
+          maxValue = 60 // For shoulder, sleeves, cross_back, thigh etc.
         }
         
         if (value > maxValue) {
@@ -229,16 +231,18 @@ export function OrderMeasurementsStep() {
     
     // Get max value based on field type
     let maxValue = 100
-    if (fieldKey.includes('shoulder') || fieldKey.includes('arm') || fieldKey.includes('length') || fieldKey.includes('seam')) {
-      maxValue = fieldKey === 'outseam' ? 60 : 50
-    } else if (fieldKey.includes('chest') || fieldKey.includes('waist') || fieldKey.includes('hip') || fieldKey.includes('thigh')) {
-      maxValue = 100
-    } else if (fieldKey.includes('neck') || fieldKey.includes('bicep') || fieldKey.includes('knee') || fieldKey.includes('calf')) {
-      maxValue = 30
-    } else if (fieldKey.includes('wrist')) {
-      maxValue = 15
-    } else if (fieldKey.includes('ankle')) {
+    if (fieldKey === 'shoe_size') {
       maxValue = 20
+    } else if (fieldKey.includes('length') || fieldKey.includes('coat') || fieldKey.includes('sherwani') || fieldKey.includes('kameez')) {
+      maxValue = 60
+    } else if (fieldKey.includes('chest') || fieldKey.includes('waist') || fieldKey.includes('hip') || fieldKey.includes('pent')) {
+      maxValue = 100
+    } else if (fieldKey.includes('biceps') || fieldKey.includes('neck') || fieldKey.includes('knee') || fieldKey.includes('bottom')) {
+      maxValue = 30
+    } else if (fieldKey.includes('wrist') || fieldKey.includes('turban')) {
+      maxValue = 20
+    } else {
+      maxValue = 60 // For shoulder, sleeves, cross_back, thigh etc.
     }
     
     if (value > maxValue) {
@@ -447,7 +451,7 @@ export function OrderMeasurementsStep() {
                     {MEASUREMENT_FIELDS.map((field) => {
                       const fieldValue = newMeasurement[field.key as keyof MeasurementFormData] as number | undefined
                       const validation = getFieldValidation(field.key, fieldValue)
-                      const maxValue = field.key.includes('shoulder') || field.key.includes('arm') || field.key.includes('length') || field.key.includes('seam') ? (field.key === 'outseam' ? 60 : 50) :
+                      const maxValue = field.key.includes('shoulder') || field.key.includes('arm') || field.key.includes('length') || field.key.includes('seam') ? 50 :
                         field.key.includes('chest') || field.key.includes('waist') || field.key.includes('hip') || field.key.includes('thigh') ? 100 :
                         field.key.includes('neck') || field.key.includes('bicep') || field.key.includes('knee') || field.key.includes('calf') ? 30 :
                         field.key.includes('wrist') ? 15 :

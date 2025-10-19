@@ -50,19 +50,25 @@ export function MeasurementForm({
       chest: measurement?.chest || undefined,
       waist: measurement?.waist || undefined,
       hip: measurement?.hip || undefined,
-      shoulder_width: measurement?.shoulder_width || undefined,
-      arm_length: measurement?.arm_length || undefined,
-      bicep: measurement?.bicep || undefined,
-      neck: measurement?.neck || undefined,
+      sleeves: measurement?.sleeves || undefined,
+      biceps: measurement?.biceps || undefined,
       wrist: measurement?.wrist || undefined,
+      neck: measurement?.neck || undefined,
+      shoulder: measurement?.shoulder || undefined,
+      cross_back: measurement?.cross_back || undefined,
+      open_coat_length: measurement?.open_coat_length || undefined,
+      coat_length: measurement?.coat_length || undefined,
+      sherwani_length: measurement?.sherwani_length || undefined,
+      kameez_length: measurement?.kameez_length || undefined,
+      three_piece_waistcoat_length: measurement?.three_piece_waistcoat_length || undefined,
+      waistcoat_length: measurement?.waistcoat_length || undefined,
+      pent_waist: measurement?.pent_waist || undefined,
+      pent_length: measurement?.pent_length || undefined,
       thigh: measurement?.thigh || undefined,
-      inseam: measurement?.inseam || undefined,
-      outseam: measurement?.outseam || undefined,
       knee: measurement?.knee || undefined,
-      calf: measurement?.calf || undefined,
-      ankle: measurement?.ankle || undefined,
-      back_length: measurement?.back_length || undefined,
-      front_length: measurement?.front_length || undefined,
+      bottom: measurement?.bottom || undefined,
+      shoe_size: measurement?.shoe_size || undefined,
+      turban_size: measurement?.turban_size || undefined,
       is_default: measurement?.is_default ?? false,
       notes: measurement?.notes || "",
     },
@@ -187,51 +193,60 @@ export function MeasurementForm({
           />
         </div>
 
-        {/* Measurements Grid */}
-        <div className="space-y-4">
+        {/* Measurements Grid - Organized by Categories */}
+        <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-medium">Body Measurements</h3>
             <div className="text-sm text-muted-foreground">All measurements in inches</div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {MEASUREMENT_FIELDS.map((field) => (
-              <FormField
-                key={field.key}
-                control={form.control}
-                name={field.key}
-                render={({ fieldState, field: formField }) => (
-                  <FormItem>
-                    <FormLabel>{field.label}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max={field.key.includes('shoulder') || field.key.includes('arm') || field.key.includes('length') || field.key.includes('seam') ? "60" : 
-                             field.key.includes('chest') || field.key.includes('waist') || field.key.includes('hip') || field.key.includes('thigh') ? "100" :
-                             field.key.includes('neck') || field.key.includes('bicep') || field.key.includes('knee') || field.key.includes('calf') ? "30" :
-                             field.key.includes('wrist') || field.key.includes('ankle') ? "20" : "100"}
-                        placeholder="0.0"
-                        {...formField}
-                        value={formField.value || ""}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          formField.onChange(value === "" ? undefined : parseFloat(value));
-                        }}
-                        onWheel={(e) => e.currentTarget.blur()}
-                        disabled={isLoading}
-                      />
-                    </FormControl>
-                    <FormDescription className="text-xs">
-                      {field.description}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            ))}
-          </div>
+          {/* Group fields by category */}
+          {['Upper Body', 'Length', 'Lower Body', 'Accessories'].map((category) => (
+            <div key={category} className="space-y-4">
+              <h4 className="text-base font-medium text-muted-foreground border-b pb-2">{category}</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {MEASUREMENT_FIELDS.filter(field => field.category === category).map((field) => (
+                  <FormField
+                    key={field.key}
+                    control={form.control}
+                    name={field.key}
+                    render={({ fieldState, field: formField }) => (
+                      <FormItem>
+                        <FormLabel>{field.label}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max={
+                              field.key === 'shoe_size' ? "20" :
+                              field.key.includes('length') || field.key.includes('coat') || field.key.includes('sherwani') || field.key.includes('kameez') ? "60" :
+                              field.key.includes('chest') || field.key.includes('waist') || field.key.includes('hip') || field.key.includes('pent') ? "100" :
+                              field.key.includes('biceps') || field.key.includes('neck') || field.key.includes('knee') || field.key.includes('bottom') ? "30" :
+                              field.key.includes('wrist') || field.key.includes('turban') ? "20" : "60"
+                            }
+                            placeholder="0.0"
+                            {...formField}
+                            value={formField.value || ""}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              formField.onChange(value === "" ? undefined : parseFloat(value));
+                            }}
+                            onWheel={(e) => e.currentTarget.blur()}
+                            disabled={isLoading}
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs">
+                          {field.description}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Notes */}
