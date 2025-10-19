@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getOrders, createOrder } from '@/lib/database'
+import { getOrders, createOrder, createOrderItems } from '@/lib/database'
 import { CreateOrderSchema, OrderQuerySchema } from '@/lib/validators'
 
 // GET /api/orders - List orders with search and pagination
@@ -89,10 +89,17 @@ export async function POST(request: NextRequest) {
       paymentMethod,
       measurementId,
       fittingPreferences,
+      orderItems,
       ...finalOrderData
     } = orderData
 
+    // Create the order first
     const order = await createOrder(finalOrderData)
+    
+    // Create order items if any
+    if (orderItems && orderItems.length > 0) {
+      await createOrderItems(order.id, orderItems)
+    }
 
     return NextResponse.json(order, { status: 201 })
   } catch (error) {

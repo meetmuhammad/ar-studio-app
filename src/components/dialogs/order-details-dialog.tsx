@@ -286,6 +286,54 @@ export function OrderDetailsDialog({
             </CardContent>
           </Card>
 
+          {/* Order Items */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                📋 Order Items
+                {order.order_items && order.order_items.length > 0 ? (
+                  <Badge variant="default" className="text-xs">
+                    {order.order_items.length} item{order.order_items.length !== 1 ? 's' : ''}
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-xs">
+                    No items
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {order.order_items && order.order_items.length > 0 ? (
+                <div className="space-y-4">
+                  {order.order_items.map((item, index) => (
+                    <div key={item.id} className="border border-border rounded-lg p-4 bg-card">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-card-foreground">
+                            #{index + 1}
+                          </span>
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {item.order_type}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="text-sm text-card-foreground whitespace-pre-wrap">
+                        {item.description}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-muted-foreground">
+                  <div className="text-sm mb-2">No order items added.</div>
+                  <div className="text-xs">
+                    Order items can be added when creating or editing the order.
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Measurements */}
           <Card>
             <CardHeader>

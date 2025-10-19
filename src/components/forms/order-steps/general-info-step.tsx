@@ -12,6 +12,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { CustomerCombobox } from "@/components/combobox/customer-combobox"
+import { OrderItemsRepeater } from "@/components/forms/order-items-repeater"
 import { CreateOrderInput } from "@/lib/validators"
 
 export function OrderGeneralInfoStep() {
@@ -107,27 +108,12 @@ export function OrderGeneralInfoStep() {
           )}
         />
 
-        {/* Comments */}
-        <div className="md:col-span-2">
-          <FormField
-            control={form.control}
-            name="comments"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Comments</FormLabel>
-                <FormControl>
-                  <Textarea
-                    {...field}
-                    placeholder="Add any special instructions or notes for this order..."
-                    rows={3}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
       </div>
+
+      {/* Order Items */}
+      <OrderItemsRepeater
+        control={form.control}
+      />
 
       <div className="bg-muted/50 p-4 rounded-lg">
         <h4 className="font-medium text-sm mb-2">Step 1: General Information</h4>

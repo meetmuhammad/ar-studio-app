@@ -45,6 +45,11 @@ export function OrderMultiStepForm({
         return defaultDelivery
       })(),
       comments: order?.comments || "",
+      // Order items - empty array by default
+      orderItems: order?.order_items?.map(item => ({
+        order_type: item.order_type,
+        description: item.description
+      })) || [],
       // Payment fields
       totalAmount: order?.total_amount || 0,
       advancePaid: order?.advance_paid || 0,
@@ -79,7 +84,7 @@ export function OrderMultiStepForm({
 
     switch (currentStep) {
       case 1:
-        fieldsToValidate = ["customerId", "bookingDate", "deliveryDate"]
+        fieldsToValidate = ["customerId", "bookingDate", "deliveryDate", "orderItems"]
         break
       case 2:
         // Measurements are optional, but we can validate if they are numeric

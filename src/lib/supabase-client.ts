@@ -23,6 +23,17 @@ export interface Customer {
   updated_at: string
 }
 
+export type OrderType = 'nikkah' | 'mehndi' | 'barat' | 'wallima' | 'other'
+
+export interface OrderItem {
+  id: string
+  order_id: string
+  order_type: OrderType
+  description: string
+  created_at: string
+  updated_at: string
+}
+
 export interface Order {
   id: string
   order_number: string
@@ -45,6 +56,7 @@ export interface Order {
 
 export interface OrderWithCustomer extends Order {
   customers: Customer
+  order_items?: OrderItem[]
 }
 
 export interface Counter {

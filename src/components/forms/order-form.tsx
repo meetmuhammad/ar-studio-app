@@ -26,6 +26,7 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CustomerCombobox } from "@/components/combobox/customer-combobox"
+import { OrderItemsRepeater } from "@/components/forms/order-items-repeater"
 import { CreateOrderSchema, CreateOrderInput } from "@/lib/validators"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
 import { cn } from "@/lib/utils"
@@ -54,6 +55,8 @@ export function OrderForm({ order, onSubmit, onCancel }: OrderFormProps) {
       // Reference to measurements table
       measurementId: order?.measurement_id || undefined,
       fittingPreferences: "",
+      // Order items - empty array by default
+      orderItems: [],
       // Payment fields with default values
       totalAmount: order?.total_amount || 0,
       advancePaid: order?.advance_paid || 0,
@@ -202,6 +205,12 @@ export function OrderForm({ order, onSubmit, onCancel }: OrderFormProps) {
             />
           </CardContent>
         </Card>
+
+        {/* Order Items */}
+        <OrderItemsRepeater
+          control={form.control}
+          disabled={isSubmitting}
+        />
 
         {/* Note about measurements */}
         <Card>

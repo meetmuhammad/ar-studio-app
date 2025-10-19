@@ -1,5 +1,5 @@
 import { createAdminSupabaseClient } from './supabase'
-import type { Customer, Order, OrderWithCustomer, Counter } from './supabase'
+import type { Customer, Order, OrderWithCustomer, Counter, OrderItem } from './supabase-client'
 
 // Order number generation using a simpler approach
 export async function nextOrderNumber(): Promise<string> {
@@ -220,6 +220,13 @@ export async function getOrders({
         name,
         phone,
         address
+      ),
+      order_items (
+        id,
+        order_type,
+        description,
+        created_at,
+        updated_at
       )
     `, { count: 'exact' })
 
@@ -273,6 +280,13 @@ export async function getOrder(id: string): Promise<OrderWithCustomer | null> {
         name,
         phone,
         address
+      ),
+      order_items (
+        id,
+        order_type,
+        description,
+        created_at,
+        updated_at
       )
     `)
     .eq('id', id)
@@ -284,6 +298,56 @@ export async function getOrder(id: string): Promise<OrderWithCustomer | null> {
   }
 
   return data
+}
+
+// Order item operations
+export async function createOrderItems(orderId: string, orderItems: { order_type: string; description: string }[]): Promise<OrderItem[]> {
+  if (orderItems.length === 0) return []
+  
+  const supabase = createAdminSupabaseClient()
+  
+  const itemsToInsert = orderItems.map(item => ({
+    order_id: orderId,
+    order_type: item.order_type,
+    description: item.description
+  }))
+
+  try {
+    const { data, error } = await supabase
+      .from('order_items')
+      .insert(itemsToInsert)
+      .select()
+
+    if (error) {
+      // If table doesn't exist yet, just log and return empty array
+      console.warn('Order items table not available yet:', error.message)
+      return []
+    }
+
+    return data || []
+  } catch (err) {
+    console.warn('Order items functionality not available yet:', err)
+    return []
+  }
+}
+
+export async function updateOrderItems(orderId: string, orderItems: { order_type: string; description: string }[]): Promise<void> {
+  const supabase = createAdminSupabaseClient()
+  
+  try {
+    // Delete existing order items
+    await supabase
+      .from('order_items')
+      .delete()
+      .eq('order_id', orderId)
+    
+    // Create new order items if any
+    if (orderItems.length > 0) {
+      await createOrderItems(orderId, orderItems)
+    }
+  } catch (err) {
+    console.warn('Order items functionality not available yet:', err)
+  }
 }
 
 export async function createOrder(order: Omit<Order, 'id' | 'order_number' | 'created_at' | 'updated_at'>): Promise<Order> {

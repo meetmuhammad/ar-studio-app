@@ -20,12 +20,25 @@ export type UpdateCustomerInput = z.infer<typeof UpdateCustomerSchema>
 // Payment method enum
 const PaymentMethodSchema = z.enum(["cash", "bank", "other"])
 
+// Order type enum for order items
+const OrderTypeSchema = z.enum(["nikkah", "mehndi", "barat", "wallima", "other"])
+
+// Order item schema
+export const OrderItemSchema = z.object({
+  order_type: OrderTypeSchema,
+  description: z.string().min(1, "Description is required").max(1000, "Description too long")
+})
+
+export type OrderItem = z.infer<typeof OrderItemSchema>
+
 // Order schemas
 export const CreateOrderSchema = z.object({
   customerId: z.string().uuid("Please select a customer"),
   bookingDate: z.date(),
   deliveryDate: z.date(), // Now mandatory
   comments: z.string().max(1000, "Comments too long").optional().or(z.literal("")),
+  // Order items array with max 4 items
+  orderItems: z.array(OrderItemSchema).max(4, "Maximum 4 order items allowed").optional().default([]),
   // Payment fields
   totalAmount: z.union([
     z.string().transform((val) => {
@@ -71,6 +84,17 @@ export const CreateOrderSchema = z.object({
 }, {
   message: "Advance paid cannot exceed total amount",
   path: ["advancePaid"]
+}).refine((data) => {
+  // Order items must have unique order types
+  if (data.orderItems && data.orderItems.length > 0) {
+    const orderTypes = data.orderItems.map(item => item.order_type)
+    const uniqueOrderTypes = new Set(orderTypes)
+    return uniqueOrderTypes.size === orderTypes.length
+  }
+  return true
+}, {
+  message: "Each order type can only be used once",
+  path: ["orderItems"]
 })
 
 export const UpdateOrderSchema = CreateOrderSchema.partial().extend({

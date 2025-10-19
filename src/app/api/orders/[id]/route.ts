@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getOrder, updateOrder, deleteOrder } from '@/lib/database'
+import { getOrder, updateOrder, deleteOrder, updateOrderItems } from '@/lib/database'
 import { UpdateOrderSchema } from '@/lib/validators'
 
 // GET /api/orders/[id] - Get order by ID
@@ -74,10 +74,17 @@ export async function PATCH(
       paymentMethod,
       measurementId,
       fittingPreferences,
+      orderItems,
       ...finalUpdateData
     } = updateData
 
+    // Update the order
     const order = await updateOrder(id, finalUpdateData)
+    
+    // Update order items if provided
+    if (orderItems !== undefined) {
+      await updateOrderItems(id, orderItems)
+    }
 
     return NextResponse.json(order)
   } catch (error) {
