@@ -23,6 +23,9 @@ const PaymentMethodSchema = z.enum(["cash", "bank", "other"])
 // Order type enum for order items
 const OrderTypeSchema = z.enum(["nikkah", "mehndi", "barat", "wallima", "other"])
 
+// Order status enum
+const OrderStatusSchema = z.enum(["In Process", "Delivered", "Cancelled"])
+
 // Order item schema
 export const OrderItemSchema = z.object({
   order_type: OrderTypeSchema,
@@ -36,6 +39,7 @@ export const CreateOrderSchema = z.object({
   customerId: z.string().uuid("Please select a customer"),
   bookingDate: z.date(),
   deliveryDate: z.date(), // Now mandatory
+  status: OrderStatusSchema.optional().default("In Process"), // Default to 'In Process'
   comments: z.string().max(1000, "Comments too long").optional().or(z.literal("")),
   // Order items array with max 4 items
   orderItems: z.array(OrderItemSchema).max(4, "Maximum 4 order items allowed").optional().default([]),
@@ -123,7 +127,8 @@ export const OrderQuerySchema = PaginationSchema.extend({
   q: z.string().optional(), // Search query for order number or customer name/phone
   customerId: z.string().uuid().optional(),
   from: z.string().transform(val => val ? new Date(val) : undefined).optional(),
-  to: z.string().transform(val => val ? new Date(val) : undefined).optional()
+  to: z.string().transform(val => val ? new Date(val) : undefined).optional(),
+  status: OrderStatusSchema.optional() // Filter by order status
 })
 
 export type CustomerQuery = z.infer<typeof CustomerQuerySchema>

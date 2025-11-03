@@ -25,6 +25,8 @@ export interface Customer {
 
 export type OrderType = 'nikkah' | 'mehndi' | 'barat' | 'wallima' | 'other'
 
+export type OrderStatus = 'In Process' | 'Delivered' | 'Cancelled'
+
 export interface OrderItem {
   id: string
   order_id: string
@@ -40,6 +42,7 @@ export interface Order {
   customer_id: string
   booking_date: string
   delivery_date: string // Now mandatory
+  status: OrderStatus // Order status with default 'In Process'
   comments?: string | null
   // Payment fields
   total_amount?: number | null

@@ -52,6 +52,7 @@ export async function PATCH(
       ...validatedData,
       booking_date: validatedData.bookingDate?.toISOString().split('T')[0],
       delivery_date: validatedData.deliveryDate?.toISOString().split('T')[0],
+      status: validatedData.status, // Include status if provided
       customer_id: validatedData.customerId,
       // Payment fields
       total_amount: validatedData.totalAmount || null,
@@ -75,11 +76,18 @@ export async function PATCH(
       measurementId,
       fittingPreferences,
       orderItems,
+      status: _status, // Remove to avoid conflict
       ...finalUpdateData
     } = updateData
+    
+    // Re-add status if provided
+    const updateWithStatus = {
+      ...finalUpdateData,
+      ...(updateData.status && { status: updateData.status })
+    }
 
     // Update the order
-    const order = await updateOrder(id, finalUpdateData)
+    const order = await updateOrder(id, updateWithStatus)
     
     // Update order items if provided
     if (orderItems !== undefined) {

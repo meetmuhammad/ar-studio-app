@@ -11,10 +11,11 @@ export async function GET(request: NextRequest) {
       customerId: searchParams.get('customerId') || undefined,
       from: searchParams.get('from') || undefined,
       to: searchParams.get('to') || undefined,
+      status: searchParams.get('status') || undefined,
       page: searchParams.get('page') || '1',
       pageSize: searchParams.get('pageSize') || '10',
       sortBy: searchParams.get('sortBy') || undefined,
-      sortDir: searchParams.get('sortDir') || 'desc',
+      sortDir: searchParams.get('sortDir') || 'asc',
     })
 
     const result = await getOrders({
@@ -22,6 +23,7 @@ export async function GET(request: NextRequest) {
       customerId: query.customerId,
       from: query.from,
       to: query.to,
+      status: query.status,
       page: query.page,
       pageSize: query.pageSize,
       sortBy: query.sortBy,
@@ -66,6 +68,7 @@ export async function POST(request: NextRequest) {
       ...validatedData,
       booking_date: validatedData.bookingDate.toISOString().split('T')[0],
       delivery_date: validatedData.deliveryDate.toISOString().split('T')[0], // Now mandatory
+      status: validatedData.status || 'In Process', // Default status
       customer_id: validatedData.customerId,
       // Payment fields
       total_amount: validatedData.totalAmount || null,
@@ -90,11 +93,18 @@ export async function POST(request: NextRequest) {
       measurementId,
       fittingPreferences,
       orderItems,
+      status: _status, // Remove status from spread to avoid conflict
       ...finalOrderData
     } = orderData
+    
+    // Re-add status to final data
+    const orderWithStatus = {
+      ...finalOrderData,
+      status: orderData.status
+    }
 
     // Create the order first
-    const order = await createOrder(finalOrderData)
+    const order = await createOrder(orderWithStatus)
     
     // Create order items if any
     if (orderItems && orderItems.length > 0) {

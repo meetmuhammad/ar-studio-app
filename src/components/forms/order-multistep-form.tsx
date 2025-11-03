@@ -44,6 +44,7 @@ export function OrderMultiStepForm({
         defaultDelivery.setDate(defaultDelivery.getDate() + 7) // Default to 1 week from now
         return defaultDelivery
       })(),
+      status: order?.status || "In Process", // Default to 'In Process'
       comments: order?.comments || "",
       // Order items - empty array by default
       orderItems: order?.order_items?.map(item => ({

@@ -194,15 +194,17 @@ export async function getOrders({
   customerId,
   from,
   to,
+  status,
   page = 1,
   pageSize = 10,
-  sortBy = 'created_at',
-  sortDir = 'desc'
+  sortBy = 'delivery_date',
+  sortDir = 'asc'
 }: {
   q?: string
   customerId?: string
   from?: Date
   to?: Date
+  status?: string
   page?: number
   pageSize?: number
   sortBy?: string
@@ -245,6 +247,10 @@ export async function getOrders({
 
   if (to) {
     query = query.lte('booking_date', to.toISOString().split('T')[0])
+  }
+
+  if (status) {
+    query = query.eq('status', status)
   }
 
   // Add sorting

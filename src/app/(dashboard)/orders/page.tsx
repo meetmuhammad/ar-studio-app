@@ -5,6 +5,14 @@ import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useDebouncedCallback } from 'use-debounce'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Label } from '@/components/ui/label'
 
 import { DataTable } from '@/components/data-table/data-table'
 import { createOrderColumns } from '@/components/data-table/columns/order-columns'
@@ -18,6 +26,7 @@ import type { OrderWithCustomer } from '@/lib/supabase-client'
 export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderWithCustomer[]>([])
   const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState<string>('all')
   
   // Dialog states
   const [orderDialog, setOrderDialog] = useState<{
@@ -38,20 +47,45 @@ export default function OrdersPage() {
   // Fetch orders from API
   const fetchOrders = useCallback(async () => {
     try {
-      const response = await fetch('/api/orders?pageSize=1000') // Get all orders
+      const statusParam = statusFilter !== 'all' ? `&status=${encodeURIComponent(statusFilter)}` : ''
+      const response = await fetch(`/api/orders?pageSize=1000${statusParam}`) // Get all orders
       if (!response.ok) {
         throw new Error('Failed to fetch orders')
       }
       
       const data = await response.json()
-      setOrders(data.data || [])
+      const fetchedOrders = data.data || []
+      
+      // Sort orders: upcoming delivery dates first (today onwards), then past dates
+      const today = new Date()
+      today.setHours(0, 0, 0, 0) // Start of today
+      
+      const sortedOrders = fetchedOrders.sort((a: OrderWithCustomer, b: OrderWithCustomer) => {
+        const dateA = new Date(a.delivery_date)
+        const dateB = new Date(b.delivery_date)
+        dateA.setHours(0, 0, 0, 0)
+        dateB.setHours(0, 0, 0, 0)
+        
+        const isAUpcoming = dateA >= today
+        const isBUpcoming = dateB >= today
+        
+        // Both upcoming or both past - sort by date ascending
+        if (isAUpcoming === isBUpcoming) {
+          return dateA.getTime() - dateB.getTime()
+        }
+        
+        // Upcoming orders come first
+        return isAUpcoming ? -1 : 1
+      })
+      
+      setOrders(sortedOrders)
     } catch (error) {
       console.error('Error fetching orders:', error)
       toast.error('Failed to load orders')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [statusFilter])
 
   // Initial load
   useEffect(() => {
@@ -199,7 +233,23 @@ export default function OrdersPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>All Orders</CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle>All Orders</CardTitle>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="status-filter" className="text-sm font-normal">Filter by Status:</Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger id="status-filter" className="w-[180px]">
+                  <SelectValue placeholder="All Orders" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Orders</SelectItem>
+                  <SelectItem value="In Process">In Process</SelectItem>
+                  <SelectItem value="Delivered">Delivered</SelectItem>
+                  <SelectItem value="Cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <DataTable

@@ -101,7 +101,7 @@ export const measurementSchema = z.object({
   knee: z.number().positive("Must be positive").max(30, "Must be under 30 inches").optional().or(z.literal("")),
   bottom: z.number().positive("Must be positive").max(30, "Must be under 30 inches").optional().or(z.literal("")),
   shoe_size: z.number().positive("Must be positive").max(20, "Must be under 20").optional().or(z.literal("")),
-  turban_size: z.number().positive("Must be positive").max(50, "Must be under 50 inches").optional().or(z.literal("")),
+  turban_size: z.number().positive("Must be positive").max(25, "Must be under 25 inches").optional().or(z.literal("")),
   
   is_default: z.boolean().optional().default(false),
   notes: z.string().max(1000, "Notes too long").optional(),

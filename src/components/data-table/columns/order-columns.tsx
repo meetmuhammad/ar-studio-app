@@ -135,7 +135,18 @@ export function createOrderColumns({
     },
     {
       accessorKey: "delivery_date",
-      header: "Delivery Date",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="-ml-2 h-auto p-2"
+          >
+            Delivery Date
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        )
+      },
       cell: ({ row }) => {
         const deliveryDate = row.getValue("delivery_date") as string | null
         return (
@@ -145,6 +156,22 @@ export function createOrderColumns({
               : <span className="text-muted-foreground">Not set</span>
             }
           </div>
+        )
+      },
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => {
+        const status = row.getValue("status") as string
+        return (
+          <Badge variant={
+            status === "Delivered" ? "default" :
+            status === "Cancelled" ? "destructive" :
+            "secondary"
+          }>
+            {status}
+          </Badge>
         )
       },
     },
