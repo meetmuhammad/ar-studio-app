@@ -5,14 +5,18 @@ import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Badge } from '@/components/ui/badge'
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import { 
   Users, 
   ShoppingCart, 
   CreditCard, 
   ArrowUpRight,
-  DollarSign
+  DollarSign,
+  Calendar,
+  PackageCheck
 } from 'lucide-react'
+import { format } from 'date-fns'
 import type { Customer, OrderWithCustomer } from '@/lib/supabase-client'
 
 interface DashboardStats {
@@ -27,6 +31,7 @@ interface DashboardStats {
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [upcomingOrders, setUpcomingOrders] = useState<OrderWithCustomer[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -47,6 +52,25 @@ export default function DashboardPage() {
         
         const customers: Customer[] = customersData.data || []
         const orders: OrderWithCustomer[] = ordersData.data || []
+
+        // Get upcoming deliveries (next 5 orders from today onwards)
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        
+        const upcoming = orders
+          .filter(order => {
+            const deliveryDate = new Date(order.delivery_date)
+            deliveryDate.setHours(0, 0, 0, 0)
+            return deliveryDate >= today && order.status !== 'Cancelled'
+          })
+          .sort((a, b) => {
+            const dateA = new Date(a.delivery_date)
+            const dateB = new Date(b.delivery_date)
+            return dateA.getTime() - dateB.getTime()
+          })
+          .slice(0, 5)
+        
+        setUpcomingOrders(upcoming)
 
         // Calculate stats
         const totalCustomers = customers.length
@@ -339,44 +363,87 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Quick Actions */}
+        {/* Upcoming Deliveries */}
         <Card className="col-span-3">
           <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <PackageCheck className="h-5 w-5" />
+              Upcoming Deliveries
+            </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Common tasks and shortcuts
+              Next 5 orders to be delivered
             </p>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <Link href="/customers" className="block no-underline">
-              <div className="flex items-center p-3 rounded-lg border hover:bg-accent transition-colors">
-                <Users className="h-5 w-5 mr-3 text-primary" />
-                <div className="flex-1">
-                  <div className="font-medium">Manage Customers</div>
-                  <div className="text-sm text-muted-foreground">Add or edit customer information</div>
-                </div>
-                <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
+          <CardContent>
+            {upcomingOrders.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Calendar className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No upcoming deliveries</p>
               </div>
-            </Link>
-
-            <Link href="/orders" className="block no-underline">
-              <div className="flex items-center p-3 rounded-lg border hover:bg-accent transition-colors">
-                <ShoppingCart className="h-5 w-5 mr-3 text-green-500" />
-                <div className="flex-1">
-                  <div className="font-medium">Manage Orders</div>
-                  <div className="text-sm text-muted-foreground">Create and track orders</div>
-                </div>
-                <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <div className="space-y-3">
+                {upcomingOrders.map((order) => {
+                  const deliveryDate = new Date(order.delivery_date)
+                  const today = new Date()
+                  today.setHours(0, 0, 0, 0)
+                  deliveryDate.setHours(0, 0, 0, 0)
+                  
+                  const daysUntil = Math.ceil((deliveryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+                  const isToday = daysUntil === 0
+                  const isTomorrow = daysUntil === 1
+                  const isUrgent = daysUntil <= 2
+                  
+                  return (
+                    <Link 
+                      key={order.id} 
+                      href="/orders" 
+                      className="block no-underline"
+                    >
+                      <div className={`p-3 rounded-lg border hover:bg-accent transition-colors ${
+                        isUrgent ? 'border-orange-500/50 bg-orange-50/50 dark:bg-orange-950/20' : ''
+                      }`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-medium text-sm font-mono">{order.order_number}</span>
+                              {isToday && (
+                                <Badge variant="destructive" className="text-xs">Today</Badge>
+                              )}
+                              {isTomorrow && (
+                                <Badge variant="default" className="text-xs bg-orange-500">Tomorrow</Badge>
+                              )}
+                            </div>
+                            <div className="text-sm font-medium truncate">
+                              {order.customers.name}
+                            </div>
+                            <div className="text-xs text-muted-foreground font-mono">
+                              {order.customers.phone}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-xs font-medium text-muted-foreground mb-1">
+                              {format(new Date(order.delivery_date), 'MMM d')}
+                            </div>
+                            <div className={`text-xs ${
+                              isUrgent ? 'text-orange-600 font-medium' : 'text-muted-foreground'
+                            }`}>
+                              {isToday ? 'Today' : isTomorrow ? 'Tomorrow' : `${daysUntil}d`}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </Link>
+                  )
+                })}
+                <Link href="/orders" className="block no-underline">
+                  <div className="text-center pt-2">
+                    <span className="text-sm text-primary hover:underline flex items-center justify-center gap-1">
+                      View all orders <ArrowUpRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </Link>
               </div>
-            </Link>
-
-            <div className="flex items-center p-3 rounded-lg border bg-muted/50">
-              <CreditCard className="h-5 w-5 mr-3 text-orange-500" />
-              <div className="flex-1">
-                <div className="font-medium">Payment Tracking</div>
-                <div className="text-sm text-muted-foreground">Coming soon...</div>
-              </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>
