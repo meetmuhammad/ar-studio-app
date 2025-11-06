@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 
 import { DataTable } from '@/components/data-table/data-table'
 import { createOrderColumns } from '@/components/data-table/columns/order-columns'
@@ -27,6 +28,7 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderWithCustomer[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [showDelivered, setShowDelivered] = useState<boolean>(false)
   
   // Dialog states
   const [orderDialog, setOrderDialog] = useState<{
@@ -198,6 +200,11 @@ export default function OrdersPage() {
     onRowClick: handleRowClick,
   })
 
+  // Filter orders based on showDelivered state
+  const filteredOrders = showDelivered 
+    ? orders 
+    : orders.filter(order => order.status !== 'Delivered')
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -235,26 +242,38 @@ export default function OrdersPage() {
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle>All Orders</CardTitle>
-            <div className="flex items-center gap-2">
-              <Label htmlFor="status-filter" className="text-sm font-normal">Filter by Status:</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger id="status-filter" className="w-[180px]">
-                  <SelectValue placeholder="All Orders" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Orders</SelectItem>
-                  <SelectItem value="In Process">In Process</SelectItem>
-                  <SelectItem value="Delivered">Delivered</SelectItem>
-                  <SelectItem value="Cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="show-delivered"
+                  checked={showDelivered}
+                  onCheckedChange={setShowDelivered}
+                />
+                <Label htmlFor="show-delivered" className="text-sm font-normal cursor-pointer">
+                  Show Delivered
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="status-filter" className="text-sm font-normal">Filter by Status:</Label>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger id="status-filter" className="w-[180px]">
+                    <SelectValue placeholder="All Orders" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Orders</SelectItem>
+                    <SelectItem value="In Process">In Process</SelectItem>
+                    <SelectItem value="Delivered">Delivered</SelectItem>
+                    <SelectItem value="Cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <DataTable
             columns={columns}
-            data={orders}
+            data={filteredOrders}
             searchPlaceholder="Search by order number, customer name, or phone..."
             onRowClick={handleRowClick}
           />

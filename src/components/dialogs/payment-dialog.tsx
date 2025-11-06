@@ -49,7 +49,7 @@ import {
 import { CreatePaymentSchema, CreatePaymentInput } from "@/lib/validators"
 import { toast } from "sonner"
 import { format } from "date-fns"
-import { Banknote, CreditCard, Wallet, DollarSign, Check, ChevronsUpDown } from "lucide-react"
+import { Banknote, CreditCard, Wallet, DollarSign, Check, ChevronsUpDown, Edit, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
 
@@ -82,6 +82,7 @@ export function PaymentDialog({
   const [loadingPayments, setLoadingPayments] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [orderSearchOpen, setOrderSearchOpen] = useState(false)
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null)
 
   const form = useForm<CreatePaymentInput>({
     resolver: zodResolver(CreatePaymentSchema) as any,
@@ -110,6 +111,7 @@ export function PaymentDialog({
       setSelectedOrder(null)
       setPayments([])
       setOrderSearchOpen(false)
+      setEditingPayment(null)
     }
   }, [open, form])
 
@@ -171,29 +173,48 @@ export function PaymentDialog({
         payment_date: data.payment_date.toISOString().split('T')[0] // Convert to YYYY-MM-DD
       }
 
-      const response = await fetch('/api/payments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(paymentData),
-      })
+      if (editingPayment) {
+        // Update existing payment
+        const response = await fetch(`/api/payments/${editingPayment.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(paymentData),
+        })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to create payment')
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to update payment')
+        }
+
+        toast.success('Payment updated successfully!')
+        setEditingPayment(null)
+      } else {
+        // Create new payment
+        const response = await fetch('/api/payments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(paymentData),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to create payment')
+        }
+
+        toast.success('Payment added successfully!')
       }
-
-      toast.success('Payment added successfully!')
+      
       // Refresh payment history
       if (selectedOrder) {
         fetchPayments(selectedOrder.id)
       }
-              // Reset form but keep order selected
-              form.setValue("amount", 0)
-              form.setValue("notes", "")
+      // Reset form but keep order selected
+      form.setValue("amount", 0)
+      form.setValue("notes", "")
       onSuccess?.()
     } catch (error) {
-      console.error('Error creating payment:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to create payment')
+      console.error('Error saving payment:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to save payment')
     } finally {
       setIsSubmitting(false)
     }
@@ -211,6 +232,44 @@ export function PaymentDialog({
     return (selectedOrder.total_amount || 0) - calculateTotalPaid()
   }
 
+  const handleEditPayment = (payment: Payment) => {
+    setEditingPayment(payment)
+    form.setValue("amount", payment.amount)
+    form.setValue("payment_method", payment.payment_method as "cash" | "bank" | "other")
+    form.setValue("payment_date", new Date(payment.payment_date))
+    form.setValue("notes", payment.notes || "")
+  }
+
+  const handleDeletePayment = async (paymentId: string) => {
+    if (!confirm('Are you sure you want to delete this payment?')) return
+    
+    try {
+      const response = await fetch(`/api/payments/${paymentId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to delete payment')
+      }
+
+      toast.success('Payment deleted successfully!')
+      if (selectedOrder) {
+        fetchPayments(selectedOrder.id)
+      }
+    } catch (error) {
+      console.error('Error deleting payment:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to delete payment')
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingPayment(null)
+    form.setValue("amount", 0)
+    form.setValue("notes", "")
+    form.setValue("payment_method", "other")
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
@@ -221,10 +280,10 @@ export function PaymentDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <DollarSign className="h-5 w-5" />
-            Add New Payment
+            {editingPayment ? 'Edit Payment' : 'Add New Payment'}
           </DialogTitle>
           <DialogDescription>
-            Select an order and add a new payment record. Track customer payments over time.
+            {editingPayment ? 'Update the payment details below.' : 'Select an order and add a new payment record. Track customer payments over time.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -312,6 +371,7 @@ export function PaymentDialog({
                             <TableHead className="text-left">Date</TableHead>
                             <TableHead className="text-left">Description</TableHead>
                             <TableHead className="text-right">Amount (PKR)</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -329,7 +389,7 @@ export function PaymentDialog({
                           )}
                           {/* Show additional payments */}
                           {payments.map((payment) => (
-                            <TableRow key={payment.id}>
+                            <TableRow key={payment.id} className={editingPayment?.id === payment.id ? "bg-blue-50 dark:bg-blue-950" : ""}>
                               <TableCell className="font-mono text-sm">
                                 {format(new Date(payment.payment_date), 'MMM d, yyyy')}
                               </TableCell>
@@ -338,6 +398,29 @@ export function PaymentDialog({
                               </TableCell>
                               <TableCell className="text-right font-mono text-green-700">
                                 -{payment.amount.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditPayment(payment)}
+                                    disabled={isSubmitting}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeletePayment(payment.id)}
+                                    disabled={isSubmitting}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
                               </TableCell>
                             </TableRow>
                           ))}
@@ -519,20 +602,30 @@ export function PaymentDialog({
 
             {/* Actions */}
             <div className="flex justify-end gap-2 pt-4">
+              {editingPayment && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCancelEdit}
+                  disabled={isSubmitting}
+                >
+                  Cancel Edit
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => onOpenChange(false)}
                 disabled={isSubmitting}
               >
-                Cancel
+                Close
               </Button>
               <Button
                 variant="brand"
                 type="submit"
                 disabled={isSubmitting || !selectedOrder}
               >
-                {isSubmitting ? "Adding Payment..." : "Add Payment"}
+                {isSubmitting ? (editingPayment ? "Updating..." : "Adding...") : (editingPayment ? "Update Payment" : "Add Payment")}
               </Button>
             </div>
           </form>

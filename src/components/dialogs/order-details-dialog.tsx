@@ -21,10 +21,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Printer, FileText } from "lucide-react"
+import { Printer, FileText, Edit, Save, X } from "lucide-react"
 import { openPrintPreview, openMeasurementPrintPreview } from "@/lib/print-utils"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
 import { Measurement } from "@/types/measurements"
+import { Input } from "@/components/ui/input"
+import { toast } from "sonner"
 
 interface Payment {
   id: string
@@ -52,6 +54,9 @@ export function OrderDetailsDialog({
   const [loadingPayments, setLoadingPayments] = useState(false)
   const [measurement, setMeasurement] = useState<Measurement | null>(null)
   const [loadingMeasurement, setLoadingMeasurement] = useState(false)
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
+  const [editAmount, setEditAmount] = useState<string>("")
+  const [isSaving, setIsSaving] = useState(false)
 
   // Fetch payments and measurements when dialog opens and order changes
   useEffect(() => {
@@ -108,6 +113,61 @@ export function OrderDetailsDialog({
 
   const calculateBalance = () => {
     return (order.total_amount || 0) - calculateTotalPaid()
+  }
+
+  const handleEditPayment = (payment: Payment) => {
+    setEditingPaymentId(payment.id)
+    setEditAmount(payment.amount.toString())
+  }
+
+  const handleCancelEdit = () => {
+    setEditingPaymentId(null)
+    setEditAmount("")
+  }
+
+  const handleSavePayment = async (paymentId: string) => {
+    const amount = parseFloat(editAmount)
+    
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Please enter a valid amount')
+      return
+    }
+
+    try {
+      setIsSaving(true)
+      const response = await fetch(`/api/payments/${paymentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update payment')
+      }
+
+      toast.success('Payment updated successfully!')
+      setEditingPaymentId(null)
+      setEditAmount("")
+      
+      // Refresh payments
+      if (order) {
+        fetchPayments(order.id)
+      }
+    } catch (error) {
+      console.error('Error updating payment:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to update payment')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent, paymentId: string) => {
+    if (e.key === 'Enter') {
+      handleSavePayment(paymentId)
+    } else if (e.key === 'Escape') {
+      handleCancelEdit()
+    }
   }
 
   return (
@@ -228,6 +288,7 @@ export function OrderDetailsDialog({
                     <TableHead className="text-left">Date</TableHead>
                     <TableHead className="text-left">Description</TableHead>
                     <TableHead className="text-right">Amount (PKR)</TableHead>
+                    <TableHead className="w-[80px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -260,7 +321,56 @@ export function OrderDetailsDialog({
                           {payment.notes || `Payment via ${payment.payment_method}`}
                         </TableCell>
                         <TableCell className="text-right font-mono text-green-700">
-                          -{payment.amount.toFixed(2)}
+                          {editingPaymentId === payment.id ? (
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0.01"
+                              value={editAmount}
+                              onChange={(e) => setEditAmount(e.target.value)}
+                              onKeyDown={(e) => handleKeyDown(e, payment.id)}
+                              className="w-32 text-right ml-auto"
+                              autoFocus
+                              disabled={isSaving}
+                            />
+                          ) : (
+                            `-${payment.amount.toFixed(2)}`
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-end gap-1">
+                            {editingPaymentId === payment.id ? (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleSavePayment(payment.id)}
+                                  disabled={isSaving}
+                                  className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                >
+                                  <Save className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={handleCancelEdit}
+                                  disabled={isSaving}
+                                  className="text-gray-600 hover:text-gray-700"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditPayment(payment)}
+                                disabled={editingPaymentId !== null}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
