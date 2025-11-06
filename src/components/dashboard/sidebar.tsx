@@ -37,7 +37,11 @@ const navigation = [
   },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  onLinkClick?: () => void
+}
+
+export function Sidebar({ onLinkClick }: SidebarProps) {
   const pathname = usePathname()
   const { user, signOut } = useAuth()
 
@@ -50,13 +54,17 @@ export function Sidebar() {
     }
   }
 
+  const handleLinkClick = () => {
+    onLinkClick?.()
+  }
+
   return (
-    <div className="flex flex-col w-64 bg-card border-r border-border">
+    <div className="flex flex-col h-full bg-card border-border">
       <div className="flex items-center justify-center h-16 px-4 bg-primary text-primary-foreground">
         <h1 className="text-xl font-bold">AR Dashboard</h1>
       </div>
       
-      <nav className="flex-1 px-2 py-4 space-y-1">
+      <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
         {navigation.map((item) => {
           const isActive = pathname === item.href || 
             (item.href !== '/' && pathname.startsWith(item.href))
@@ -65,6 +73,7 @@ export function Sidebar() {
             <Link
               key={item.name}
               href={item.href}
+              onClick={handleLinkClick}
               className={cn(
                 'group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors no-underline',
                 isActive

@@ -6,6 +6,7 @@ import { Header } from '@/components/dashboard/header'
 import { RouteGuard } from '@/components/auth/route-guard'
 import { OrderDialog } from '@/components/dialogs/order-dialog'
 import { PaymentDialog } from '@/components/dialogs/payment-dialog'
+import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { CreateOrderInput } from '@/lib/validators'
 import { toast } from 'sonner'
 
@@ -22,6 +23,8 @@ export default function DashboardLayout({
   const [paymentDialog, setPaymentDialog] = useState<{
     open: boolean
   }>({ open: false })
+
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   // Handle create order
   const handleCreateOrder = async (data: CreateOrderInput) => {
@@ -63,13 +66,25 @@ export default function DashboardLayout({
   return (
     <RouteGuard requireAuth={true} requiredRoles={['admin', 'staff']}>
       <div className="flex h-screen bg-background">
-        <Sidebar />
+        {/* Desktop Sidebar */}
+        <aside className="hidden lg:flex w-64 border-r">
+          <Sidebar />
+        </aside>
+
+        {/* Mobile Sidebar */}
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <SheetContent side="left" className="p-0 w-64">
+            <Sidebar onLinkClick={() => setMobileMenuOpen(false)} />
+          </SheetContent>
+        </Sheet>
+
         <div className="flex flex-col flex-1 overflow-hidden">
           <Header 
             onCreateOrder={openOrderDialog}
             onAddPayment={openPaymentDialog}
+            onMenuClick={() => setMobileMenuOpen(true)}
           />
-          <main className="flex-1 overflow-x-hidden overflow-y-auto bg-muted/40 p-6">
+          <main className="flex-1 overflow-x-hidden overflow-y-auto bg-muted/40 p-3 sm:p-4 md:p-6">
             {children}
           </main>
         </div>

@@ -207,32 +207,32 @@ export default function OrdersPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
+      <div className="space-y-4 sm:space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight">Orders</h2>
-            <p className="text-muted-foreground">Manage all orders and measurements.</p>
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Orders</h2>
+            <p className="text-sm sm:text-base text-muted-foreground">Manage all orders and measurements.</p>
           </div>
-          <Button disabled>
+          <Button disabled size="sm" className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
             New Order
           </Button>
         </div>
-        <div className="bg-card rounded-lg border p-6">
-          <p className="text-muted-foreground">Loading orders...</p>
+        <div className="bg-card rounded-lg border p-4 sm:p-6">
+          <p className="text-sm sm:text-base text-muted-foreground">Loading orders...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Orders</h2>
-          <p className="text-muted-foreground">Manage all orders and measurements.</p>
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Orders</h2>
+          <p className="text-sm sm:text-base text-muted-foreground">Manage all orders and measurements.</p>
         </div>
-        <Button onClick={() => setOrderDialog({ open: true, order: null })}>
+        <Button onClick={() => setOrderDialog({ open: true, order: null })} size="sm" className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           New Order
         </Button>
@@ -240,9 +240,9 @@ export default function OrdersPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <CardTitle>All Orders</CardTitle>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
               <div className="flex items-center gap-2">
                 <Switch
                   id="show-delivered"
@@ -253,10 +253,10 @@ export default function OrdersPage() {
                   Show Delivered
                 </Label>
               </div>
-              <div className="flex items-center gap-2">
-                <Label htmlFor="status-filter" className="text-sm font-normal">Filter by Status:</Label>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Label htmlFor="status-filter" className="text-sm font-normal whitespace-nowrap">Filter:</Label>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger id="status-filter" className="w-[180px]">
+                  <SelectTrigger id="status-filter" className="w-full sm:w-[180px]">
                     <SelectValue placeholder="All Orders" />
                   </SelectTrigger>
                   <SelectContent>

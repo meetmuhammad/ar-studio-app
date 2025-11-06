@@ -42,17 +42,17 @@ export default function SignInPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
+    <div className="min-h-screen flex items-center justify-center bg-background py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-6 sm:space-y-8">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-foreground">AR Studio</h1>
-          <p className="mt-2 text-muted-foreground">Customer & Order Management System</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">AR Studio</h1>
+          <p className="mt-2 text-sm sm:text-base text-muted-foreground">Customer & Order Management System</p>
         </div>
 
-        <Card className='mb-8'>
+        <Card className='mb-6 sm:mb-8'>
           <CardHeader>
-            <CardTitle>Sign In</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-xl sm:text-2xl">Sign In</CardTitle>
+            <CardDescription className="text-sm">
               Enter your credentials to access the dashboard
             </CardDescription>
           </CardHeader>

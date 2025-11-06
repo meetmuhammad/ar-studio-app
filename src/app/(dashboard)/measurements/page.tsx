@@ -163,20 +163,20 @@ export default function MeasurementsPage() {
   });
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex flex-col space-y-2">
-        <div className="flex items-center justify-between">
+      <div className="flex flex-col space-y-2 sm:space-y-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center space-x-2">
-            <Ruler className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold">Measurements</h1>
+            <Ruler className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+            <h1 className="text-xl sm:text-2xl font-bold">Measurements</h1>
           </div>
-          <Button onClick={() => setShowAddDialog(true)}>
+          <Button onClick={() => setShowAddDialog(true)} size="sm" className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
             New Measurement
           </Button>
         </div>
-        <p className="text-muted-foreground">
+        <p className="text-sm sm:text-base text-muted-foreground">
           Manage customer body measurements for accurate tailoring
         </p>
       </div>

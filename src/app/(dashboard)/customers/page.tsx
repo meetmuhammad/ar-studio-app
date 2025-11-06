@@ -154,32 +154,32 @@ export default function CustomersPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
+      <div className="space-y-4 sm:space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight">Customers</h2>
-            <p className="text-muted-foreground">Manage all customers and their information.</p>
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Customers</h2>
+            <p className="text-sm sm:text-base text-muted-foreground">Manage all customers and their information.</p>
           </div>
-          <Button disabled>
+          <Button disabled size="sm" className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
             New Customer
           </Button>
         </div>
-        <div className="bg-card rounded-lg border p-6">
-          <p className="text-muted-foreground">Loading customers...</p>
+        <div className="bg-card rounded-lg border p-4 sm:p-6">
+          <p className="text-sm sm:text-base text-muted-foreground">Loading customers...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Customers</h2>
-          <p className="text-muted-foreground">Manage all customers and their information.</p>
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Customers</h2>
+          <p className="text-sm sm:text-base text-muted-foreground">Manage all customers and their information.</p>
         </div>
-        <Button onClick={() => setCustomerDialog({ open: true, customer: null })}>
+        <Button onClick={() => setCustomerDialog({ open: true, customer: null })} size="sm" className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           New Customer
         </Button>

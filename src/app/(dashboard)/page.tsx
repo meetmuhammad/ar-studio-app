@@ -168,14 +168,14 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Welcome to AR Dashboard</h2>
-          <p className="text-muted-foreground">Loading dashboard data...</p>
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Welcome to AR Dashboard</h2>
+          <p className="text-sm sm:text-base text-muted-foreground">Loading dashboard data...</p>
         </div>
         
         {/* Stats Cards Skeleton */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Card key={i}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -191,8 +191,8 @@ export default function DashboardPage() {
         </div>
         
         {/* Chart and Quick Actions Skeleton */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-          <Card className="col-span-4">
+        <div className="grid gap-3 sm:gap-4 grid-cols-1 lg:grid-cols-7">
+          <Card className="lg:col-span-4">
             <CardHeader>
               <Skeleton className="h-6 w-32 mb-2" />
               <Skeleton className="h-4 w-48" />
@@ -202,7 +202,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
           
-          <Card className="col-span-3">
+          <Card className="lg:col-span-3">
             <CardHeader>
               <Skeleton className="h-6 w-24 mb-2" />
               <Skeleton className="h-4 w-40" />
@@ -226,23 +226,23 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Welcome to AR Dashboard</h2>
-        <p className="text-muted-foreground">
+        <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Welcome to AR Dashboard</h2>
+        <p className="text-sm sm:text-base text-muted-foreground">
           Here&apos;s what&apos;s happening with your business today.
         </p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
+            <CardTitle className="text-xs sm:text-sm font-medium">Total Customers</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalCustomers || 0}</div>
+            <div className="text-xl sm:text-2xl font-bold">{stats?.totalCustomers || 0}</div>
             <p className="text-xs text-muted-foreground">
               <Link href="/customers" className="flex items-center gap-1 hover:text-foreground no-underline">
                 View all customers <ArrowUpRight className="h-3 w-3" />
@@ -253,11 +253,11 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+            <CardTitle className="text-xs sm:text-sm font-medium">Total Orders</CardTitle>
             <ShoppingCart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalOrders || 0}</div>
+            <div className="text-xl sm:text-2xl font-bold">{stats?.totalOrders || 0}</div>
             <p className="text-xs text-muted-foreground">
               <Link href="/orders" className="flex items-center gap-1 hover:text-foreground no-underline">
                 View all orders <ArrowUpRight className="h-3 w-3" />
@@ -268,11 +268,11 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+            <CardTitle className="text-xs sm:text-sm font-medium">Total Revenue</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-foreground">
+            <div className="text-xl sm:text-2xl font-bold text-foreground">
               {formatCurrency(stats?.totalRevenue || 0)}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -283,11 +283,11 @@ export default function DashboardPage() {
         
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Outstanding Balance</CardTitle>
+            <CardTitle className="text-xs sm:text-sm font-medium">Outstanding Balance</CardTitle>
             <CreditCard className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-600">
+            <div className="text-xl sm:text-2xl font-bold text-orange-600">
               {formatCurrency(stats?.totalBalance || 0)}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -298,8 +298,8 @@ export default function DashboardPage() {
       </div>
 
       {/* Chart Section */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 lg:grid-cols-7">
+        <Card className="lg:col-span-4">
           <CardHeader>
             <CardTitle>Revenue Overview</CardTitle>
             <p className="text-sm text-muted-foreground">
@@ -314,15 +314,15 @@ export default function DashboardPage() {
                   color: "hsl(var(--chart-1))",
                 },
               }}
-              className="h-[300px]"
+              className="h-[250px] sm:h-[300px]"
             >
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart
                   data={stats?.chartData || []}
                   margin={{
                     top: 10,
-                    right: 30,
-                    left: 0,
+                    right: 10,
+                    left: -20,
                     bottom: 0,
                   }}
                 >
@@ -364,7 +364,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Upcoming Deliveries */}
-        <Card className="col-span-3">
+        <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <PackageCheck className="h-5 w-5" />
