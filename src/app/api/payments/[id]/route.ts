@@ -24,14 +24,21 @@ export async function PATCH(
       );
     }
 
-    // Prepare update data
+    // IMPORTANT: Prepare update data - ONLY update payments table fields
+    // NEVER modify the orders table, especially advance_paid field
     const updateData: any = {};
     if (body.amount !== undefined) updateData.amount = parseFloat(body.amount);
     if (body.payment_method !== undefined) updateData.payment_method = body.payment_method;
     if (body.payment_date !== undefined) updateData.payment_date = body.payment_date;
     if (body.notes !== undefined) updateData.notes = body.notes;
 
-    // Update the payment
+    // Safeguard: Ensure we're not accidentally modifying order fields
+    // Remove any order-related fields that might have been passed
+    delete updateData.advance_paid;
+    delete updateData.total_amount;
+    delete updateData.balance;
+
+    // Update the payment (ONLY in payments table)
     const { data: payment, error: updateError } = await supabase
       .from("payments")
       .update(updateData)

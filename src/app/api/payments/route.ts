@@ -86,6 +86,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // IMPORTANT: We are creating a NEW payment in the payments table
+    // This should NOT modify the advance_paid field in the orders table
+    // The advance_paid field should only be set during order creation
+    console.log(`[PAYMENT CREATE] Order ${order_id} current advance_paid: ${order.advance_paid}`);
 
     // Create the payment
     const paymentData = {
