@@ -11,6 +11,8 @@ import {
   Users, 
   ShoppingBag, 
   Ruler,
+  BookOpen,
+  Building2,
   LogOut
 } from 'lucide-react'
 
@@ -34,6 +36,16 @@ const navigation = [
     name: 'Measurements',
     href: '/measurements',
     icon: Ruler,
+  },
+  {
+    name: 'Ledger',
+    href: '/ledger',
+    icon: BookOpen,
+  },
+  {
+    name: 'Vendors',
+    href: '/vendors',
+    icon: Building2,
   },
 ]
 

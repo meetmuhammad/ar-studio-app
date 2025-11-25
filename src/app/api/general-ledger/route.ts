@@ -1,0 +1,130 @@
+import { NextResponse } from 'next/server'
+import { createAdminSupabaseClient } from '@/lib/supabase'
+
+// GET /api/general-ledger - List entries with filters
+export async function GET(request: Request) {
+  try {
+    const supabase = createAdminSupabaseClient()
+    const { searchParams } = new URL(request.url)
+    
+    const startDate = searchParams.get('start_date')
+    const endDate = searchParams.get('end_date')
+    const entryType = searchParams.get('entry_type')
+    const vendorId = searchParams.get('vendor_id')
+
+    let query = supabase
+      .from('general_ledger')
+      .select(`
+        *,
+        vendors (id, name),
+        orders (id, order_number),
+        vendor_tags (id, tag_name)
+      `)
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false })
+
+    if (startDate) {
+      query = query.gte('entry_date', startDate)
+    }
+    if (endDate) {
+      query = query.lte('entry_date', endDate)
+    }
+    if (entryType) {
+      query = query.eq('entry_type', entryType)
+    }
+    if (vendorId) {
+      query = query.eq('vendor_id', vendorId)
+    }
+
+    const { data: entries, error } = await query
+
+    if (error) {
+      console.error('Error fetching ledger entries:', error)
+      return NextResponse.json(
+        { error: 'Failed to fetch ledger entries' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json(entries)
+  } catch (error) {
+    console.error('Error in GET /api/general-ledger:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+// POST /api/general-ledger - Create new entry
+export async function POST(request: Request) {
+  try {
+    const supabase = createAdminSupabaseClient()
+    const body = await request.json()
+
+    const {
+      entry_date,
+      particulars,
+      debit,
+      credit,
+      entry_type,
+      notes,
+      order_id,
+      vendor_id,
+      tag_id,
+    } = body
+
+    // Validation
+    if (!entry_date || !particulars || !entry_type) {
+      return NextResponse.json(
+        { error: 'entry_date, particulars, and entry_type are required' },
+        { status: 400 }
+      )
+    }
+
+    // Ensure either debit or credit is provided, not both
+    if ((debit && credit) || (!debit && !credit)) {
+      return NextResponse.json(
+        { error: 'Provide either debit or credit, not both' },
+        { status: 400 }
+      )
+    }
+
+    const { data: entry, error } = await supabase
+      .from('general_ledger')
+      .insert({
+        entry_date,
+        particulars: particulars.trim(),
+        debit: debit || null,
+        credit: credit || null,
+        entry_type,
+        notes: notes?.trim() || null,
+        order_id: order_id || null,
+        vendor_id: vendor_id || null,
+        tag_id: tag_id || null,
+      })
+      .select(`
+        *,
+        vendors (id, name),
+        orders (id, order_number),
+        vendor_tags (id, tag_name)
+      `)
+      .single()
+
+    if (error) {
+      console.error('Error creating ledger entry:', error)
+      return NextResponse.json(
+        { error: 'Failed to create ledger entry' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json(entry, { status: 201 })
+  } catch (error) {
+    console.error('Error in POST /api/general-ledger:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}

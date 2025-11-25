@@ -77,3 +77,71 @@ export interface User {
   created_at: string
   updated_at: string
 }
+
+// Ledger types
+export type LedgerEntryType = 'opening_balance' | 'order_payment' | 'vendor_payment' | 'miscellaneous'
+
+export interface Vendor {
+  id: string
+  name: string
+  contact_person?: string | null
+  phone?: string | null
+  email?: string | null
+  address?: string | null
+  notes?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface VendorTag {
+  id: string
+  vendor_id: string
+  tag_name: string
+  created_at: string
+  updated_at: string
+}
+
+export interface GeneralLedger {
+  id: string
+  entry_date: string
+  particulars: string
+  debit?: number | null
+  credit?: number | null
+  balance: number
+  entry_type: LedgerEntryType
+  notes?: string | null
+  order_id?: string | null
+  vendor_id?: string | null
+  tag_id?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface GeneralLedgerWithRelations extends GeneralLedger {
+  vendors?: Vendor | null
+  orders?: Order | null
+  vendor_tags?: VendorTag | null
+}
+
+export interface VendorLedger {
+  id: string
+  vendor_id: string
+  general_ledger_id: string
+  entry_date: string
+  particulars: string
+  debit?: number | null
+  credit?: number | null
+  balance: number
+  notes?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface VendorLedgerWithRelations extends VendorLedger {
+  general_ledger?: GeneralLedger
+}
+
+export interface VendorWithLedger extends Vendor {
+  vendor_tags?: VendorTag[]
+  vendor_ledger?: VendorLedger[]
+}
