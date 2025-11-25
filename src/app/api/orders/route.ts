@@ -111,6 +111,21 @@ export async function POST(request: NextRequest) {
       await createOrderItems(order.id, orderItems)
     }
 
+    // Create ledger entry if advance payment > 0
+    if (orderData.advance_paid && orderData.advance_paid > 0) {
+      const { createAdminSupabaseClient } = await import('@/lib/supabase')
+      const supabase = createAdminSupabaseClient()
+      
+      await supabase.from('general_ledger').insert({
+        entry_date: orderData.booking_date,
+        particulars: `Advance payment for Order #${order.order_number}`,
+        credit: orderData.advance_paid,
+        entry_type: 'order_payment',
+        order_id: order.id,
+        notes: `Initial advance payment during order creation`,
+      })
+    }
+
     return NextResponse.json(order, { status: 201 })
   } catch (error) {
     console.error('POST /api/orders error:', error)

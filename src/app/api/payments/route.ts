@@ -125,6 +125,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Create ledger entry for this payment
+    const { error: ledgerError } = await supabase.from('general_ledger').insert({
+      entry_date: paymentData.payment_date,
+      particulars: `Payment for Order #${payment.order.order_number}`,
+      credit: paymentData.amount,
+      entry_type: 'order_payment',
+      order_id: order_id,
+      notes: paymentData.notes || `Payment via ${paymentData.payment_method}`,
+    });
+
+    if (ledgerError) {
+      console.error("Error creating ledger entry:", ledgerError);
+      // Don't fail the payment creation if ledger entry fails
+    }
+
     return NextResponse.json({ payment }, { status: 201 });
   } catch (error) {
     console.error("Create payment error:", error);
