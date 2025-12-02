@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Eye, Edit, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { RoleGuard } from '@/components/auth/role-guard'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -72,16 +73,19 @@ export default function VendorsPage() {
 
   if (isLoading) {
     return (
+      <RoleGuard allowedRoles={['admin']}>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Vendors</h1>
         </div>
         <div className="text-center py-12">Loading vendors...</div>
       </div>
+      </RoleGuard>
     )
   }
 
   return (
+    <RoleGuard allowedRoles={['admin']}>
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -164,5 +168,6 @@ export default function VendorsPage() {
         }}
       />
     </div>
+    </RoleGuard>
   )
 }

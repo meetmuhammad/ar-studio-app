@@ -23,12 +23,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Convert Supabase user to our AuthUser format
-  const createAuthUser = (supabaseUser: User): AuthUser => {
+  // Convert Supabase user to our AuthUser format with role from database
+  const createAuthUser = async (supabaseUser: User): Promise<AuthUser> => {
+    // Fetch user role from database
+    const { data: userData, error } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', supabaseUser.id)
+      .single()
+
     return {
       id: supabaseUser.id,
       email: supabaseUser.email || '',
-      role: 'admin' // Default role for now
+      role: (userData?.role as 'admin' | 'staff') || 'staff' // Default to staff if not found
     }
   }
 
@@ -51,7 +58,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (mounted) {
           clearTimeout(authTimeout)
           if (session?.user) {
-            setUser(createAuthUser(session.user))
+            const authUser = await createAuthUser(session.user)
+            setUser(authUser)
           } else {
             setUser(null)
           }
@@ -74,7 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event, session) => {
         if (mounted) {
           if (session?.user) {
-            setUser(createAuthUser(session.user))
+            const authUser = await createAuthUser(session.user)
+            setUser(authUser)
           } else {
             setUser(null)
           }
@@ -103,7 +112,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.user) {
-        setUser(createAuthUser(data.user))
+        const authUser = await createAuthUser(data.user)
+        setUser(authUser)
       }
     } catch (error) {
       setLoading(false)

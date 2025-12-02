@@ -21,31 +21,37 @@ const navigation = [
     name: 'Dashboard',
     href: '/',
     icon: Home,
+    roles: ['admin'], // Only admin can access
   },
   {
     name: 'Customers',
     href: '/customers',
     icon: Users,
+    roles: ['admin', 'staff'], // Both admin and staff
   },
   {
     name: 'Orders',
     href: '/orders',
     icon: ShoppingBag,
+    roles: ['admin', 'staff'], // Both admin and staff
   },
   {
     name: 'Measurements',
     href: '/measurements',
     icon: Ruler,
+    roles: ['admin', 'staff'], // Both admin and staff
   },
   {
     name: 'Ledger',
     href: '/ledger',
     icon: BookOpen,
+    roles: ['admin'], // Only admin can access
   },
   {
     name: 'Vendors',
     href: '/vendors',
     icon: Building2,
+    roles: ['admin'], // Only admin can access
   },
 ]
 
@@ -77,32 +83,34 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
       </div>
       
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-        {navigation.map((item) => {
-          const isActive = pathname === item.href || 
-            (item.href !== '/' && pathname.startsWith(item.href))
-          
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              onClick={handleLinkClick}
-              className={cn(
-                'group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors no-underline',
-                isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-              )}
-            >
-              <item.icon
+        {navigation
+          .filter((item) => user?.role && item.roles.includes(user.role))
+          .map((item) => {
+            const isActive = pathname === item.href || 
+              (item.href !== '/' && pathname.startsWith(item.href))
+            
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                onClick={handleLinkClick}
                 className={cn(
-                  'mr-3 h-5 w-5 flex-shrink-0',
-                  isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-accent-foreground'
+                  'group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors no-underline',
+                  isActive
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                 )}
-              />
-              {item.name}
-            </Link>
-          )
-        })}
+              >
+                <item.icon
+                  className={cn(
+                    'mr-3 h-5 w-5 flex-shrink-0',
+                    isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-accent-foreground'
+                  )}
+                />
+                {item.name}
+              </Link>
+            )
+          })}
       </nav>
 
       <div className="flex-shrink-0 px-4 py-4 border-t border-border space-y-3">

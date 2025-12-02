@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { ArrowLeft, Building2, Plus } from 'lucide-react'
+import { RoleGuard } from '@/components/auth/role-guard'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -88,14 +89,17 @@ export default function VendorLedgerPage() {
 
   if (isLoading) {
     return (
+      <RoleGuard allowedRoles={['admin']}>
       <div className="space-y-6">
         <div className="text-center py-12">Loading vendor ledger...</div>
       </div>
+      </RoleGuard>
     )
   }
 
   if (!vendor) {
     return (
+      <RoleGuard allowedRoles={['admin']}>
       <div className="space-y-6">
         <div className="text-center py-12">
           <p className="text-muted-foreground mb-4">Vendor not found</p>
@@ -105,10 +109,12 @@ export default function VendorLedgerPage() {
           </Button>
         </div>
       </div>
+      </RoleGuard>
     )
   }
 
   return (
+    <RoleGuard allowedRoles={['admin']}>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -279,5 +285,6 @@ export default function VendorLedgerPage() {
         }}
       />
     </div>
+    </RoleGuard>
   )
 }

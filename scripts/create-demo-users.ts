@@ -1,6 +1,27 @@
-import { createAdminSupabaseClient } from '../src/lib/supabase'
+// Load environment variables from .env file
+import { config } from 'dotenv'
+import { resolve } from 'path'
 
-const supabase = createAdminSupabaseClient()
+// Load .env file
+config({ path: resolve(__dirname, '../.env') })
+
+import { createClient } from '@supabase/supabase-js'
+
+// Create admin client directly
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  console.error('❌ Missing required environment variables')
+  process.exit(1)
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+  },
+})
 
 async function createDemoUsers() {
   console.log('🔐 Creating demo users...')

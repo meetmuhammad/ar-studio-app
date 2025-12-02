@@ -17,6 +17,7 @@ import {
   PackageCheck
 } from 'lucide-react'
 import { format } from 'date-fns'
+import { RoleGuard } from '@/components/auth/role-guard'
 import type { Customer, OrderWithCustomer } from '@/lib/supabase-client'
 
 interface DashboardStats {
@@ -168,6 +169,7 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
+      <RoleGuard allowedRoles={['admin']}>
       <div className="space-y-4 sm:space-y-6">
         <div>
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Welcome to AR Dashboard</h2>
@@ -222,10 +224,12 @@ export default function DashboardPage() {
           </Card>
         </div>
       </div>
+      </RoleGuard>
     )
   }
 
   return (
+    <RoleGuard allowedRoles={['admin']}>
     <div className="space-y-4 sm:space-y-6">
       <div>
         <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Welcome to AR Dashboard</h2>
@@ -448,5 +452,6 @@ export default function DashboardPage() {
         </Card>
       </div>
     </div>
+    </RoleGuard>
   )
 }

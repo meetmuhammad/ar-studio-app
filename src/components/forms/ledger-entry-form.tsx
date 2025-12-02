@@ -29,7 +29,7 @@ import type { Vendor, LedgerEntryType, GeneralLedger } from "@/lib/supabase-clie
 
 const LedgerEntrySchema = z.object({
   entry_date: z.string().min(1, "Entry date is required"),
-  particulars: z.string().min(1, "Particulars is required"),
+  particulars: z.string().optional(),
   amount: z.string().min(1, "Amount is required"),
   transaction_type: z.enum(["debit", "credit"], {
     required_error: "Transaction type is required",
@@ -39,6 +39,19 @@ const LedgerEntrySchema = z.object({
   }),
   vendor_id: z.string().optional(),
   notes: z.string().optional(),
+}).refine((data) => {
+  // For non-vendor entries, particulars is required
+  if (data.entry_type !== "vendor_payment" && !data.particulars) {
+    return false
+  }
+  // For vendor entries, vendor_id is required
+  if (data.entry_type === "vendor_payment" && !data.vendor_id) {
+    return false
+  }
+  return true
+}, {
+  message: "Particulars is required for this entry type",
+  path: ["particulars"],
 })
 
 type LedgerEntryInput = z.infer<typeof LedgerEntrySchema>
@@ -67,6 +80,7 @@ export function LedgerEntryForm({ entry, onSubmit, onCancel }: LedgerEntryFormPr
   })
 
   const entryType = form.watch("entry_type")
+  const vendorId = form.watch("vendor_id")
 
   // Auto-set transaction type to Credit for vendor payments
   useEffect(() => {
@@ -74,6 +88,16 @@ export function LedgerEntryForm({ entry, onSubmit, onCancel }: LedgerEntryFormPr
       form.setValue("transaction_type", "credit")
     }
   }, [entryType, form])
+
+  // Auto-set particulars to vendor name when vendor is selected
+  useEffect(() => {
+    if (entryType === "vendor_payment" && vendorId && vendors.length > 0) {
+      const selectedVendor = vendors.find(v => v.id === vendorId)
+      if (selectedVendor) {
+        form.setValue("particulars", `Payment to ${selectedVendor.name}`)
+      }
+    }
+  }, [vendorId, entryType, vendors, form])
 
   useEffect(() => {
     // Fetch vendors for the dropdown
@@ -150,23 +174,57 @@ export function LedgerEntryForm({ entry, onSubmit, onCancel }: LedgerEntryFormPr
           />
         </div>
 
-        <FormField
-          control={form.control}
-          name="particulars"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Particulars</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder="Enter transaction details"
-                  {...field}
-                  disabled={isSubmitting}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {/* Show vendor selection for vendor payments */}
+        {entryType === "vendor_payment" && (
+          <FormField
+            control={form.control}
+            name="vendor_id"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Vendor *</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger disabled={isSubmitting}>
+                      <SelectValue placeholder="Select vendor" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {vendors.map((vendor) => (
+                      <SelectItem key={vendor.id} value={vendor.id}>
+                        {vendor.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormDescription className="text-xs">
+                  The vendor name will be used as the particulars
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+
+        {/* Hide particulars field for vendor payments - it's auto-populated */}
+        {entryType !== "vendor_payment" && (
+          <FormField
+            control={form.control}
+            name="particulars"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Particulars</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder="Enter transaction details"
+                    {...field}
+                    disabled={isSubmitting}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <FormField
@@ -226,33 +284,6 @@ export function LedgerEntryForm({ entry, onSubmit, onCancel }: LedgerEntryFormPr
             </div>
           )}
         </div>
-
-        {entryType === "vendor_payment" && vendors.length > 0 && (
-          <FormField
-            control={form.control}
-            name="vendor_id"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Vendor</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                  <FormControl>
-                    <SelectTrigger disabled={isSubmitting}>
-                      <SelectValue placeholder="Select vendor" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {vendors.map((vendor) => (
-                      <SelectItem key={vendor.id} value={vendor.id}>
-                        {vendor.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
 
         <FormField
           control={form.control}

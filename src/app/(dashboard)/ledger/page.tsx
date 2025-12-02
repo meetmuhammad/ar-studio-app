@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, RefreshCw, Edit, Search, Download } from 'lucide-react'
+import { RoleGuard } from '@/components/auth/role-guard'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -185,14 +186,17 @@ export default function LedgerPage() {
 
   if (isLoading) {
     return (
+      <RoleGuard allowedRoles={['admin']}>
       <div className="space-y-6">
         <h1 className="text-3xl font-bold">General Ledger</h1>
         <div className="text-center py-12">Loading ledger...</div>
       </div>
+      </RoleGuard>
     )
   }
 
   return (
+    <RoleGuard allowedRoles={['admin']}>
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -423,5 +427,6 @@ export default function LedgerPage() {
         }}
       />
     </div>
+    </RoleGuard>
   )
 }
