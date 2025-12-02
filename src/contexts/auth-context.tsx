@@ -25,17 +25,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Convert Supabase user to our AuthUser format with role from database
   const createAuthUser = async (supabaseUser: User): Promise<AuthUser> => {
-    // Fetch user role from database
-    const { data: userData, error } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', supabaseUser.id)
-      .single()
+    try {
+      // Fetch user role from database with timeout
+      const { data: userData, error } = await Promise.race([
+        supabase
+          .from('users')
+          .select('role')
+          .eq('id', supabaseUser.id)
+          .single(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Role fetch timeout')), 3000)
+        )
+      ]) as any
 
-    return {
-      id: supabaseUser.id,
-      email: supabaseUser.email || '',
-      role: (userData?.role as 'admin' | 'staff') || 'staff' // Default to staff if not found
+      if (error) {
+        console.error('Error fetching user role:', error)
+      }
+
+      return {
+        id: supabaseUser.id,
+        email: supabaseUser.email || '',
+        role: (userData?.role as 'admin' | 'staff') || 'staff' // Default to staff if not found
+      }
+    } catch (error) {
+      console.error('Failed to fetch user role:', error)
+      // Fallback to staff role if query fails
+      return {
+        id: supabaseUser.id,
+        email: supabaseUser.email || '',
+        role: 'staff'
+      }
     }
   }
 
