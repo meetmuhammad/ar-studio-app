@@ -19,7 +19,12 @@ export async function GET(request: Request) {
       .from('vendor_ledger')
       .select(`
         *,
-        general_ledger (*)
+        general_ledger (
+          id,
+          entry_type,
+          order_id,
+          orders (id, order_number)
+        )
       `)
       .eq('vendor_id', vendorId)
       .order('entry_date', { ascending: false })
@@ -36,6 +41,70 @@ export async function GET(request: Request) {
     return NextResponse.json(entries)
   } catch (error) {
     console.error('Error in GET /api/vendor-ledger:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+// POST /api/vendor-ledger - Create vendor bill (sub-ledger only, no main ledger entry)
+export async function POST(request: Request) {
+  try {
+    const supabase = createAdminSupabaseClient()
+    const body = await request.json()
+
+    const {
+      vendor_id,
+      entry_date,
+      particulars,
+      debit,
+      credit,
+      notes,
+    } = body
+
+    // Validation
+    if (!vendor_id || !entry_date || !particulars) {
+      return NextResponse.json(
+        { error: 'vendor_id, entry_date, and particulars are required' },
+        { status: 400 }
+      )
+    }
+
+    // Ensure either debit or credit is provided, not both
+    if ((debit && credit) || (!debit && !credit)) {
+      return NextResponse.json(
+        { error: 'Provide either debit or credit, not both' },
+        { status: 400 }
+      )
+    }
+
+    // Create vendor_ledger entry only (no general_ledger entry)
+    const { data: entry, error } = await supabase
+      .from('vendor_ledger')
+      .insert({
+        vendor_id,
+        general_ledger_id: null, // No link to general ledger
+        entry_date,
+        particulars: particulars.trim(),
+        debit: debit || null,
+        credit: credit || null,
+        notes: notes?.trim() || null,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error creating vendor ledger entry:', error)
+      return NextResponse.json(
+        { error: 'Failed to create vendor ledger entry' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json(entry, { status: 201 })
+  } catch (error) {
+    console.error('Error in POST /api/vendor-ledger:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { ArrowLeft, Building2 } from 'lucide-react'
+import { ArrowLeft, Building2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -16,6 +16,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import type { Vendor, GeneralLedgerWithRelations } from '@/lib/supabase-client'
 import { toast } from 'sonner'
+import { VendorBillDialog } from '@/components/dialogs/vendor-bill-dialog'
 
 export default function VendorLedgerPage() {
   const router = useRouter()
@@ -23,8 +24,9 @@ export default function VendorLedgerPage() {
   const vendorId = params.id as string
 
   const [vendor, setVendor] = useState<Vendor | null>(null)
-  const [entries, setEntries] = useState<GeneralLedgerWithRelations[]>([])
+  const [entries, setEntries] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [billDialogOpen, setBillDialogOpen] = useState(false)
 
   useEffect(() => {
     fetchData()
@@ -34,7 +36,7 @@ export default function VendorLedgerPage() {
     try {
       const [vendorRes, entriesRes] = await Promise.all([
         fetch(`/api/vendors/${vendorId}`),
-        fetch(`/api/general-ledger?vendor_id=${vendorId}`),
+        fetch(`/api/vendor-ledger?vendor_id=${vendorId}`),
       ])
 
       if (!vendorRes.ok || !entriesRes.ok) throw new Error('Failed to fetch data')
@@ -77,10 +79,12 @@ export default function VendorLedgerPage() {
     return <Badge variant={variants[type] || 'default'}>{type.replace('_', ' ')}</Badge>
   }
 
-  // Calculate totals
+  // Calculate totals for vendor ledger
+  // In vendor ledger: Debit = money they receive from us (we pay them)
+  //                   Credit = money they return/owe us (shouldn't happen often)
   const totalDebit = entries.reduce((sum, entry) => sum + (entry.debit || 0), 0)
   const totalCredit = entries.reduce((sum, entry) => sum + (entry.credit || 0), 0)
-  const balance = totalCredit - totalDebit
+  const balance = totalDebit - totalCredit  // Positive = we owe vendor, Negative = vendor owes us
 
   if (isLoading) {
     return (
@@ -107,17 +111,23 @@ export default function VendorLedgerPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/vendors')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <Building2 className="h-6 w-6 text-muted-foreground" />
-            <h1 className="text-3xl font-bold">{vendor.name}</h1>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => router.push('/vendors')}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <div className="flex items-center gap-2">
+              <Building2 className="h-6 w-6 text-muted-foreground" />
+              <h1 className="text-3xl font-bold">{vendor.name}</h1>
+            </div>
+            <p className="text-muted-foreground mt-1">Vendor Ledger</p>
           </div>
-          <p className="text-muted-foreground mt-1">Vendor Ledger</p>
         </div>
+        <Button onClick={() => setBillDialogOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Create Bill
+        </Button>
       </div>
 
       {/* Vendor Details */}
@@ -162,8 +172,8 @@ export default function VendorLedgerPage() {
             <CardTitle className="text-sm font-medium">Total Debit</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{formatCurrency(totalDebit)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Payments to vendor</p>
+            <div className="text-2xl font-bold text-green-600">{formatCurrency(totalDebit)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Money received (from us)</p>
           </CardContent>
         </Card>
 
@@ -172,8 +182,8 @@ export default function VendorLedgerPage() {
             <CardTitle className="text-sm font-medium">Total Credit</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatCurrency(totalCredit)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Receipts from vendor</p>
+            <div className="text-2xl font-bold text-red-600">{formatCurrency(totalCredit)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Money returned</p>
           </CardContent>
         </Card>
 
@@ -182,11 +192,11 @@ export default function VendorLedgerPage() {
             <CardTitle className="text-sm font-medium">Net Balance</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <div className={`text-2xl font-bold ${balance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
               {formatCurrency(Math.abs(balance))}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {balance >= 0 ? 'Receivable' : 'Payable'}
+              {balance >= 0 ? 'We owe vendor' : 'Vendor owes us'}
             </p>
           </CardContent>
         </Card>
@@ -223,15 +233,26 @@ export default function VendorLedgerPage() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>{getEntryTypeBadge(entry.entry_type)}</TableCell>
-                  <TableCell className="text-right text-red-600">
-                    {entry.debit ? formatCurrency(entry.debit) : '-'}
+                  <TableCell>
+                    {entry.general_ledger_id ? (
+                      getEntryTypeBadge(entry.general_ledger?.entry_type || 'vendor_payment')
+                    ) : (
+                      <Badge variant="outline">Vendor Bill</Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-right text-green-600">
+                    {entry.debit ? formatCurrency(entry.debit) : '-'}
+                  </TableCell>
+                  <TableCell className="text-right text-red-600">
                     {entry.credit ? formatCurrency(entry.credit) : '-'}
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    {formatCurrency(entry.balance)}
+                    {/* Calculate running balance */}
+                    {formatCurrency(
+                      entries
+                        .slice(entries.findIndex(e => e.id === entry.id))
+                        .reduce((sum, e) => sum + (e.debit || 0) - (e.credit || 0), 0)
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -245,6 +266,18 @@ export default function VendorLedgerPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Create Bill Dialog */}
+      <VendorBillDialog
+        open={billDialogOpen}
+        onOpenChange={setBillDialogOpen}
+        vendorId={vendorId}
+        vendorName={vendor.name}
+        onSuccess={() => {
+          toast.success('Bill created successfully')
+          fetchData()
+        }}
+      />
     </div>
   )
 }

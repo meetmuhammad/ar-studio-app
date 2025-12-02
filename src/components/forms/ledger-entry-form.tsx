@@ -68,6 +68,13 @@ export function LedgerEntryForm({ entry, onSubmit, onCancel }: LedgerEntryFormPr
 
   const entryType = form.watch("entry_type")
 
+  // Auto-set transaction type to Credit for vendor payments
+  useEffect(() => {
+    if (entryType === "vendor_payment") {
+      form.setValue("transaction_type", "credit")
+    }
+  }, [entryType, form])
+
   useEffect(() => {
     // Fetch vendors for the dropdown
     fetch('/api/vendors')
@@ -182,30 +189,42 @@ export function LedgerEntryForm({ entry, onSubmit, onCancel }: LedgerEntryFormPr
             )}
           />
 
-          <FormField
-            control={form.control}
-            name="transaction_type"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Transaction Type</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                  <FormControl>
-                    <SelectTrigger disabled={isSubmitting}>
-                      <SelectValue />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    <SelectItem value="debit">Debit (Money Out)</SelectItem>
-                    <SelectItem value="credit">Credit (Money In)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <FormDescription className="text-xs">
-                  {field.value === "debit" ? "Payment made/expense" : "Payment received/income"}
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {/* Hide transaction type for vendor payments (always Credit) */}
+          {entryType !== "vendor_payment" && (
+            <FormField
+              control={form.control}
+              name="transaction_type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Transaction Type</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger disabled={isSubmitting}>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="debit">Debit (Money In)</SelectItem>
+                      <SelectItem value="credit">Credit (Money Out)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription className="text-xs">
+                    {field.value === "debit" ? "Money received/income" : "Money paid/expense"}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
+
+          {/* Show info message for vendor payments */}
+          {entryType === "vendor_payment" && (
+            <div className="flex items-center">
+              <div className="text-sm text-muted-foreground bg-muted p-3 rounded-md">
+                💳 <strong>Vendor payments are always Credit</strong> (money OUT to vendor)
+              </div>
+            </div>
+          )}
         </div>
 
         {entryType === "vendor_payment" && vendors.length > 0 && (

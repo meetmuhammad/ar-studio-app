@@ -147,11 +147,7 @@ export default function VendorsPage() {
 
           {vendors.length === 0 && (
             <div className="text-center py-12">
-              <p className="text-muted-foreground mb-4">No vendors found</p>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Your First Vendor
-              </Button>
+              <p className="text-muted-foreground">No vendors found</p>
             </div>
           )}
         </CardContent>

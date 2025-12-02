@@ -54,7 +54,7 @@ export async function POST() {
       entriesToCreate.push({
         entry_date: order.booking_date,
         particulars: `Advance payment for Order #${order.order_number}`,
-        credit: order.advance_paid,
+        debit: order.advance_paid,
         entry_type: 'order_payment',
         order_id: order.id,
         notes: 'Synced from order advance payment',
@@ -66,7 +66,7 @@ export async function POST() {
       entriesToCreate.push({
         entry_date: payment.payment_date,
         particulars: `Payment for Order #${payment.order.order_number}`,
-        credit: payment.amount,
+        debit: payment.amount,
         entry_type: 'order_payment',
         order_id: payment.order_id,
         notes: payment.notes || `Payment via ${payment.payment_method}`,

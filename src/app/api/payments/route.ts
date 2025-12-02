@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
     const { error: ledgerError } = await supabase.from('general_ledger').insert({
       entry_date: paymentData.payment_date,
       particulars: `Payment for Order #${payment.order.order_number}`,
-      credit: paymentData.amount,
+      debit: paymentData.amount,
       entry_type: 'order_payment',
       order_id: order_id,
       notes: paymentData.notes || `Payment via ${paymentData.payment_method}`,

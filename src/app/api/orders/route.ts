@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
       await supabase.from('general_ledger').insert({
         entry_date: orderData.booking_date,
         particulars: `Advance payment for Order #${order.order_number}`,
-        credit: orderData.advance_paid,
+        debit: orderData.advance_paid,
         entry_type: 'order_payment',
         order_id: order.id,
         notes: `Initial advance payment during order creation`,

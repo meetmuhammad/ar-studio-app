@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, RefreshCw, Edit, Search } from 'lucide-react'
+import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, RefreshCw, Edit, Search, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -104,6 +104,54 @@ export default function LedgerPage() {
     setEditingEntry(null)
   }
 
+  const exportToCSV = () => {
+    try {
+      // CSV headers
+      const headers = ['Date', 'Particulars', 'Type', 'Debit', 'Credit', 'Balance', 'Vendor', 'Order Number', 'Notes']
+      
+      // Convert entries to CSV rows
+      const rows = entries.map(entry => [
+        new Date(entry.entry_date).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        }),
+        `"${entry.particulars.replace(/"/g, '""')}"`, // Escape double quotes
+        entry.entry_type.replace('_', ' '),
+        entry.debit || 0,
+        entry.credit || 0,
+        entry.balance,
+        entry.vendors?.name ? `"${entry.vendors.name.replace(/"/g, '""')}"` : '',
+        entry.orders?.order_number ? `"${entry.orders.order_number.replace(/"/g, '""')}"` : '',
+        entry.notes ? `"${entry.notes.replace(/"/g, '""')}"` : '',
+      ])
+      
+      // Combine headers and rows
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.join(','))
+      ].join('\n')
+      
+      // Create blob and download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement('a')
+      const url = URL.createObjectURL(blob)
+      
+      link.setAttribute('href', url)
+      link.setAttribute('download', `ledger_entries_${new Date().toISOString().split('T')[0]}.csv`)
+      link.style.visibility = 'hidden'
+      
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      toast.success(`Exported ${entries.length} ledger entries to CSV`)
+    } catch (error) {
+      console.error('Error exporting CSV:', error)
+      toast.error('Failed to export CSV')
+    }
+  }
+
   // Pagination
   const totalPages = Math.ceil(filteredEntries.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
@@ -166,6 +214,14 @@ export default function LedgerPage() {
             )}
             Sync Order Payments
           </Button>
+          <Button
+            variant="outline"
+            onClick={exportToCSV}
+            disabled={entries.length === 0}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Entry
@@ -189,22 +245,22 @@ export default function LedgerPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Debit</CardTitle>
-            <TrendingDown className="h-4 w-4 text-muted-foreground" />
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(stats.totalDebit)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Money out</p>
+            <p className="text-xs text-muted-foreground mt-1">Money in</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Credit</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <TrendingDown className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(stats.totalCredit)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Money in</p>
+            <p className="text-xs text-muted-foreground mt-1">Money out</p>
           </CardContent>
         </Card>
 
@@ -271,10 +327,10 @@ export default function LedgerPage() {
                     </div>
                   </TableCell>
                   <TableCell>{getEntryTypeBadge(entry.entry_type)}</TableCell>
-                  <TableCell className="text-right text-red-600">
+                  <TableCell className="text-right text-green-600">
                     {entry.debit ? formatCurrency(entry.debit) : '-'}
                   </TableCell>
-                  <TableCell className="text-right text-green-600">
+                  <TableCell className="text-right text-red-600">
                     {entry.credit ? formatCurrency(entry.credit) : '-'}
                   </TableCell>
                   <TableCell className="text-right font-medium">

@@ -116,6 +116,32 @@ export async function PUT(
       )
     }
 
+    // Update or create vendor_ledger entry if vendor_id exists
+    // First, delete existing vendor_ledger entry for this general_ledger entry
+    await supabase
+      .from('vendor_ledger')
+      .delete()
+      .eq('general_ledger_id', id)
+
+    // If vendor_id is provided, create new vendor_ledger entry with reversed debit/credit
+    if (vendor_id) {
+      const { error: vendorLedgerError } = await supabase
+        .from('vendor_ledger')
+        .insert({
+          vendor_id,
+          general_ledger_id: id,
+          entry_date,
+          particulars: particulars.trim(),
+          debit: credit || null,  // Reverse: main ledger credit = vendor ledger debit
+          credit: debit || null,  // Reverse: main ledger debit = vendor ledger credit
+          notes: notes?.trim() || null,
+        })
+
+      if (vendorLedgerError) {
+        console.error('Error updating vendor ledger entry:', vendorLedgerError)
+      }
+    }
+
     return NextResponse.json(entry)
   } catch (error) {
     console.error('Error in PUT /api/general-ledger/[id]:', error)
@@ -135,6 +161,13 @@ export async function DELETE(
     const supabase = createAdminSupabaseClient()
     const { id } = params
 
+    // First delete vendor_ledger entries (if any)
+    await supabase
+      .from('vendor_ledger')
+      .delete()
+      .eq('general_ledger_id', id)
+
+    // Then delete the general ledger entry
     const { error } = await supabase
       .from('general_ledger')
       .delete()
