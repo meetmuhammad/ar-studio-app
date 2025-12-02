@@ -1,9 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign } from 'lucide-react'
+import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, RefreshCw, Edit, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { LedgerEntryDialog } from '@/components/dialogs/ledger-entry-dialog'
 import {
   Table,
   TableBody,
@@ -18,12 +20,37 @@ import { toast } from 'sonner'
 
 export default function LedgerPage() {
   const [entries, setEntries] = useState<GeneralLedgerWithRelations[]>([])
+  const [filteredEntries, setFilteredEntries] = useState<GeneralLedgerWithRelations[]>([])
   const [stats, setStats] = useState({ totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 })
   const [isLoading, setIsLoading] = useState(true)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingEntry, setEditingEntry] = useState<GeneralLedgerWithRelations | null>(null)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 20
 
   useEffect(() => {
     fetchData()
   }, [])
+
+  useEffect(() => {
+    // Filter entries based on search query
+    if (!searchQuery.trim()) {
+      setFilteredEntries(entries)
+    } else {
+      const query = searchQuery.toLowerCase()
+      const filtered = entries.filter(entry => 
+        entry.particulars.toLowerCase().includes(query) ||
+        entry.entry_type.toLowerCase().includes(query) ||
+        entry.vendors?.name.toLowerCase().includes(query) ||
+        entry.orders?.order_number.toLowerCase().includes(query) ||
+        (entry.notes && entry.notes.toLowerCase().includes(query))
+      )
+      setFilteredEntries(filtered)
+    }
+    setCurrentPage(1) // Reset to first page on search
+  }, [searchQuery, entries])
 
   const fetchData = async () => {
     try {
@@ -46,6 +73,42 @@ export default function LedgerPage() {
       setIsLoading(false)
     }
   }
+
+  const syncOrderPayments = async () => {
+    setIsSyncing(true)
+    try {
+      const response = await fetch('/api/general-ledger/sync-payments', {
+        method: 'POST',
+      })
+
+      if (!response.ok) throw new Error('Failed to sync payments')
+
+      const result = await response.json()
+      toast.success(`Synced ${result.synced} order payments to ledger`)
+      fetchData() // Refresh the data
+    } catch (error) {
+      console.error('Error syncing payments:', error)
+      toast.error('Failed to sync order payments')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  const handleEdit = (entry: GeneralLedgerWithRelations) => {
+    setEditingEntry(entry)
+    setDialogOpen(true)
+  }
+
+  const handleCloseDialog = () => {
+    setDialogOpen(false)
+    setEditingEntry(null)
+  }
+
+  // Pagination
+  const totalPages = Math.ceil(filteredEntries.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedEntries = filteredEntries.slice(startIndex, endIndex)
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-PK', {
@@ -90,10 +153,35 @@ export default function LedgerPage() {
             Track all financial transactions and balances
           </p>
         </div>
-        <Button>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Entry
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={syncOrderPayments}
+            disabled={isSyncing}
+          >
+            {isSyncing ? (
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            Sync Order Payments
+          </Button>
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Entry
+          </Button>
+        </div>
+      </div>
+
+      {/* Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by particulars, vendor, order, type, or notes..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10"
+        />
       </div>
 
       {/* Stats Cards */}
@@ -158,10 +246,11 @@ export default function LedgerPage() {
                 <TableHead className="text-right">Debit</TableHead>
                 <TableHead className="text-right">Credit</TableHead>
                 <TableHead className="text-right">Balance</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {entries.map((entry) => (
+              {paginatedEntries.map((entry) => (
                 <TableRow key={entry.id}>
                   <TableCell className="font-medium">
                     {formatDate(entry.entry_date)}
@@ -191,18 +280,92 @@ export default function LedgerPage() {
                   <TableCell className="text-right font-medium">
                     {formatCurrency(entry.balance)}
                   </TableCell>
+                  <TableCell className="text-right">
+                    {entry.entry_type !== 'order_payment' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(entry)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
 
-          {entries.length === 0 && (
+          {filteredEntries.length === 0 && (
             <div className="text-center py-12 text-muted-foreground">
-              No ledger entries found
+              {searchQuery ? 'No entries match your search' : 'No ledger entries found'}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {filteredEntries.length > 0 && (
+            <div className="flex items-center justify-between pt-4">
+              <div className="text-sm text-muted-foreground">
+                Showing {startIndex + 1} to {Math.min(endIndex, filteredEntries.length)} of {filteredEntries.length} entries
+                {searchQuery && ` (filtered from ${entries.length} total)`}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(page => {
+                      // Show first page, last page, current page, and pages around current
+                      return page === 1 || 
+                             page === totalPages || 
+                             (page >= currentPage - 1 && page <= currentPage + 1)
+                    })
+                    .map((page, index, array) => (
+                      <div key={page} className="flex items-center">
+                        {index > 0 && array[index - 1] !== page - 1 && (
+                          <span className="px-2 text-muted-foreground">...</span>
+                        )}
+                        <Button
+                          variant={currentPage === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setCurrentPage(page)}
+                        >
+                          {page}
+                        </Button>
+                      </div>
+                    ))
+                  }
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
+
+      <LedgerEntryDialog
+        open={dialogOpen}
+        onOpenChange={handleCloseDialog}
+        entry={editingEntry}
+        onSuccess={() => {
+          toast.success(editingEntry ? 'Ledger entry updated successfully' : 'Ledger entry created successfully')
+          handleCloseDialog()
+          fetchData()
+        }}
+      />
     </div>
   )
 }

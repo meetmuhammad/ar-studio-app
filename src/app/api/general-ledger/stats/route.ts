@@ -20,7 +20,8 @@ export async function GET() {
 
     const totalDebit = entries.reduce((sum, entry) => sum + (entry.debit || 0), 0)
     const totalCredit = entries.reduce((sum, entry) => sum + (entry.credit || 0), 0)
-    const currentBalance = entries.length > 0 ? entries[entries.length - 1].balance : 0
+    // Calculate balance as: Credit (money in) - Debit (money out)
+    const currentBalance = totalCredit - totalDebit
 
     return NextResponse.json({
       totalDebit,

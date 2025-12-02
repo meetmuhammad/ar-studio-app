@@ -45,6 +45,87 @@ export async function GET(
   }
 }
 
+// PUT /api/general-ledger/[id] - Update entry
+export async function PUT(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const supabase = createAdminSupabaseClient()
+    const { id } = params
+    const body = await request.json()
+
+    const {
+      entry_date,
+      particulars,
+      debit,
+      credit,
+      entry_type,
+      notes,
+      vendor_id,
+    } = body
+
+    // Validation
+    if (!entry_date || !particulars || !entry_type) {
+      return NextResponse.json(
+        { error: 'entry_date, particulars, and entry_type are required' },
+        { status: 400 }
+      )
+    }
+
+    // Ensure either debit or credit is provided, not both
+    if ((debit && credit) || (!debit && !credit)) {
+      return NextResponse.json(
+        { error: 'Provide either debit or credit, not both' },
+        { status: 400 }
+      )
+    }
+
+    const { data: entry, error } = await supabase
+      .from('general_ledger')
+      .update({
+        entry_date,
+        particulars: particulars.trim(),
+        debit: debit || null,
+        credit: credit || null,
+        entry_type,
+        notes: notes?.trim() || null,
+        vendor_id: vendor_id || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select(`
+        *,
+        vendors (id, name),
+        orders (id, order_number),
+        vendor_tags (id, tag_name)
+      `)
+      .single()
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return NextResponse.json(
+          { error: 'Entry not found' },
+          { status: 404 }
+        )
+      }
+      console.error('Error updating ledger entry:', error)
+      return NextResponse.json(
+        { error: 'Failed to update ledger entry' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json(entry)
+  } catch (error) {
+    console.error('Error in PUT /api/general-ledger/[id]:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
 // DELETE /api/general-ledger/[id] - Delete entry
 export async function DELETE(
   request: Request,
