@@ -15,7 +15,7 @@ export interface AuthUser {
  */
 export async function getAuthUser(request: NextRequest): Promise<AuthUser | null> {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = await createServerSupabaseClient()
     
     // Get session from Supabase
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()

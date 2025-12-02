@@ -37,7 +37,7 @@ export async function POST() {
     // Get all payments
     const { data: payments, error: paymentsError } = await supabase
       .from('payments')
-      .select('id, order_id, amount, payment_date, payment_method, notes, order:orders(order_number)')
+      .select('id, order_id, amount, payment_date, payment_method, notes, orders!inner(order_number)')
 
     if (paymentsError) {
       console.error('Error fetching payments:', paymentsError)
@@ -63,9 +63,10 @@ export async function POST() {
 
     // Create entries for all additional payments
     for (const payment of payments || []) {
+      const order = payment.orders as any
       entriesToCreate.push({
         entry_date: payment.payment_date,
-        particulars: `Payment for Order #${payment.order.order_number}`,
+        particulars: `Payment for Order #${order?.order_number || 'Unknown'}`,
         debit: payment.amount,
         entry_type: 'order_payment',
         order_id: payment.order_id,

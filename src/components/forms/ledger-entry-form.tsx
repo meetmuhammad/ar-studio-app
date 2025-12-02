@@ -32,10 +32,10 @@ const LedgerEntrySchema = z.object({
   particulars: z.string().optional(),
   amount: z.string().min(1, "Amount is required"),
   transaction_type: z.enum(["debit", "credit"], {
-    required_error: "Transaction type is required",
+    message: "Transaction type is required",
   }),
-  entry_type: z.enum(["opening_balance", "vendor_payment", "miscellaneous"], {
-    required_error: "Entry type is required",
+  entry_type: z.enum(["opening_balance", "order_payment", "vendor_payment", "miscellaneous"], {
+    message: "Entry type is required",
   }),
   vendor_id: z.string().optional(),
   notes: z.string().optional(),
