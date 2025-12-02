@@ -4,11 +4,11 @@ import { createAdminSupabaseClient } from '@/lib/supabase'
 // DELETE /api/vendor-tags/[id] - Delete vendor tag
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = createAdminSupabaseClient()
-    const { id } = params
+    const { id } = await params
 
     const { error } = await supabase
       .from('vendor_tags')

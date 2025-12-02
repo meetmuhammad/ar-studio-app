@@ -4,11 +4,11 @@ import { createAdminSupabaseClient } from '@/lib/supabase'
 // GET /api/vendors/[id] - Get vendor with ledger entries
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = createAdminSupabaseClient()
-    const { id } = params
+    const { id } = await params
 
     const { data: vendor, error } = await supabase
       .from('vendors')
@@ -47,11 +47,11 @@ export async function GET(
 // PUT /api/vendors/[id] - Update vendor
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = createAdminSupabaseClient()
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
 
     const { name, contact_person, phone, email, address, notes } = body
@@ -105,11 +105,11 @@ export async function PUT(
 // DELETE /api/vendors/[id] - Delete vendor
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = createAdminSupabaseClient()
-    const { id } = params
+    const { id } = await params
 
     const { error } = await supabase
       .from('vendors')

@@ -4,11 +4,11 @@ import { createAdminSupabaseClient } from '@/lib/supabase'
 // GET /api/general-ledger/[id] - Get single entry
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = createAdminSupabaseClient()
-    const { id } = params
+    const { id } = await params
 
     const { data: entry, error } = await supabase
       .from('general_ledger')
@@ -48,11 +48,11 @@ export async function GET(
 // PUT /api/general-ledger/[id] - Update entry
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = createAdminSupabaseClient()
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
 
     const {
@@ -155,11 +155,11 @@ export async function PUT(
 // DELETE /api/general-ledger/[id] - Delete entry
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = createAdminSupabaseClient()
-    const { id } = params
+    const { id } = await params
 
     // First delete vendor_ledger entries (if any)
     await supabase
