@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, RefreshCw, Edit, Search, Download, Trash2 } from 'lucide-react'
+import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, RefreshCw, Edit, Search, Download, Trash2, X } from 'lucide-react'
 import { RoleGuard } from '@/components/auth/role-guard'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { DatePicker } from '@/components/ui/date-picker'
+import { Label } from '@/components/ui/label'
 import { LedgerEntryDialog } from '@/components/dialogs/ledger-entry-dialog'
 import {
   Table,
@@ -28,6 +30,8 @@ export default function LedgerPage() {
   const [editingEntry, setEditingEntry] = useState<GeneralLedgerWithRelations | null>(null)
   const [isSyncing, setIsSyncing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 20
 
@@ -36,22 +40,46 @@ export default function LedgerPage() {
   }, [])
 
   useEffect(() => {
-    // Filter entries based on search query
-    if (!searchQuery.trim()) {
-      setFilteredEntries(entries)
-    } else {
+    // Filter entries based on search query and date range
+    let filtered = entries
+
+    // Apply search filter
+    if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
-      const filtered = entries.filter(entry => 
+      filtered = filtered.filter(entry => 
         entry.particulars.toLowerCase().includes(query) ||
         entry.entry_type.toLowerCase().includes(query) ||
         entry.vendors?.name.toLowerCase().includes(query) ||
         entry.orders?.order_number.toLowerCase().includes(query) ||
         (entry.notes && entry.notes.toLowerCase().includes(query))
       )
-      setFilteredEntries(filtered)
     }
-    setCurrentPage(1) // Reset to first page on search
-  }, [searchQuery, entries])
+
+    // Apply date range filter
+    if (dateFrom || dateTo) {
+      filtered = filtered.filter(entry => {
+        const entryDate = new Date(entry.entry_date)
+        entryDate.setHours(0, 0, 0, 0)
+        
+        if (dateFrom) {
+          const fromDate = new Date(dateFrom)
+          fromDate.setHours(0, 0, 0, 0)
+          if (entryDate < fromDate) return false
+        }
+        
+        if (dateTo) {
+          const toDate = new Date(dateTo)
+          toDate.setHours(23, 59, 59, 999)
+          if (entryDate > toDate) return false
+        }
+        
+        return true
+      })
+    }
+
+    setFilteredEntries(filtered)
+    setCurrentPage(1) // Reset to first page on filter change
+  }, [searchQuery, dateFrom, dateTo, entries])
 
   const fetchData = async () => {
     try {
@@ -270,15 +298,57 @@ export default function LedgerPage() {
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search by particulars, vendor, order, type, or notes..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
+      {/* Search and Date Range Filters */}
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_auto_auto]">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by particulars, vendor, order, type, or notes..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label className="text-sm text-muted-foreground whitespace-nowrap">From Date</Label>
+          <DatePicker
+            date={dateFrom}
+            onDateChange={setDateFrom}
+            placeholder="From date"
+            className="w-[160px]"
+            maxDate={dateTo || undefined}
+          />
+          {dateFrom && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setDateFrom(undefined)}
+              className="h-10 w-10 flex-shrink-0"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Label className="text-sm text-muted-foreground whitespace-nowrap">To Date</Label>
+          <DatePicker
+            date={dateTo}
+            onDateChange={setDateTo}
+            placeholder="To date"
+            className="w-[160px]"
+            minDate={dateFrom || undefined}
+          />
+          {dateTo && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setDateTo(undefined)}
+              className="h-10 w-10 flex-shrink-0"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Stats Cards */}
