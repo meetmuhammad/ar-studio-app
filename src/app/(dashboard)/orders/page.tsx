@@ -23,7 +23,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Eye, Pencil, Trash2 } from 'lucide-react'
+import { Eye, Pencil, Trash2, ArrowUpAZ, ArrowDownZA } from 'lucide-react'
 
 import { OrderDialog } from '@/components/dialogs/order-dialog'
 import { OrderDetailsDialog } from '@/components/dialogs/order-details-dialog'
@@ -37,6 +37,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [showDelivered, setShowDelivered] = useState<boolean>(false)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 20
   
@@ -204,9 +205,16 @@ export default function OrdersPage() {
   }
 
   // Filter orders based on showDelivered state
-  const filteredOrders = showDelivered 
+  let filteredOrders = showDelivered 
     ? orders 
     : orders.filter(order => order.status !== 'Delivered')
+
+  // Apply sorting by delivery date (ascending or descending)
+  filteredOrders = [...filteredOrders].sort((a, b) => {
+    const dateA = new Date(a.delivery_date).getTime()
+    const dateB = new Date(b.delivery_date).getTime()
+    return sortDirection === 'asc' ? dateA - dateB : dateB - dateA
+  })
 
   // Pagination
   const totalPages = Math.ceil(filteredOrders.length / itemsPerPage)
@@ -241,7 +249,7 @@ export default function OrdersPage() {
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [statusFilter, showDelivered])
+  }, [statusFilter, showDelivered, sortDirection])
 
   if (loading) {
     return (
@@ -304,6 +312,28 @@ export default function OrdersPage() {
                     <SelectItem value="Cancelled">Cancelled</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="sort-direction" className="text-sm font-normal whitespace-nowrap">Sort:</Label>
+                <Button
+                  id="sort-direction"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                  className="gap-2"
+                >
+                  {sortDirection === 'asc' ? (
+                    <>
+                      <ArrowUpAZ className="h-4 w-4" />
+                      Oldest First
+                    </>
+                  ) : (
+                    <>
+                      <ArrowDownZA className="h-4 w-4" />
+                      Newest First
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
           </div>
