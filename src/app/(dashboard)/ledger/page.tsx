@@ -65,7 +65,22 @@ export default function LedgerPage() {
       const entriesData = await entriesRes.json()
       const statsData = await statsRes.json()
 
-      setEntries(entriesData)
+      // Recalculate balances based on display order (descending = newest first)
+      // Balance should increase as we go backwards in time
+      const entriesWithRecalculatedBalance = [...entriesData].reverse().map((entry, index, arr) => {
+        // Start from oldest (index 0), calculate running total
+        const previousBalance = index > 0 ? arr[index - 1].calculatedBalance : 0
+        const debit = parseFloat(entry.debit || 0)
+        const credit = parseFloat(entry.credit || 0)
+        const calculatedBalance = previousBalance + debit - credit
+        
+        return {
+          ...entry,
+          calculatedBalance
+        }
+      }).reverse() // Reverse back to descending order for display
+
+      setEntries(entriesWithRecalculatedBalance)
       setStats(statsData)
     } catch (error) {
       console.error('Error fetching ledger data:', error)
@@ -121,7 +136,7 @@ export default function LedgerPage() {
         entry.entry_type.replace('_', ' '),
         entry.debit || 0,
         entry.credit || 0,
-        entry.balance,
+        entry.calculatedBalance || entry.balance,
         entry.vendors?.name ? `"${entry.vendors.name.replace(/"/g, '""')}"` : '',
         entry.orders?.order_number ? `"${entry.orders.order_number.replace(/"/g, '""')}"` : '',
         entry.notes ? `"${entry.notes.replace(/"/g, '""')}"` : '',
@@ -338,7 +353,7 @@ export default function LedgerPage() {
                     {entry.credit ? formatCurrency(entry.credit) : '-'}
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    {formatCurrency(entry.balance)}
+                    {formatCurrency(entry.calculatedBalance || entry.balance)}
                   </TableCell>
                   <TableCell className="text-right">
                     {entry.entry_type !== 'order_payment' && (

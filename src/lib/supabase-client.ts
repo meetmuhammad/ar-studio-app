@@ -121,6 +121,7 @@ export interface GeneralLedgerWithRelations extends GeneralLedger {
   vendors?: Vendor | null
   orders?: Order | null
   vendor_tags?: VendorTag | null
+  calculatedBalance?: number // Client-side calculated balance for correct display order
 }
 
 export interface VendorLedger {
