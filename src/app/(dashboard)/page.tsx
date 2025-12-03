@@ -38,18 +38,22 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        // Fetch customers and orders in parallel
-        const [customersResponse, ordersResponse] = await Promise.all([
+        // Fetch customers, orders, and ledger data in parallel
+        const [customersResponse, ordersResponse, ledgerResponse, ledgerStatsResponse] = await Promise.all([
           fetch('/api/customers?pageSize=1000'),
-          fetch('/api/orders?pageSize=1000')
+          fetch('/api/orders?pageSize=1000'),
+          fetch('/api/general-ledger'),
+          fetch('/api/general-ledger/stats')
         ])
 
-        if (!customersResponse.ok || !ordersResponse.ok) {
+        if (!customersResponse.ok || !ordersResponse.ok || !ledgerResponse.ok || !ledgerStatsResponse.ok) {
           throw new Error('Failed to fetch data')
         }
 
         const customersData = await customersResponse.json()
         const ordersData = await ordersResponse.json()
+        const ledgerEntries = await ledgerResponse.json()
+        const ledgerStats = await ledgerStatsResponse.json()
         
         const customers: Customer[] = customersData.data || []
         const orders: OrderWithCustomer[] = ordersData.data || []
@@ -77,19 +81,17 @@ export default function DashboardPage() {
         const totalCustomers = customers.length
         const totalOrders = orders.length
         
-        // Calculate total revenue (sum of all total_amount)
+        // Use ledger stats for accurate financial data
+        // Total Revenue = expected revenue from orders (total_amount)
         const totalRevenue = orders.reduce((sum, order) => {
           return sum + (order.total_amount || 0)
         }, 0)
         
-        // Calculate total advances and balance
-        const totalAdvances = orders.reduce((sum, order) => {
-          return sum + (order.advance_paid || 0)
-        }, 0)
+        // Total Received = actual money received from ledger (order_payment entries only)
+        const totalReceived = ledgerStats.currentBalance || 0
         
-        const totalBalance = orders.reduce((sum, order) => {
-          return sum + (order.balance || 0)
-        }, 0)
+        // Outstanding Balance = Total Revenue - Total Received
+        const totalBalance = totalRevenue - totalReceived
         
         // Count recent orders (this month)
         const now = new Date()
@@ -101,14 +103,14 @@ export default function DashboardPage() {
           return orderDate.getMonth() === thisMonth && orderDate.getFullYear() === thisYear
         }).length
         
-        // Generate chart data for last 6 months
-        const chartData = generateChartData(orders)
+        // Generate chart data from ledger entries (actual received payments)
+        const chartData = generateChartDataFromLedger(ledgerEntries)
         
         setStats({
           totalCustomers,
           totalOrders,
           totalRevenue,
-          totalAdvances,
+          totalAdvances: totalReceived, // Show total received instead of advances
           totalBalance,
           recentOrdersCount,
           chartData
@@ -134,8 +136,8 @@ export default function DashboardPage() {
     fetchStats()
   }, [])
   
-  // Generate chart data for revenue over last 6 months
-  const generateChartData = (orders: OrderWithCustomer[]) => {
+  // Generate chart data for revenue over last 6 months from ledger (actual received)
+  const generateChartDataFromLedger = (ledgerEntries: any[]) => {
     const now = new Date()
     const chartData: Array<{ month: string; revenue: number }> = []
     
@@ -143,13 +145,16 @@ export default function DashboardPage() {
       const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
       const monthName = date.toLocaleDateString('en-US', { month: 'short' })
       
-      const monthRevenue = orders
-        .filter(order => {
-          const orderDate = new Date(order.created_at)
-          return orderDate.getMonth() === date.getMonth() && 
-                 orderDate.getFullYear() === date.getFullYear()
+      const monthRevenue = ledgerEntries
+        .filter(entry => {
+          // Only count order_payment entries (actual revenue)
+          if (entry.entry_type !== 'order_payment') return false
+          
+          const entryDate = new Date(entry.entry_date)
+          return entryDate.getMonth() === date.getMonth() && 
+                 entryDate.getFullYear() === date.getFullYear()
         })
-        .reduce((sum, order) => sum + (order.total_amount || 0), 0)
+        .reduce((sum, entry) => sum + (entry.debit || 0), 0)
       
       chartData.push({
         month: monthName,
