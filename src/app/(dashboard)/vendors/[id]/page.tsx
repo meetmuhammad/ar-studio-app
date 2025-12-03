@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { ArrowLeft, Building2, Plus } from 'lucide-react'
+import { ArrowLeft, Building2, Plus, Search } from 'lucide-react'
 import { RoleGuard } from '@/components/auth/role-guard'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
@@ -26,12 +27,29 @@ export default function VendorLedgerPage() {
 
   const [vendor, setVendor] = useState<Vendor | null>(null)
   const [entries, setEntries] = useState<any[]>([])
+  const [filteredEntries, setFilteredEntries] = useState<any[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [billDialogOpen, setBillDialogOpen] = useState(false)
 
   useEffect(() => {
     fetchData()
   }, [vendorId])
+
+  useEffect(() => {
+    // Filter entries based on search query
+    if (!searchQuery.trim()) {
+      setFilteredEntries(entries)
+    } else {
+      const query = searchQuery.toLowerCase()
+      const filtered = entries.filter(entry => 
+        entry.particulars.toLowerCase().includes(query) ||
+        (entry.notes && entry.notes.toLowerCase().includes(query)) ||
+        formatDate(entry.entry_date).toLowerCase().includes(query)
+      )
+      setFilteredEntries(filtered)
+    }
+  }, [searchQuery, entries])
 
   const fetchData = async () => {
     try {
@@ -80,7 +98,7 @@ export default function VendorLedgerPage() {
     return <Badge variant={variants[type] || 'default'}>{type.replace('_', ' ')}</Badge>
   }
 
-  // Calculate totals for vendor ledger
+  // Calculate totals for vendor ledger (from ALL entries, not filtered)
   // In vendor ledger: Debit = money they receive from us (we pay them)
   //                   Credit = money they return/owe us (shouldn't happen often)
   const totalDebit = entries.reduce((sum, entry) => sum + (entry.debit || 0), 0)
@@ -136,40 +154,16 @@ export default function VendorLedgerPage() {
         </Button>
       </div>
 
-      {/* Vendor Details */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Vendor Information</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {vendor.contact_person && (
-              <div>
-                <p className="text-sm text-muted-foreground">Contact Person</p>
-                <p className="font-medium">{vendor.contact_person}</p>
-              </div>
-            )}
-            {vendor.phone && (
-              <div>
-                <p className="text-sm text-muted-foreground">Phone</p>
-                <p className="font-medium">{vendor.phone}</p>
-              </div>
-            )}
-            {vendor.email && (
-              <div>
-                <p className="text-sm text-muted-foreground">Email</p>
-                <p className="font-medium">{vendor.email}</p>
-              </div>
-            )}
-            {vendor.address && (
-              <div className="col-span-2">
-                <p className="text-sm text-muted-foreground">Address</p>
-                <p className="font-medium">{vendor.address}</p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Search Filter */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by particulars, notes, or date..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10"
+        />
+      </div>
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">
@@ -211,7 +205,7 @@ export default function VendorLedgerPage() {
       {/* Ledger Entries */}
       <Card>
         <CardHeader>
-          <CardTitle>Ledger Entries</CardTitle>
+          <CardTitle>Ledger Entries ({filteredEntries.length})</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
@@ -226,7 +220,7 @@ export default function VendorLedgerPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {entries.map((entry) => (
+              {filteredEntries.map((entry) => (
                 <TableRow key={entry.id}>
                   <TableCell className="font-medium">
                     {formatDate(entry.entry_date)}
@@ -265,9 +259,9 @@ export default function VendorLedgerPage() {
             </TableBody>
           </Table>
 
-          {entries.length === 0 && (
+          {filteredEntries.length === 0 && (
             <div className="text-center py-12 text-muted-foreground">
-              No transactions found for this vendor
+              {searchQuery ? 'No transactions match your search' : 'No transactions found for this vendor'}
             </div>
           )}
         </CardContent>

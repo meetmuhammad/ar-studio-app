@@ -68,11 +68,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const createAuthUser = async (supabaseUser: User): Promise<AuthUser> => {
     const userId = supabaseUser.id
     
-    // First, try to get cached role for instant load
+    // Check for cached role first
     const cachedRole = getCachedRole(userId)
     
+    // If we have a cached role, use it immediately for fast loading
+    if (cachedRole) {
+      console.log('Using cached role for instant load:', cachedRole)
+      
+      // Fetch fresh role in background to update cache (don't await)
+      supabase
+        .from('users')
+        .select('role')
+        .eq('id', userId)
+        .single()
+        .then(({ data, error }) => {
+          if (!error && data?.role) {
+            const freshRole = data.role as 'admin' | 'staff'
+            // Update cache if role changed
+            if (freshRole !== cachedRole) {
+              setCachedRole(userId, freshRole)
+              // Update user state if role changed
+              setUser(prev => prev ? { ...prev, role: freshRole } : null)
+              // Broadcast to other tabs
+              broadcastChannelRef.current?.postMessage({ type: 'role-update', userId, role: freshRole })
+            }
+          }
+        })
+      
+      return {
+        id: userId,
+        email: supabaseUser.email || '',
+        role: cachedRole
+      }
+    }
+    
+    // No cache - fetch from database
     try {
-      // Fetch user role from database with longer timeout
       const { data: userData, error } = await Promise.race([
         supabase
           .from('users')
@@ -86,16 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) {
         console.error('Error fetching user role:', error)
-        // If we have cached role, use it
-        if (cachedRole) {
-          console.log('Using cached role due to fetch error:', cachedRole)
-          return {
-            id: userId,
-            email: supabaseUser.email || '',
-            role: cachedRole
-          }
-        }
-        // Otherwise default to staff
+        // Default to staff
         return {
           id: userId,
           email: supabaseUser.email || '',
@@ -118,16 +140,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Failed to fetch user role:', error)
-      
-      // If we have cached role, use it
-      if (cachedRole) {
-        console.log('Using cached role due to exception:', cachedRole)
-        return {
-          id: userId,
-          email: supabaseUser.email || '',
-          role: cachedRole
-        }
-      }
       
       // Fallback to staff role
       return {

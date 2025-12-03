@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Loader2 } from "lucide-react"
+import { Loader2, Check, ChevronsUpDown } from "lucide-react"
 import * as z from "zod"
 
 import { Button } from "@/components/ui/button"
@@ -25,6 +25,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { cn } from "@/lib/utils"
 import type { Vendor, LedgerEntryType, GeneralLedger } from "@/lib/supabase-client"
 
 const LedgerEntrySchema = z.object({
@@ -65,6 +79,7 @@ interface LedgerEntryFormProps {
 export function LedgerEntryForm({ entry, onSubmit, onCancel }: LedgerEntryFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [vendors, setVendors] = useState<Vendor[]>([])
+  const [vendorSearchOpen, setVendorSearchOpen] = useState(false)
 
   const form = useForm<LedgerEntryInput>({
     resolver: zodResolver(LedgerEntrySchema),
@@ -180,22 +195,58 @@ export function LedgerEntryForm({ entry, onSubmit, onCancel }: LedgerEntryFormPr
             control={form.control}
             name="vendor_id"
             render={({ field }) => (
-              <FormItem>
+              <FormItem className="flex flex-col">
                 <FormLabel>Vendor *</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                  <FormControl>
-                    <SelectTrigger disabled={isSubmitting}>
-                      <SelectValue placeholder="Select vendor" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {vendors.map((vendor) => (
-                      <SelectItem key={vendor.id} value={vendor.id}>
-                        {vendor.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={vendorSearchOpen} onOpenChange={setVendorSearchOpen}>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        disabled={isSubmitting}
+                        className={cn(
+                          "w-full justify-between",
+                          !field.value && "text-muted-foreground"
+                        )}
+                      >
+                        {field.value
+                          ? vendors.find((vendor) => vendor.id === field.value)?.name
+                          : "Select vendor"}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search vendors..." />
+                      <CommandList className="max-h-[200px] overflow-y-auto">
+                        <CommandEmpty>No vendor found.</CommandEmpty>
+                        <CommandGroup>
+                          {vendors.map((vendor) => (
+                            <CommandItem
+                              key={vendor.id}
+                              value={vendor.name}
+                              onSelect={() => {
+                                form.setValue("vendor_id", vendor.id)
+                                setVendorSearchOpen(false)
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  vendor.id === field.value
+                                    ? "opacity-100"
+                                    : "opacity-0"
+                                )}
+                              />
+                              {vendor.name}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 <FormDescription className="text-xs">
                   The vendor name will be used as the particulars
                 </FormDescription>
