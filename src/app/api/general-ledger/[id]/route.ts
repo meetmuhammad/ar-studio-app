@@ -161,13 +161,8 @@ export async function DELETE(
     const supabase = createAdminSupabaseClient()
     const { id } = await params
 
-    // First delete vendor_ledger entries (if any)
-    await supabase
-      .from('vendor_ledger')
-      .delete()
-      .eq('general_ledger_id', id)
-
-    // Then delete the general ledger entry
+    // Delete the general ledger entry
+    // Note: vendor_ledger entries are automatically deleted via CASCADE foreign key
     const { error } = await supabase
       .from('general_ledger')
       .delete()

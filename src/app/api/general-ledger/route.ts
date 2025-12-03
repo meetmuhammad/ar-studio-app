@@ -119,28 +119,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // If vendor_id is provided, create corresponding vendor_ledger entry
-    // IMPORTANT: Reverse debit/credit for vendor perspective
-    // Main ledger CREDIT (payment to vendor) = Vendor ledger DEBIT (money they receive)
-    // Main ledger DEBIT = Vendor ledger CREDIT (shouldn't happen for vendors usually)
-    if (vendor_id) {
-      const { error: vendorLedgerError } = await supabase
-        .from('vendor_ledger')
-        .insert({
-          vendor_id,
-          general_ledger_id: entry.id,
-          entry_date,
-          particulars: particulars.trim(),
-          debit: credit || null,  // Reverse: main ledger credit = vendor ledger debit
-          credit: debit || null,  // Reverse: main ledger debit = vendor ledger credit
-          notes: notes?.trim() || null,
-        })
-
-      if (vendorLedgerError) {
-        console.error('Error creating vendor ledger entry:', vendorLedgerError)
-        // Don't fail the main entry creation, but log the error
-      }
-    }
+    // Note: Vendor ledger entry is automatically created by database trigger
+    // (trg_create_vendor_sub_ledger_entry) - no need to create it here
 
     return NextResponse.json(entry, { status: 201 })
   } catch (error) {

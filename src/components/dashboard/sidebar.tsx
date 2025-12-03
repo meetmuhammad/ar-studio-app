@@ -61,7 +61,7 @@ interface SidebarProps {
 
 export function Sidebar({ onLinkClick }: SidebarProps) {
   const pathname = usePathname()
-  const { user, signOut } = useAuth()
+  const { user, loading, signOut } = useAuth()
 
   const handleSignOut = async () => {
     try {
@@ -76,6 +76,11 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     onLinkClick?.()
   }
 
+  // Get filtered navigation items
+  const filteredNavigation = user?.role 
+    ? navigation.filter((item) => item.roles.includes(user.role))
+    : []
+
   return (
     <div className="flex flex-col h-full bg-card border-border">
       <div className="flex items-center justify-center h-16 px-4 bg-primary text-primary-foreground">
@@ -83,9 +88,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
       </div>
       
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-        {navigation
-          .filter((item) => user?.role && item.roles.includes(user.role))
-          .map((item) => {
+        {loading ? (
+          <div className="px-3 py-2 text-sm text-muted-foreground animate-pulse">
+            Loading navigation...
+          </div>
+        ) : (
+          filteredNavigation.map((item) => {
             const isActive = pathname === item.href || 
               (item.href !== '/' && pathname.startsWith(item.href))
             
@@ -110,7 +118,8 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
                 {item.name}
               </Link>
             )
-          })}
+          })
+        )}
       </nav>
 
       <div className="flex-shrink-0 px-4 py-4 border-t border-border space-y-3">
