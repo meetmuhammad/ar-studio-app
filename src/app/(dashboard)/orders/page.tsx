@@ -291,7 +291,7 @@ export default function OrdersPage() {
       {/* Order Details Dialog */}
       <OrderDetailsDialog
         open={detailsDialog.open}
-        onOpenChange={(open) => setDetailsDialog({ open, order: null })}
+        onOpenChange={(open) => setDetailsDialog({ open, order: open ? detailsDialog.order : null })}
         order={detailsDialog.order}
       />
 

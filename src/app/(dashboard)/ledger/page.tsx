@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, RefreshCw, Edit, Search, Download } from 'lucide-react'
+import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, RefreshCw, Edit, Search, Download, Trash2 } from 'lucide-react'
 import { RoleGuard } from '@/components/auth/role-guard'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -113,6 +113,28 @@ export default function LedgerPage() {
   const handleEdit = (entry: GeneralLedgerWithRelations) => {
     setEditingEntry(entry)
     setDialogOpen(true)
+  }
+
+  const handleDelete = async (entry: GeneralLedgerWithRelations) => {
+    if (!confirm(`Are you sure you want to delete this ledger entry? This will also delete the corresponding vendor ledger entry if any.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/general-ledger/${entry.id}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete entry')
+      }
+
+      toast.success('Ledger entry deleted successfully')
+      fetchData() // Refresh data
+    } catch (error) {
+      console.error('Error deleting ledger entry:', error)
+      toast.error('Failed to delete ledger entry')
+    }
   }
 
   const handleCloseDialog = () => {
@@ -357,13 +379,22 @@ export default function LedgerPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     {entry.entry_type !== 'order_payment' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(entry)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(entry)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(entry)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     )}
                   </TableCell>
                 </TableRow>
