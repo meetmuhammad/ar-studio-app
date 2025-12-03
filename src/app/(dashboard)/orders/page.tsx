@@ -337,7 +337,7 @@ export default function OrdersPage() {
                   <TableCell>{formatDate(order.delivery_date)}</TableCell>
                   <TableCell>{getStatusBadge(order.status)}</TableCell>
                   <TableCell className="text-right font-medium">
-                    {formatCurrency(order.total_amount)}
+                    {formatCurrency(order.total_amount || 0)}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
