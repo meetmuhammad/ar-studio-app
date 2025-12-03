@@ -14,9 +14,17 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
+import { Eye, Pencil, Trash2 } from 'lucide-react'
 
-import { DataTable } from '@/components/data-table/data-table'
-import { createOrderColumns } from '@/components/data-table/columns/order-columns'
 import { OrderDialog } from '@/components/dialogs/order-dialog'
 import { OrderDetailsDialog } from '@/components/dialogs/order-details-dialog'
 import { DeleteConfirmationDialog } from '@/components/dialogs/delete-confirmation-dialog'
@@ -29,6 +37,8 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [showDelivered, setShowDelivered] = useState<boolean>(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 20
   
   // Dialog states
   const [orderDialog, setOrderDialog] = useState<{
@@ -193,17 +203,45 @@ export default function OrdersPage() {
     setDetailsDialog({ open: true, order })
   }
 
-  const columns = createOrderColumns({
-    onView: handleView,
-    onEdit: handleEdit,
-    onDelete: handleDelete,
-    onRowClick: handleRowClick,
-  })
-
   // Filter orders based on showDelivered state
   const filteredOrders = showDelivered 
     ? orders 
     : orders.filter(order => order.status !== 'Delivered')
+
+  // Pagination
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedOrders = filteredOrders.slice(startIndex, endIndex)
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-PK', {
+      style: 'currency',
+      currency: 'PKR',
+    }).format(amount)
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  }
+
+  const getStatusBadge = (status: string) => {
+    const variants: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
+      'In Process': 'default',
+      'Delivered': 'secondary',
+      'Cancelled': 'destructive',
+    }
+    return <Badge variant={variants[status] || 'default'}>{status}</Badge>
+  }
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [statusFilter, showDelivered])
 
   if (loading) {
     return (
@@ -241,7 +279,7 @@ export default function OrdersPage() {
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <CardTitle>All Orders</CardTitle>
+            <CardTitle>All Orders ({filteredOrders.length})</CardTitle>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
               <div className="flex items-center gap-2">
                 <Switch
@@ -271,12 +309,122 @@ export default function OrdersPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <DataTable
-            columns={columns}
-            data={filteredOrders}
-            searchPlaceholder="Search by order number, customer name, or phone..."
-            onRowClick={handleRowClick}
-          />
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Order #</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Delivery Date</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Total Amount</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedOrders.map((order) => (
+                <TableRow 
+                  key={order.id} 
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => handleRowClick(order)}
+                >
+                  <TableCell className="font-medium">{order.order_number}</TableCell>
+                  <TableCell>
+                    <div>
+                      <div className="font-medium">{order.customers.name}</div>
+                      <div className="text-xs text-muted-foreground">{order.customers.phone}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell>{formatDate(order.delivery_date)}</TableCell>
+                  <TableCell>{getStatusBadge(order.status)}</TableCell>
+                  <TableCell className="text-right font-medium">
+                    {formatCurrency(order.total_amount)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleView(order)}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(order)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(order)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          {filteredOrders.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground">
+              No orders found
+            </div>
+          )}
+
+          {/* Pagination */}
+          {filteredOrders.length > 0 && (
+            <div className="flex items-center justify-between pt-4">
+              <div className="text-sm text-muted-foreground">
+                Showing {startIndex + 1} to {Math.min(endIndex, filteredOrders.length)} of {filteredOrders.length} orders
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(page => {
+                      // Show first page, last page, current page, and pages around current
+                      return page === 1 || 
+                             page === totalPages || 
+                             (page >= currentPage - 1 && page <= currentPage + 1)
+                    })
+                    .map((page, index, array) => (
+                      <div key={page} className="flex items-center">
+                        {index > 0 && array[index - 1] !== page - 1 && (
+                          <span className="px-2 text-muted-foreground">...</span>
+                        )}
+                        <Button
+                          variant={currentPage === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setCurrentPage(page)}
+                        >
+                          {page}
+                        </Button>
+                      </div>
+                    ))
+                  }
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
