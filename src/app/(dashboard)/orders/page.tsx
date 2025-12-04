@@ -23,7 +23,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Eye, Pencil, Trash2, ArrowUpAZ, ArrowDownZA } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Eye, Pencil, Trash2, ArrowUpAZ, ArrowDownZA, Search } from 'lucide-react'
 
 import { OrderDialog } from '@/components/dialogs/order-dialog'
 import { OrderDetailsDialog } from '@/components/dialogs/order-details-dialog'
@@ -38,6 +39,7 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [showDelivered, setShowDelivered] = useState<boolean>(false)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 20
   
@@ -209,6 +211,17 @@ export default function OrdersPage() {
     ? orders 
     : orders.filter(order => order.status !== 'Delivered')
 
+  // Apply search filter
+  if (searchQuery.trim()) {
+    const query = searchQuery.toLowerCase()
+    filteredOrders = filteredOrders.filter(order =>
+      order.order_number.toLowerCase().includes(query) ||
+      order.customers.name.toLowerCase().includes(query) ||
+      order.customers.phone.toLowerCase().includes(query) ||
+      order.status.toLowerCase().includes(query)
+    )
+  }
+
   // Apply sorting by delivery date (ascending or descending)
   filteredOrders = [...filteredOrders].sort((a, b) => {
     const dateA = new Date(a.delivery_date).getTime()
@@ -249,7 +262,7 @@ export default function OrdersPage() {
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [statusFilter, showDelivered, sortDirection])
+  }, [statusFilter, showDelivered, sortDirection, searchQuery])
 
   if (loading) {
     return (
@@ -282,6 +295,17 @@ export default function OrdersPage() {
           <Plus className="h-4 w-4 mr-2" />
           New Order
         </Button>
+      </div>
+
+      {/* Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by order number, customer name, or phone..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10"
+        />
       </div>
 
       <Card>

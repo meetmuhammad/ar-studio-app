@@ -161,8 +161,18 @@ export async function DELETE(
     const supabase = createAdminSupabaseClient()
     const { id } = await params
 
+    // First, explicitly delete any vendor_ledger entries linked to this general ledger entry
+    const { error: vendorLedgerError } = await supabase
+      .from('vendor_ledger')
+      .delete()
+      .eq('general_ledger_id', id)
+
+    if (vendorLedgerError) {
+      console.error('Error deleting vendor ledger entries:', vendorLedgerError)
+      // Continue anyway - the general ledger delete might still work
+    }
+
     // Delete the general ledger entry
-    // Note: vendor_ledger entries are automatically deleted via CASCADE foreign key
     const { error } = await supabase
       .from('general_ledger')
       .delete()
