@@ -13,7 +13,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
 import {
   Table,
   TableBody,
@@ -37,7 +36,6 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderWithCustomer[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [showDelivered, setShowDelivered] = useState<boolean>(false)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -206,10 +204,8 @@ export default function OrdersPage() {
     setDetailsDialog({ open: true, order })
   }
 
-  // Filter orders based on showDelivered state
-  let filteredOrders = showDelivered 
-    ? orders 
-    : orders.filter(order => order.status !== 'Delivered')
+  // API already filtered by status, just apply search filter
+  let filteredOrders = orders
 
   // Apply search filter
   if (searchQuery.trim()) {
@@ -262,7 +258,7 @@ export default function OrdersPage() {
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [statusFilter, showDelivered, sortDirection, searchQuery])
+  }, [statusFilter, sortDirection, searchQuery])
 
   if (loading) {
     return (
@@ -313,18 +309,8 @@ export default function OrdersPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <CardTitle>All Orders ({filteredOrders.length})</CardTitle>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="show-delivered"
-                  checked={showDelivered}
-                  onCheckedChange={setShowDelivered}
-                />
-                <Label htmlFor="show-delivered" className="text-sm font-normal cursor-pointer">
-                  Show Delivered
-                </Label>
-              </div>
               <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Label htmlFor="status-filter" className="text-sm font-normal whitespace-nowrap">Filter:</Label>
+                <Label htmlFor="status-filter" className="text-sm font-normal whitespace-nowrap">Status:</Label>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger id="status-filter" className="w-full sm:w-[180px]">
                     <SelectValue placeholder="All Orders" />
