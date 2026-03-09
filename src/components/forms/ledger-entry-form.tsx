@@ -88,7 +88,7 @@ export function LedgerEntryForm({ entry, onSubmit, onCancel }: LedgerEntryFormPr
       particulars: entry?.particulars || "",
       amount: entry ? String(entry.debit || entry.credit || "") : "",
       transaction_type: entry?.debit ? "debit" : "credit",
-      entry_type: entry?.entry_type || "miscellaneous",
+      entry_type: entry?.entry_type || "vendor_payment",
       vendor_id: entry?.vendor_id || "",
       notes: entry?.notes || "",
     },
