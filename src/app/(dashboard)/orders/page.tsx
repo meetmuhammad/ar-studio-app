@@ -35,7 +35,7 @@ import type { OrderWithCustomer } from '@/lib/supabase-client'
 export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderWithCustomer[]>([])
   const [loading, setLoading] = useState(true)
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<string>('In Process')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
