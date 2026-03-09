@@ -27,6 +27,7 @@ import type { OrderWithCustomer } from "@/lib/supabase-client"
 import { Measurement } from "@/types/measurements"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
+import { MeasurementSelectDialog } from "@/components/dialogs/measurement-select-dialog"
 
 interface Payment {
   id: string
@@ -53,15 +54,18 @@ export function OrderDetailsDialog({
   const [payments, setPayments] = useState<Payment[]>([])
   const [loadingPayments, setLoadingPayments] = useState(false)
   const [measurement, setMeasurement] = useState<Measurement | null>(null)
+  const [measurements, setMeasurements] = useState<Measurement[]>([])
   const [loadingMeasurement, setLoadingMeasurement] = useState(false)
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
   const [editAmount, setEditAmount] = useState<string>("")
   const [isSaving, setIsSaving] = useState(false)
+  const [measurementSelectOpen, setMeasurementSelectOpen] = useState(false)
 
   // Fetch payments and measurements when dialog opens and order changes
   useEffect(() => {
     if (open && order) {
       fetchPayments(order.id)
+      fetchAllMeasurements(order.customer_id)
       if (order.measurement_id) {
         fetchMeasurement(order.measurement_id)
       }
@@ -102,6 +106,19 @@ export function OrderDetailsDialog({
       setMeasurement(null)
     } finally {
       setLoadingMeasurement(false)
+    }
+  }
+
+  const fetchAllMeasurements = async (customerId: string) => {
+    try {
+      const response = await fetch(`/api/measurements?customer_id=${customerId}`)
+      if (!response.ok) throw new Error('Failed to fetch measurements')
+      
+      const data = await response.json()
+      setMeasurements(data.measurements || [])
+    } catch (error) {
+      console.error('Error fetching measurements:', error)
+      setMeasurements([])
     }
   }
 
@@ -190,15 +207,14 @@ export function OrderDetailsDialog({
                 <Printer className="h-4 w-4 mr-2" />
                 Print Receipt
               </Button>
-              {hasMeasurements && measurement && (
+              {measurements.length > 0 && (
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  onClick={() => openMeasurementPrintPreview({ order, measurement })}
-                  disabled={loadingMeasurement}
+                  onClick={() => setMeasurementSelectOpen(true)}
                 >
                   <FileText className="h-4 w-4 mr-2" />
-                  Print Measurement
+                  Print Measurement{measurements.length > 1 && ` (${measurements.length})`}
                 </Button>
               )}
             </div>
@@ -574,6 +590,14 @@ export function OrderDetailsDialog({
           )}
         </div>
       </DialogContent>
+      
+      {/* Measurement Selection Dialog */}
+      <MeasurementSelectDialog
+        open={measurementSelectOpen}
+        onOpenChange={setMeasurementSelectOpen}
+        measurements={measurements}
+        order={order}
+      />
     </Dialog>
   )
 }
