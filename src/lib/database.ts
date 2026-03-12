@@ -283,6 +283,9 @@ export async function getAllOrdersSimple(): Promise<any[]> {
       id,
       order_number,
       customer_id,
+      booking_date,
+      total_amount,
+      advance_paid,
       created_at,
       customers (
         id,
