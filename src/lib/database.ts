@@ -274,6 +274,32 @@ export async function getOrders({
   }
 }
 
+export async function getAllOrdersSimple(): Promise<OrderWithCustomer[]> {
+  const supabase = createAdminSupabaseClient()
+  
+  const { data, error } = await supabase
+    .from('orders')
+    .select(`
+      id,
+      order_number,
+      customer_id,
+      created_at,
+      customers (
+        id,
+        name,
+        phone
+      )
+    `)
+    .order('created_at', { ascending: false })
+    .limit(1000)
+
+  if (error) {
+    throw new Error(`Failed to fetch orders: ${error.message}`)
+  }
+
+  return data || []
+}
+
 export async function getOrder(id: string): Promise<OrderWithCustomer | null> {
   const supabase = createAdminSupabaseClient()
   

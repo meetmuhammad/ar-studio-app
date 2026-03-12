@@ -118,11 +118,18 @@ export function PaymentDialog({
   const fetchOrders = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/orders?pageSize=1000')
+      const response = await fetch('/api/orders/all')
       if (!response.ok) throw new Error('Failed to fetch orders')
       
       const data = await response.json()
-      setOrders(data.data || [])
+      const fetchedOrders = data.data || []
+      
+      // Sort orders by created_at descending (newest first) so recent orders appear at top
+      const sortedOrders = [...fetchedOrders].sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+      
+      setOrders(sortedOrders)
     } catch (error) {
       console.error('Error fetching orders:', error)
       toast.error('Failed to load orders')
