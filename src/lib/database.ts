@@ -274,7 +274,7 @@ export async function getOrders({
   }
 }
 
-export async function getAllOrdersSimple(): Promise<OrderWithCustomer[]> {
+export async function getAllOrdersSimple(): Promise<any[]> {
   const supabase = createAdminSupabaseClient()
   
   const { data, error } = await supabase
