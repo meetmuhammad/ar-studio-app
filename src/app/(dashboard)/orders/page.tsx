@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
@@ -39,7 +39,6 @@ export default function OrdersPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 20
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null)
   
   // React Query hooks
   const { data: ordersData, isLoading: loading, refetch: fetchOrders } = useOrders({
@@ -73,14 +72,10 @@ export default function OrdersPage() {
     order?: OrderWithCustomer | null
   }>({ open: false, order: null })
 
-  // Debounce search input
-  const handleSearchChange = (value: string) => {
-    setSearchQuery(value)
-    if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    debounceTimer.current = setTimeout(() => {
-      setDebouncedSearch(value)
-      setCurrentPage(1)
-    }, 300)
+  // Search on Enter key press
+  const handleSearchSubmit = () => {
+    setDebouncedSearch(searchQuery)
+    setCurrentPage(1)
   }
 
   // Listen for order creation events from header
@@ -194,9 +189,10 @@ export default function OrdersPage() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search by order number, customer name, or phone..."
+          placeholder="Search by order number, customer name, or phone... (press Enter)"
           value={searchQuery}
-          onChange={(e) => handleSearchChange(e.target.value)}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit()}
           className="pl-10"
         />
       </div>

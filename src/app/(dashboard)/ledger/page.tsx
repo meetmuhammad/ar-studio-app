@@ -190,18 +190,6 @@ export default function LedgerPage() {
         <div className="flex gap-2">
           <Button
             variant="outline"
-            onClick={syncOrderPayments}
-            disabled={isSyncing}
-          >
-            {isSyncing ? (
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
-            Sync Order Payments
-          </Button>
-          <Button
-            variant="outline"
             onClick={exportToCSV}
             disabled={entries.length === 0}
           >
