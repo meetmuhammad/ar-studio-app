@@ -72,9 +72,10 @@ export default function OrdersPage() {
     order?: OrderWithCustomer | null
   }>({ open: false, order: null })
 
-  // Search on Enter key press
+  // Search on Enter key press — search across all statuses
   const handleSearchSubmit = () => {
     setDebouncedSearch(searchQuery)
+    if (searchQuery.trim()) setStatusFilter('all')
     setCurrentPage(1)
   }
 
