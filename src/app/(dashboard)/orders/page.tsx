@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { useDebouncedCallback } from 'use-debounce'
+import { useOrders, useCreateOrder, useUpdateOrder, useDeleteOrder } from '@/hooks/use-api'
 import {
   Select,
   SelectContent,
@@ -33,13 +33,29 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { OrderWithCustomer } from '@/lib/supabase-client'
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<OrderWithCustomer[]>([])
-  const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('In Process')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 20
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null)
+  
+  // React Query hooks
+  const { data: ordersData, isLoading: loading, refetch: fetchOrders } = useOrders({
+    page: currentPage,
+    pageSize: itemsPerPage,
+    status: statusFilter,
+    q: debouncedSearch,
+    sortDir: sortDirection,
+  })
+  const createOrder = useCreateOrder()
+  const updateOrder = useUpdateOrder()
+  const deleteOrder = useDeleteOrder()
+  
+  const orders = ordersData?.data || []
+  const totalOrders = ordersData?.pagination?.total || 0
+  const totalPages = ordersData?.pagination?.pages || 1
   
   // Dialog states
   const [orderDialog, setOrderDialog] = useState<{
@@ -57,134 +73,38 @@ export default function OrdersPage() {
     order?: OrderWithCustomer | null
   }>({ open: false, order: null })
 
-  // Fetch orders from API
-  const fetchOrders = useCallback(async () => {
-    try {
-      const statusParam = statusFilter !== 'all' ? `&status=${encodeURIComponent(statusFilter)}` : ''
-      const response = await fetch(`/api/orders?pageSize=1000${statusParam}`) // Get all orders
-      if (!response.ok) {
-        throw new Error('Failed to fetch orders')
-      }
-      
-      const data = await response.json()
-      const fetchedOrders = data.data || []
-      
-      // Sort orders: upcoming delivery dates first (today onwards), then past dates
-      const today = new Date()
-      today.setHours(0, 0, 0, 0) // Start of today
-      
-      const sortedOrders = fetchedOrders.sort((a: OrderWithCustomer, b: OrderWithCustomer) => {
-        const dateA = new Date(a.delivery_date)
-        const dateB = new Date(b.delivery_date)
-        dateA.setHours(0, 0, 0, 0)
-        dateB.setHours(0, 0, 0, 0)
-        
-        const isAUpcoming = dateA >= today
-        const isBUpcoming = dateB >= today
-        
-        // Both upcoming or both past - sort by date ascending
-        if (isAUpcoming === isBUpcoming) {
-          return dateA.getTime() - dateB.getTime()
-        }
-        
-        // Upcoming orders come first
-        return isAUpcoming ? -1 : 1
-      })
-      
-      setOrders(sortedOrders)
-    } catch (error) {
-      console.error('Error fetching orders:', error)
-      toast.error('Failed to load orders')
-    } finally {
-      setLoading(false)
-    }
-  }, [statusFilter])
+  // Debounce search input
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value)
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    debounceTimer.current = setTimeout(() => {
+      setDebouncedSearch(value)
+      setCurrentPage(1)
+    }, 300)
+  }
 
-  // Initial load
+  // Listen for order creation events from header
   useEffect(() => {
-    fetchOrders()
-
-    // Listen for order creation events from header
-    const handleOrderCreated = () => {
-      fetchOrders()
-    }
-
+    const handleOrderCreated = () => fetchOrders()
     window.addEventListener('orderCreated', handleOrderCreated)
-    
-    return () => {
-      window.removeEventListener('orderCreated', handleOrderCreated)
-    }
+    return () => window.removeEventListener('orderCreated', handleOrderCreated)
   }, [fetchOrders])
 
   // Handle create order
   const handleCreateOrder = async (data: CreateOrderInput) => {
-    try {
-      const response = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create order')
-      }
-
-      toast.success('Order created successfully')
-      fetchOrders()
-    } catch (error) {
-      console.error('Error creating order:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to create order')
-      throw error
-    }
+    await createOrder.mutateAsync(data)
   }
 
   // Handle update order
   const handleUpdateOrder = async (data: CreateOrderInput) => {
     if (!orderDialog.order) return
-
-    try {
-      const response = await fetch(`/api/orders/${orderDialog.order.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to update order')
-      }
-
-      toast.success('Order updated successfully')
-      fetchOrders()
-    } catch (error) {
-      console.error('Error updating order:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to update order')
-      throw error
-    }
+    await updateOrder.mutateAsync({ id: orderDialog.order.id, data })
   }
 
   // Handle delete order
   const handleDeleteOrder = async () => {
     if (!deleteDialog.order) return
-
-    try {
-      const response = await fetch(`/api/orders/${deleteDialog.order.id}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to delete order')
-      }
-
-      toast.success('Order deleted successfully')
-      fetchOrders()
-    } catch (error) {
-      console.error('Error deleting order:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to delete order')
-      throw error
-    }
+    await deleteOrder.mutateAsync(deleteDialog.order.id)
   }
 
   // Column actions
@@ -204,32 +124,9 @@ export default function OrdersPage() {
     setDetailsDialog({ open: true, order })
   }
 
-  // API already filtered by status, just apply search filter
-  let filteredOrders = orders
-
-  // Apply search filter
-  if (searchQuery.trim()) {
-    const query = searchQuery.toLowerCase()
-    filteredOrders = filteredOrders.filter(order =>
-      order.order_number.toLowerCase().includes(query) ||
-      order.customers.name.toLowerCase().includes(query) ||
-      order.customers.phone.toLowerCase().includes(query) ||
-      order.status.toLowerCase().includes(query)
-    )
-  }
-
-  // Apply sorting by delivery date (ascending or descending)
-  filteredOrders = [...filteredOrders].sort((a, b) => {
-    const dateA = new Date(a.delivery_date).getTime()
-    const dateB = new Date(b.delivery_date).getTime()
-    return sortDirection === 'asc' ? dateA - dateB : dateB - dateA
-  })
-
-  // Pagination
-  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage)
+  // Server handles pagination, filtering, and sorting — just use orders directly
   const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-  const paginatedOrders = filteredOrders.slice(startIndex, endIndex)
+  const endIndex = Math.min(startIndex + orders.length, startIndex + itemsPerPage)
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-PK', {
@@ -255,12 +152,12 @@ export default function OrdersPage() {
     return <Badge variant={variants[status] || 'default'}>{status}</Badge>
   }
 
-  // Reset to first page when filters change
+  // Reset to first page when status or sort change (search is handled in debounce)
   useEffect(() => {
     setCurrentPage(1)
-  }, [statusFilter, sortDirection, searchQuery])
+  }, [statusFilter, sortDirection])
 
-  if (loading) {
+  if (loading && orders.length === 0) {
     return (
       <div className="space-y-4 sm:space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -299,7 +196,7 @@ export default function OrdersPage() {
         <Input
           placeholder="Search by order number, customer name, or phone..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => handleSearchChange(e.target.value)}
           className="pl-10"
         />
       </div>
@@ -307,7 +204,7 @@ export default function OrdersPage() {
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <CardTitle>All Orders ({filteredOrders.length})</CardTitle>
+            <CardTitle>All Orders ({totalOrders})</CardTitle>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <Label htmlFor="status-filter" className="text-sm font-normal whitespace-nowrap">Status:</Label>
@@ -361,7 +258,7 @@ export default function OrdersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedOrders.map((order) => (
+              {orders.map((order) => (
                 <TableRow 
                   key={order.id} 
                   className="cursor-pointer hover:bg-muted/50"
@@ -409,17 +306,17 @@ export default function OrdersPage() {
             </TableBody>
           </Table>
 
-          {filteredOrders.length === 0 && (
+          {orders.length === 0 && !loading && (
             <div className="text-center py-12 text-muted-foreground">
               No orders found
             </div>
           )}
 
           {/* Pagination */}
-          {filteredOrders.length > 0 && (
+          {totalOrders > 0 && (
             <div className="flex items-center justify-between pt-4">
               <div className="text-sm text-muted-foreground">
-                Showing {startIndex + 1} to {Math.min(endIndex, filteredOrders.length)} of {filteredOrders.length} orders
+                Showing {startIndex + 1} to {Math.min(endIndex, totalOrders)} of {totalOrders} orders
               </div>
               <div className="flex gap-2">
                 <Button

@@ -69,26 +69,23 @@ export async function getCustomers({
     throw new Error(`Failed to fetch customers: ${error.message}`)
   }
 
-  // Get order counts for each customer in a single optimized query
+  // Get order counts using head-only count queries (no data transferred)
   if (customers && customers.length > 0) {
     const customerIds = customers.map(c => c.id)
     
-    // Get all order counts in one query
-    const { data: orderCounts } = await supabase
-      .from('orders')
-      .select('customer_id')
-      .in('customer_id', customerIds)
-    
-    // Count orders per customer
-    const orderCountMap: Record<string, number> = {}
-    orderCounts?.forEach(order => {
-      orderCountMap[order.customer_id] = (orderCountMap[order.customer_id] || 0) + 1
-    })
+    // Batch count queries — one per customer on the page (max ~10-20)
+    const countPromises = customerIds.map(id =>
+      supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('customer_id', id)
+    )
+    const countResults = await Promise.all(countPromises)
     
     // Add order counts to customers
-    const customersWithOrderCounts = customers.map(customer => ({
+    const customersWithOrderCounts = customers.map((customer, i) => ({
       ...customer,
-      orders: { count: orderCountMap[customer.id] || 0 }
+      orders: { count: countResults[i].count || 0 }
     }))
     
     return {
@@ -216,7 +213,21 @@ export async function getOrders({
   let query = supabase
     .from('orders')
     .select(`
-      *,
+      id,
+      order_number,
+      customer_id,
+      booking_date,
+      delivery_date,
+      status,
+      comments,
+      total_amount,
+      advance_paid,
+      balance,
+      payment_method,
+      measurement_id,
+      fitting_preferences,
+      created_at,
+      updated_at,
       customers (
         id,
         name,

@@ -1,6 +1,5 @@
 "use client"
 
-import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
@@ -18,152 +17,11 @@ import {
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { RoleGuard } from '@/components/auth/role-guard'
-import type { Customer, OrderWithCustomer } from '@/lib/supabase-client'
+import { useDashboardStats } from '@/hooks/use-api'
 
-interface DashboardStats {
-  totalCustomers: number
-  totalOrders: number
-  totalRevenue: number
-  totalAdvances: number
-  totalBalance: number
-  recentOrdersCount: number
-  chartData: Array<{ month: string; revenue: number }>
-}
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null)
-  const [upcomingOrders, setUpcomingOrders] = useState<OrderWithCustomer[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        // Fetch customers, orders, and ledger data in parallel
-        const [customersResponse, ordersResponse, ledgerResponse, ledgerStatsResponse] = await Promise.all([
-          fetch('/api/customers?pageSize=1000'),
-          fetch('/api/orders?pageSize=1000'),
-          fetch('/api/general-ledger'),
-          fetch('/api/general-ledger/stats')
-        ])
-
-        if (!customersResponse.ok || !ordersResponse.ok || !ledgerResponse.ok || !ledgerStatsResponse.ok) {
-          throw new Error('Failed to fetch data')
-        }
-
-        const customersData = await customersResponse.json()
-        const ordersData = await ordersResponse.json()
-        const ledgerEntries = await ledgerResponse.json()
-        const ledgerStats = await ledgerStatsResponse.json()
-        
-        const customers: Customer[] = customersData.data || []
-        const orders: OrderWithCustomer[] = ordersData.data || []
-
-        // Get upcoming deliveries (next 5 orders from today onwards)
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        
-        const upcoming = orders
-          .filter(order => {
-            const deliveryDate = new Date(order.delivery_date)
-            deliveryDate.setHours(0, 0, 0, 0)
-            return deliveryDate >= today && order.status !== 'Cancelled'
-          })
-          .sort((a, b) => {
-            const dateA = new Date(a.delivery_date)
-            const dateB = new Date(b.delivery_date)
-            return dateA.getTime() - dateB.getTime()
-          })
-          .slice(0, 5)
-        
-        setUpcomingOrders(upcoming)
-
-        // Calculate stats
-        const totalCustomers = customers.length
-        const totalOrders = orders.length
-        
-        // Use ledger stats for accurate financial data
-        // Total Revenue = expected revenue from orders (total_amount)
-        const totalRevenue = orders.reduce((sum, order) => {
-          return sum + (order.total_amount || 0)
-        }, 0)
-        
-        // Total Received = actual money received from ledger (order_payment entries only)
-        const totalReceived = ledgerStats.currentBalance || 0
-        
-        // Outstanding Balance = Total Revenue - Total Received
-        const totalBalance = totalRevenue - totalReceived
-        
-        // Count recent orders (this month)
-        const now = new Date()
-        const thisMonth = now.getMonth()
-        const thisYear = now.getFullYear()
-        
-        const recentOrdersCount = orders.filter(order => {
-          const orderDate = new Date(order.created_at)
-          return orderDate.getMonth() === thisMonth && orderDate.getFullYear() === thisYear
-        }).length
-        
-        // Generate chart data from ledger entries (actual received payments)
-        const chartData = generateChartDataFromLedger(ledgerEntries)
-        
-        setStats({
-          totalCustomers,
-          totalOrders,
-          totalRevenue,
-          totalAdvances: totalReceived, // Show total received instead of advances
-          totalBalance,
-          recentOrdersCount,
-          chartData
-        })
-      } catch (error) {
-        console.error('Failed to fetch dashboard stats:', error)
-        
-        // Fallback data
-        setStats({
-          totalCustomers: 0,
-          totalOrders: 0,
-          totalRevenue: 0,
-          totalAdvances: 0,
-          totalBalance: 0,
-          recentOrdersCount: 0,
-          chartData: []
-        })
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchStats()
-  }, [])
-  
-  // Generate chart data for revenue over last 6 months from ledger (actual received)
-  const generateChartDataFromLedger = (ledgerEntries: any[]) => {
-    const now = new Date()
-    const chartData: Array<{ month: string; revenue: number }> = []
-    
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      const monthName = date.toLocaleDateString('en-US', { month: 'short' })
-      
-      const monthRevenue = ledgerEntries
-        .filter(entry => {
-          // Only count order_payment entries (actual revenue)
-          if (entry.entry_type !== 'order_payment') return false
-          
-          const entryDate = new Date(entry.entry_date)
-          return entryDate.getMonth() === date.getMonth() && 
-                 entryDate.getFullYear() === date.getFullYear()
-        })
-        .reduce((sum, entry) => sum + (entry.debit || 0), 0)
-      
-      chartData.push({
-        month: monthName,
-        revenue: monthRevenue
-      })
-    }
-    
-    return chartData
-  }
+  const { data: stats, isLoading: loading } = useDashboardStats()
 
   const formatCurrency = (amount: number) => {
     return `PKR ${new Intl.NumberFormat('en-US', {
@@ -297,10 +155,10 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-xl sm:text-2xl font-bold text-orange-600">
-              {formatCurrency(stats?.totalBalance || 0)}
+              {formatCurrency(stats?.outstandingBalance || 0)}
             </div>
             <p className="text-xs text-muted-foreground">
-              {formatCurrency(stats?.totalAdvances || 0)} received in advance
+              {formatCurrency(stats?.totalReceived || 0)} received
             </p>
           </CardContent>
         </Card>
@@ -384,14 +242,14 @@ export default function DashboardPage() {
             </p>
           </CardHeader>
           <CardContent>
-            {upcomingOrders.length === 0 ? (
+            {(!stats?.upcomingOrders || stats.upcomingOrders.length === 0) ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Calendar className="h-12 w-12 mx-auto mb-2 opacity-50" />
                 <p className="text-sm">No upcoming deliveries</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {upcomingOrders.map((order) => {
+                {stats.upcomingOrders.map((order) => {
                   const deliveryDate = new Date(order.delivery_date)
                   const today = new Date()
                   today.setHours(0, 0, 0, 0)

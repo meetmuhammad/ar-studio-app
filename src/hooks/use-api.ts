@@ -10,17 +10,66 @@ import type {
 import { toast } from 'sonner'
 
 // =============================================================================
+// DASHBOARD
+// =============================================================================
+
+interface DashboardStatsResponse {
+  totalCustomers: number
+  totalOrders: number
+  totalRevenue: number
+  totalReceived: number
+  outstandingBalance: number
+  recentOrdersCount: number
+  upcomingOrders: Array<{
+    id: string
+    order_number: string
+    delivery_date: string
+    status: string
+    customers: { name: string; phone: string }
+  }>
+  chartData: Array<{ month: string; revenue: number }>
+}
+
+export function useDashboardStats() {
+  return useQuery({
+    queryKey: queryKeys.dashboard.stats,
+    queryFn: async () => {
+      const response = await fetch('/api/dashboard-stats')
+      if (!response.ok) throw new Error('Failed to fetch dashboard stats')
+      return response.json() as Promise<DashboardStatsResponse>
+    },
+  })
+}
+
+// =============================================================================
 // CUSTOMERS
 // =============================================================================
 
-export function useCustomers(pageSize = 1000) {
+interface CustomerQueryParams {
+  page?: number
+  pageSize?: number
+  q?: string
+}
+
+interface PaginatedResponse<T> {
+  data: T[]
+  pagination: { page: number; pageSize: number; total: number; pages: number }
+}
+
+export function useCustomers(params: CustomerQueryParams = {}) {
+  const { page = 1, pageSize = 20, q } = params
   return useQuery({
-    queryKey: queryKeys.customers.list(pageSize),
+    queryKey: queryKeys.customers.list({ page, pageSize, q }),
     queryFn: async () => {
-      const response = await fetch(`/api/customers?pageSize=${pageSize}`)
+      const searchParams = new URLSearchParams({
+        page: page.toString(),
+        pageSize: pageSize.toString(),
+      })
+      if (q?.trim()) searchParams.set('q', q.trim())
+      
+      const response = await fetch(`/api/customers?${searchParams}`)
       if (!response.ok) throw new Error('Failed to fetch customers')
-      const data = await response.json()
-      return data.data as Customer[]
+      return response.json() as Promise<PaginatedResponse<Customer>>
     },
   })
 }
@@ -121,35 +170,32 @@ export function useDeleteCustomer() {
 // ORDERS
 // =============================================================================
 
-export function useOrders(status?: string, pageSize = 1000) {
+interface OrderQueryParams {
+  page?: number
+  pageSize?: number
+  status?: string
+  q?: string
+  sortBy?: string
+  sortDir?: 'asc' | 'desc'
+}
+
+export function useOrders(params: OrderQueryParams = {}) {
+  const { page = 1, pageSize = 20, status, q, sortBy = 'delivery_date', sortDir = 'asc' } = params
   return useQuery({
-    queryKey: queryKeys.orders.list(status, pageSize),
+    queryKey: queryKeys.orders.list({ page, pageSize, status, q, sortDir }),
     queryFn: async () => {
-      const statusParam = status && status !== 'all' ? `&status=${encodeURIComponent(status)}` : ''
-      const response = await fetch(`/api/orders?pageSize=${pageSize}${statusParam}`)
+      const searchParams = new URLSearchParams({
+        page: page.toString(),
+        pageSize: pageSize.toString(),
+        sortBy,
+        sortDir,
+      })
+      if (status && status !== 'all') searchParams.set('status', status)
+      if (q?.trim()) searchParams.set('q', q.trim())
+      
+      const response = await fetch(`/api/orders?${searchParams}`)
       if (!response.ok) throw new Error('Failed to fetch orders')
-      const data = await response.json()
-      
-      // Sort orders: upcoming delivery dates first
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      
-      const orders = data.data || []
-      return orders.sort((a: OrderWithCustomer, b: OrderWithCustomer) => {
-        const dateA = new Date(a.delivery_date)
-        const dateB = new Date(b.delivery_date)
-        dateA.setHours(0, 0, 0, 0)
-        dateB.setHours(0, 0, 0, 0)
-        
-        const isAUpcoming = dateA >= today
-        const isBUpcoming = dateB >= today
-        
-        if (isAUpcoming === isBUpcoming) {
-          return dateA.getTime() - dateB.getTime()
-        }
-        
-        return isAUpcoming ? -1 : 1
-      }) as OrderWithCustomer[]
+      return response.json() as Promise<PaginatedResponse<OrderWithCustomer>>
     },
   })
 }
@@ -237,13 +283,30 @@ export function useDeleteOrder() {
 // LEDGER
 // =============================================================================
 
-export function useLedgerEntries() {
+interface LedgerQueryParams {
+  page?: number
+  pageSize?: number
+  search?: string
+  startDate?: string
+  endDate?: string
+}
+
+export function useLedgerEntries(params: LedgerQueryParams = {}) {
+  const { page = 1, pageSize = 20, search, startDate, endDate } = params
   return useQuery({
-    queryKey: queryKeys.ledger.entries,
+    queryKey: queryKeys.ledger.entries({ page, pageSize, search, startDate, endDate }),
     queryFn: async () => {
-      const response = await fetch('/api/general-ledger')
+      const searchParams = new URLSearchParams({
+        page: page.toString(),
+        pageSize: pageSize.toString(),
+      })
+      if (search?.trim()) searchParams.set('search', search.trim())
+      if (startDate) searchParams.set('start_date', startDate)
+      if (endDate) searchParams.set('end_date', endDate)
+      
+      const response = await fetch(`/api/general-ledger?${searchParams}`)
       if (!response.ok) throw new Error('Failed to fetch ledger entries')
-      return response.json() as Promise<GeneralLedgerWithRelations[]>
+      return response.json() as Promise<{ data: GeneralLedgerWithRelations[]; pagination: { page: number; pageSize: number; total: number; pages: number } }>
     },
   })
 }

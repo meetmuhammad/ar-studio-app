@@ -3,11 +3,11 @@ import { QueryClient } from '@tanstack/react-query'
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Cache data for 5 minutes (adjust based on your needs)
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      // Cache data for 2 minutes by default (orders, ledger change frequently)
+      staleTime: 2 * 60 * 1000, // 2 minutes
       
-      // Keep unused data in cache for 10 minutes
-      gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
+      // Keep unused data in cache for 5 minutes
+      gcTime: 5 * 60 * 1000, // 5 minutes (formerly cacheTime)
       
       // Refetch on window focus (when user comes back to tab)
       refetchOnWindowFocus: true,
@@ -15,8 +15,8 @@ export const queryClient = new QueryClient({
       // Refetch on network reconnect
       refetchOnReconnect: true,
       
-      // Don't refetch on mount if data is fresh
-      refetchOnMount: false,
+      // Always refetch when navigating to a page so data is fresh
+      refetchOnMount: true,
       
       // Retry failed requests
       retry: 1,
@@ -33,15 +33,19 @@ export const queryClient = new QueryClient({
 
 // Query keys for type safety and consistency
 export const queryKeys = {
+  dashboard: {
+    stats: ['dashboard', 'stats'] as const,
+  },
   customers: {
     all: ['customers'] as const,
-    list: (pageSize?: number) => ['customers', 'list', { pageSize }] as const,
+    list: (params?: { page?: number; pageSize?: number; q?: string }) => 
+      ['customers', 'list', params] as const,
     detail: (id: string) => ['customers', 'detail', id] as const,
   },
   orders: {
     all: ['orders'] as const,
-    list: (status?: string, pageSize?: number) => 
-      ['orders', 'list', { status, pageSize }] as const,
+    list: (params?: { page?: number; pageSize?: number; status?: string; q?: string; sortDir?: string }) => 
+      ['orders', 'list', params] as const,
     detail: (id: string) => ['orders', 'detail', id] as const,
   },
   measurements: {
@@ -56,7 +60,8 @@ export const queryKeys = {
   },
   ledger: {
     all: ['ledger'] as const,
-    entries: ['ledger', 'entries'] as const,
+    entries: (params?: { page?: number; pageSize?: number; search?: string; startDate?: string; endDate?: string }) => 
+      ['ledger', 'entries', params] as const,
     stats: ['ledger', 'stats'] as const,
   },
   vendors: {

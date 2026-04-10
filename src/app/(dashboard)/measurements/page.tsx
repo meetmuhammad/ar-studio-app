@@ -35,11 +35,15 @@ export default function MeasurementsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedMeasurement, setSelectedMeasurement] = useState<Measurement | null>(null);
 
-  // Fetch measurements
+  // Fetch measurements with server-side pagination
   const fetchMeasurements = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/measurements?pageSize=1000'); // Get all measurements
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '100', // Measurements are lightweight, 100 per page is fine
+      });
+      const response = await fetch(`/api/measurements?${params}`);
       if (!response.ok) throw new Error("Failed to fetch measurements");
       
       const data = await response.json();
@@ -52,7 +56,7 @@ export default function MeasurementsPage() {
     }
   };
 
-  // Fetch customers for the form
+  // Fetch customers for the form (only id, name, phone needed)
   const fetchCustomers = async () => {
     try {
       const response = await fetch("/api/customers?pageSize=1000");

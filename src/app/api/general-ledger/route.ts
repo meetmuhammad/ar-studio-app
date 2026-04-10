@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 
-// GET /api/general-ledger - List entries with filters
+// GET /api/general-ledger - List entries with filters and pagination
 export async function GET(request: Request) {
   try {
     const supabase = createAdminSupabaseClient()
@@ -11,6 +11,9 @@ export async function GET(request: Request) {
     const endDate = searchParams.get('end_date')
     const entryType = searchParams.get('entry_type')
     const vendorId = searchParams.get('vendor_id')
+    const search = searchParams.get('search')
+    const page = parseInt(searchParams.get('page') || '0') // 0 = no pagination (legacy)
+    const pageSize = parseInt(searchParams.get('pageSize') || '20')
 
     let query = supabase
       .from('general_ledger')
@@ -19,7 +22,7 @@ export async function GET(request: Request) {
         vendors (id, name),
         orders (id, order_number),
         vendor_tags (id, tag_name)
-      `)
+      `, { count: 'exact' })
       .order('entry_date', { ascending: false })
       .order('created_at', { ascending: false })
 
@@ -35,8 +38,17 @@ export async function GET(request: Request) {
     if (vendorId) {
       query = query.eq('vendor_id', vendorId)
     }
+    if (search) {
+      query = query.ilike('particulars', `%${search}%`)
+    }
 
-    const { data: entries, error } = await query
+    // Apply pagination if page > 0
+    if (page > 0) {
+      const offset = (page - 1) * pageSize
+      query = query.range(offset, offset + pageSize - 1)
+    }
+
+    const { data: entries, error, count } = await query
 
     if (error) {
       console.error('Error fetching ledger entries:', error)
@@ -46,6 +58,20 @@ export async function GET(request: Request) {
       )
     }
 
+    // If paginated, return with pagination info
+    if (page > 0) {
+      return NextResponse.json({
+        data: entries,
+        pagination: {
+          page,
+          pageSize,
+          total: count || 0,
+          pages: Math.ceil((count || 0) / pageSize),
+        }
+      })
+    }
+
+    // Legacy: return flat array for backward compatibility (dashboard-stats, etc.)
     return NextResponse.json(entries)
   } catch (error) {
     console.error('Error in GET /api/general-ledger:', error)

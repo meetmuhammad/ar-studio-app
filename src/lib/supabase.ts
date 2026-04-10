@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -37,16 +37,21 @@ export function createBrowserSupabaseClient() {
 }
 
 // Admin (service role) Supabase client for server-side-only usage (API routes)
-export function createAdminSupabaseClient() {
+// Cached as singleton to avoid creating a new client on every request
+let _adminClient: SupabaseClient | null = null
+
+export function createAdminSupabaseClient(): SupabaseClient {
+  if (_adminClient) return _adminClient
   if (!supabaseServiceRoleKey) {
     throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set')
   }
-  return createClient(supabaseUrl, supabaseServiceRoleKey, {
+  _adminClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
     },
   })
+  return _adminClient
 }
 
 // Database types

@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useRef } from "react"
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { useDebouncedCallback } from 'use-debounce'
+import { useCustomers, useCreateCustomer, useUpdateCustomer, useDeleteCustomer } from '@/hooks/use-api'
 
 import { DataTable } from '@/components/data-table/data-table'
 import { createCustomerColumns } from '@/components/data-table/columns/customer-columns'
@@ -20,8 +20,25 @@ interface CustomerWithOrderCount extends Customer {
 }
 
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState<CustomerWithOrderCount[]>([])
-  const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null)
+  const pageSize = 20
+  
+  // React Query hooks
+  const { data: customersData, isLoading: loading } = useCustomers({
+    page: currentPage,
+    pageSize,
+    q: debouncedSearch,
+  })
+  const createCustomerMutation = useCreateCustomer()
+  const updateCustomerMutation = useUpdateCustomer()
+  const deleteCustomerMutation = useDeleteCustomer()
+  
+  const customers = (customersData?.data || []) as CustomerWithOrderCount[]
+  const totalCustomers = customersData?.pagination?.total || 0
+  const totalPages = customersData?.pagination?.pages || 1
   
   // Dialog states
   const [customerDialog, setCustomerDialog] = useState<{
@@ -39,98 +56,31 @@ export default function CustomersPage() {
     customer?: CustomerWithOrderCount | null
   }>({ open: false, customer: null })
 
-  // Fetch customers from API
-  const fetchCustomers = useCallback(async () => {
-    try {
-      const response = await fetch('/api/customers?pageSize=1000') // Get all customers
-      if (!response.ok) {
-        throw new Error('Failed to fetch customers')
-      }
-      
-      const data = await response.json()
-      setCustomers(data.data || [])
-    } catch (error) {
-      console.error('Error fetching customers:', error)
-      toast.error('Failed to load customers')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  // Initial load
-  useEffect(() => {
-    fetchCustomers()
-  }, [])
+  // Debounce search input
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value)
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    debounceTimer.current = setTimeout(() => {
+      setDebouncedSearch(value)
+      setCurrentPage(1)
+    }, 300)
+  }
 
   // Handle create customer
   const handleCreateCustomer = async (data: CreateCustomerInput) => {
-    try {
-      const response = await fetch('/api/customers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create customer')
-      }
-
-      toast.success('Customer created successfully')
-      fetchCustomers()
-    } catch (error) {
-      console.error('Error creating customer:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to create customer')
-      throw error
-    }
+    await createCustomerMutation.mutateAsync(data)
   }
 
   // Handle update customer
   const handleUpdateCustomer = async (data: CreateCustomerInput) => {
     if (!customerDialog.customer) return
-
-    try {
-      const response = await fetch(`/api/customers/${customerDialog.customer.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to update customer')
-      }
-
-      toast.success('Customer updated successfully')
-      fetchCustomers()
-    } catch (error) {
-      console.error('Error updating customer:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to update customer')
-      throw error
-    }
+    await updateCustomerMutation.mutateAsync({ id: customerDialog.customer.id, data })
   }
 
   // Handle delete customer
   const handleDeleteCustomer = async () => {
     if (!deleteDialog.customer) return
-
-    try {
-      const response = await fetch(`/api/customers/${deleteDialog.customer.id}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to delete customer')
-      }
-
-      toast.success('Customer deleted successfully')
-      fetchCustomers()
-    } catch (error) {
-      console.error('Error deleting customer:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to delete customer')
-      throw error
-    }
+    await deleteCustomerMutation.mutateAsync(deleteDialog.customer.id)
   }
 
   // Column actions
@@ -152,7 +102,7 @@ export default function CustomersPage() {
     onRowClick: handleRowClick,
   })
 
-  if (loading) {
+  if (loading && customers.length === 0) {
     return (
       <div className="space-y-4 sm:space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -185,17 +135,56 @@ export default function CustomersPage() {
         </Button>
       </div>
 
+      {/* Search Bar */}
+      <div className="relative">
+        <input
+          type="text"
+          placeholder="Search customers by name or phone..."
+          value={searchQuery}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 pl-10 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>All Customers</CardTitle>
+          <CardTitle>All Customers ({totalCustomers})</CardTitle>
         </CardHeader>
         <CardContent>
           <DataTable
             columns={columns}
             data={customers}
-            searchPlaceholder="Search customers by name or phone..."
+            searchPlaceholder=""
             onRowClick={handleRowClick}
           />
+
+          {/* Server-side Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-4">
+              <div className="text-sm text-muted-foreground">
+                Page {currentPage} of {totalPages} ({totalCustomers} total)
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

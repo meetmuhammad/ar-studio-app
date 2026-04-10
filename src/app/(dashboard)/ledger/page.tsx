@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, RefreshCw, Edit, Search, Download, Trash2, X } from 'lucide-react'
 import { RoleGuard } from '@/components/auth/role-guard'
 import { Button } from '@/components/ui/button'
@@ -20,123 +20,57 @@ import {
 import { Badge } from '@/components/ui/badge'
 import type { GeneralLedgerWithRelations } from '@/lib/supabase-client'
 import { toast } from 'sonner'
+import { useLedgerEntries, useLedgerStats, useCreateLedgerEntry, useUpdateLedgerEntry, useDeleteLedgerEntry, useSyncOrderPayments } from '@/hooks/use-api'
 
 export default function LedgerPage() {
-  const [entries, setEntries] = useState<GeneralLedgerWithRelations[]>([])
-  const [filteredEntries, setFilteredEntries] = useState<GeneralLedgerWithRelations[]>([])
-  const [stats, setStats] = useState({ totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 })
-  const [isLoading, setIsLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingEntry, setEditingEntry] = useState<GeneralLedgerWithRelations | null>(null)
-  const [isSyncing, setIsSyncing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 20
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null)
 
-  useEffect(() => {
-    fetchData()
-  }, [])
+  // React Query hooks
+  const { data: entriesResult, isLoading, refetch: fetchData } = useLedgerEntries({
+    page: currentPage,
+    pageSize: itemsPerPage,
+    search: debouncedSearch,
+    startDate: dateFrom?.toISOString().split('T')[0],
+    endDate: dateTo?.toISOString().split('T')[0],
+  })
+  const { data: stats = { totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 } } = useLedgerStats()
+  const syncMutation = useSyncOrderPayments()
+  const deleteMutation = useDeleteLedgerEntry()
+  
+  const entries = (entriesResult?.data || []).map((entry: any) => ({
+    ...entry,
+    calculatedBalance: entry.balance,
+  })) as GeneralLedgerWithRelations[]
+  const totalEntries = entriesResult?.pagination?.total || 0
+  const totalPages = entriesResult?.pagination?.pages || 1
 
-  useEffect(() => {
-    // Filter entries based on search query and date range
-    let filtered = entries
-
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(entry => 
-        entry.particulars.toLowerCase().includes(query) ||
-        entry.entry_type.toLowerCase().includes(query) ||
-        entry.vendors?.name.toLowerCase().includes(query) ||
-        entry.orders?.order_number.toLowerCase().includes(query) ||
-        (entry.notes && entry.notes.toLowerCase().includes(query))
-      )
-    }
-
-    // Apply date range filter
-    if (dateFrom || dateTo) {
-      filtered = filtered.filter(entry => {
-        const entryDate = new Date(entry.entry_date)
-        entryDate.setHours(0, 0, 0, 0)
-        
-        if (dateFrom) {
-          const fromDate = new Date(dateFrom)
-          fromDate.setHours(0, 0, 0, 0)
-          if (entryDate < fromDate) return false
-        }
-        
-        if (dateTo) {
-          const toDate = new Date(dateTo)
-          toDate.setHours(23, 59, 59, 999)
-          if (entryDate > toDate) return false
-        }
-        
-        return true
-      })
-    }
-
-    setFilteredEntries(filtered)
-    setCurrentPage(1) // Reset to first page on filter change
-  }, [searchQuery, dateFrom, dateTo, entries])
-
-  const fetchData = async () => {
-    try {
-      const [entriesRes, statsRes] = await Promise.all([
-        fetch('/api/general-ledger'),
-        fetch('/api/general-ledger/stats'),
-      ])
-
-      if (!entriesRes.ok || !statsRes.ok) throw new Error('Failed to fetch data')
-
-      const entriesData = await entriesRes.json()
-      const statsData = await statsRes.json()
-
-      // Recalculate balances based on display order (descending = newest first)
-      // Balance should increase as we go backwards in time
-      const entriesWithRecalculatedBalance = [...entriesData].reverse().map((entry, index, arr) => {
-        // Start from oldest (index 0), calculate running total
-        const previousBalance = index > 0 ? arr[index - 1].calculatedBalance : 0
-        const debit = parseFloat(entry.debit || 0)
-        const credit = parseFloat(entry.credit || 0)
-        const calculatedBalance = previousBalance + debit - credit
-        
-        return {
-          ...entry,
-          calculatedBalance
-        }
-      }).reverse() // Reverse back to descending order for display
-
-      setEntries(entriesWithRecalculatedBalance)
-      setStats(statsData)
-    } catch (error) {
-      console.error('Error fetching ledger data:', error)
-      toast.error('Failed to load ledger data')
-    } finally {
-      setIsLoading(false)
-    }
+  // Debounce search
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value)
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    debounceTimer.current = setTimeout(() => {
+      setDebouncedSearch(value)
+      setCurrentPage(1)
+    }, 300)
   }
+
+  // Reset page when date filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [dateFrom, dateTo])
 
   const syncOrderPayments = async () => {
-    setIsSyncing(true)
-    try {
-      const response = await fetch('/api/general-ledger/sync-payments', {
-        method: 'POST',
-      })
-
-      if (!response.ok) throw new Error('Failed to sync payments')
-
-      const result = await response.json()
-      toast.success(`Synced ${result.synced} order payments to ledger`)
-      fetchData() // Refresh the data
-    } catch (error) {
-      console.error('Error syncing payments:', error)
-      toast.error('Failed to sync order payments')
-    } finally {
-      setIsSyncing(false)
-    }
+    await syncMutation.mutateAsync()
   }
+  const isSyncing = syncMutation.isPending
 
   const handleEdit = (entry: GeneralLedgerWithRelations) => {
     setEditingEntry(entry)
@@ -147,22 +81,7 @@ export default function LedgerPage() {
     if (!confirm(`Are you sure you want to delete this ledger entry? This will also delete the corresponding vendor ledger entry if any.`)) {
       return
     }
-
-    try {
-      const response = await fetch(`/api/general-ledger/${entry.id}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to delete entry')
-      }
-
-      toast.success('Ledger entry deleted successfully')
-      fetchData() // Refresh data
-    } catch (error) {
-      console.error('Error deleting ledger entry:', error)
-      toast.error('Failed to delete ledger entry')
-    }
+    await deleteMutation.mutateAsync(entry.id)
   }
 
   const handleCloseDialog = () => {
@@ -218,11 +137,9 @@ export default function LedgerPage() {
     }
   }
 
-  // Pagination
-  const totalPages = Math.ceil(filteredEntries.length / itemsPerPage)
+  // Server handles pagination — use entries directly
   const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-  const paginatedEntries = filteredEntries.slice(startIndex, endIndex)
+  const endIndex = Math.min(startIndex + entries.length, startIndex + itemsPerPage)
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-PK', {
@@ -303,9 +220,9 @@ export default function LedgerPage() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by particulars, vendor, order, type, or notes..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search by particulars..."
+          value={searchQuery}
+          onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-10"
           />
         </div>
@@ -417,7 +334,7 @@ export default function LedgerPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedEntries.map((entry) => (
+              {entries.map((entry) => (
                 <TableRow key={entry.id}>
                   <TableCell className="font-medium">
                     {formatDate(entry.entry_date)}
@@ -472,18 +389,17 @@ export default function LedgerPage() {
             </TableBody>
           </Table>
 
-          {filteredEntries.length === 0 && (
+          {entries.length === 0 && !isLoading && (
             <div className="text-center py-12 text-muted-foreground">
-              {searchQuery ? 'No entries match your search' : 'No ledger entries found'}
+              {debouncedSearch ? 'No entries match your search' : 'No ledger entries found'}
             </div>
           )}
 
           {/* Pagination */}
-          {filteredEntries.length > 0 && (
+          {totalEntries > 0 && (
             <div className="flex items-center justify-between pt-4">
               <div className="text-sm text-muted-foreground">
-                Showing {startIndex + 1} to {Math.min(endIndex, filteredEntries.length)} of {filteredEntries.length} entries
-                {searchQuery && ` (filtered from ${entries.length} total)`}
+                Showing {startIndex + 1} to {Math.min(endIndex, totalEntries)} of {totalEntries} entries
               </div>
               <div className="flex gap-2">
                 <Button
