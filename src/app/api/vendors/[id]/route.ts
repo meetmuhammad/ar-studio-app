@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
+import { withAdmin } from '@/lib/api-auth'
 
 // GET /api/vendors/[id] - Get vendor with ledger entries
-export async function GET(
+async function GETHandler(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -45,7 +46,7 @@ export async function GET(
 }
 
 // PUT /api/vendors/[id] - Update vendor
-export async function PUT(
+async function PUTHandler(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -103,7 +104,7 @@ export async function PUT(
 }
 
 // DELETE /api/vendors/[id] - Delete vendor
-export async function DELETE(
+async function DELETEHandler(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -133,3 +134,12 @@ export async function DELETE(
     )
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Authorization: admin only
+// Mirrors the client-side RoleGuard on the corresponding page. The handlers
+// above are unchanged; only the exported entry points are wrapped.
+// ─────────────────────────────────────────────────────────────────────────────
+export const GET = withAdmin<{ params: Promise<{ id: string }> }>(GETHandler)
+export const PUT = withAdmin<{ params: Promise<{ id: string }> }>(PUTHandler)
+export const DELETE = withAdmin<{ params: Promise<{ id: string }> }>(DELETEHandler)

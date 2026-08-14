@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
+import { withAdmin } from '@/lib/api-auth'
 
 // POST /api/general-ledger/sync-payments - Sync existing order payments to ledger
-export async function POST() {
+async function POSTHandler() {
   try {
     const supabase = createAdminSupabaseClient()
 
@@ -102,3 +103,10 @@ export async function POST() {
     )
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Authorization: admin only
+// Mirrors the client-side RoleGuard on the corresponding page. The handlers
+// above are unchanged; only the exported entry points are wrapped.
+// ─────────────────────────────────────────────────────────────────────────────
+export const POST = withAdmin(POSTHandler)

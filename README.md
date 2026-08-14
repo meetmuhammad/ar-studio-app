@@ -46,63 +46,62 @@ A production-ready Next.js dashboard for managing **Customers** and **Orders/Boo
 npm install
 ```
 
-### 2. Supabase Setup
+### 2. Start the local database
 
-1. **Create a Supabase Project**:
-   - Go to [supabase.com](https://supabase.com)
-   - Create a new project
-   - Note your project URL and anon key
+```bash
+npx supabase start
+```
 
-2. **Update Environment Variables**:
-   Update the `.env` file with your Supabase credentials:
+This runs Postgres in Docker and applies every migration in `supabase/migrations/`.
+It prints an API URL, an anon key and a service-role key.
 
-   ```env
-   # Supabase Database URL (replace [YOUR-PASSWORD] with your actual password)
-   DATABASE_URL="postgresql://postgres:[YOUR-PASSWORD]@db.drdnqsjjxmqiklwfadmk.supabase.co:5432/postgres"
-   
-   # Supabase Configuration (replace with your actual values)
-   NEXT_PUBLIC_SUPABASE_URL="https://drdnqsjjxmqiklwfadmk.supabase.co"
-   NEXT_PUBLIC_SUPABASE_ANON_KEY="your_anon_key_here"
-   
-   # NextAuth
-   NEXTAUTH_SECRET="changeme"
-   NEXTAUTH_URL="http://localhost:3000"
-   ```
+### 3. Configure environment
 
-   You can find these values in your Supabase dashboard under Settings > API.
+```bash
+cp .env.example .env.local
+```
 
-3. **Create Database Schema**:
-   - Go to your Supabase dashboard
-   - Navigate to SQL Editor
-   - Copy and paste the contents of `supabase-schema.sql`
-   - Run the script to create all tables, functions, and policies
+Paste the three values printed by `supabase start` into `.env.local`.
 
-### 3. Seed the Database (Optional)
+Confirm what you are pointed at before doing anything else:
 
-To add sample data, you'll need the service role key from Supabase:
+```bash
+npm run env:check
+```
 
-1. Add to your `.env` file:
-   ```env
-   SUPABASE_SERVICE_ROLE_KEY="your_service_role_key_here"
-   ```
+### 4. Seed synthetic data
 
-2. Run the seed script:
-   ```bash
-   npm run seed
-   ```
+```bash
+npm run seed          # 60 customers, 80 orders, 181 ledger entries
+npm run create-users  # admin@staging.local / staff@staging.local
+```
 
-   This creates:
-   - 20 sample customers with realistic data
-   - 30 sample orders with various measurements
-   - Proper order number sequence (AR-00001, AR-00002, etc.)
+These scripts refuse to run against production. See `docs/ENVIRONMENTS.md`.
 
-### 4. Run the Development Server
+### 5. Run the development server
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see the dashboard.
+Open [http://localhost:3000](http://localhost:3000) and sign in with
+`admin@staging.local` / `staging-admin-pw`.
+
+---
+
+## 🗄 Schema changes
+
+The Supabase SQL Editor is **not** part of this workflow. Schema lives in
+`supabase/migrations/` and is the single source of truth.
+
+```bash
+npm run db:new add_something   # new migration file
+npm run db:reset               # replay all migrations from zero, locally
+```
+
+Every migration must be safe to apply while the currently deployed code is still
+running — see the expand/contract rule in
+**[docs/ENVIRONMENTS.md](docs/ENVIRONMENTS.md)**.
 
 ## 📁 Database Schema
 
@@ -125,12 +124,19 @@ npm run seed    # Seed database with sample data
 
 ## 🚀 Deployment
 
-### Vercel (Recommended)
+```
+feature/*  --PR-->  staging  --PR + approval-->  main
+    |                  |                           |
+    | CI: replay       | migrations -> staging     | migrations -> PRODUCTION
+    |     migrations,  | Vercel staging deploy     | Vercel production deploy
+    |     lint, types, |                           |
+    |     guards, tests|                           |
+```
 
-1. Push to GitHub
-2. Import project in Vercel
-3. Add all environment variables from your `.env` file
-4. Deploy
+Migrations are applied by GitHub Actions, never from a laptop. Production is
+gated behind a manual approval in the `production` GitHub Environment.
+
+Full detail: **[docs/ENVIRONMENTS.md](docs/ENVIRONMENTS.md)**.
 
 ## 📋 API Endpoints
 

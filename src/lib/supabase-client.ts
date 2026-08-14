@@ -1,17 +1,27 @@
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-// Client-side Supabase client (for browser usage)
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-    flowType: 'pkce'
-  }
-})
+/**
+ * Browser Supabase client.
+ *
+ * Must be `createBrowserClient` from `@supabase/ssr`, NOT `createClient` from
+ * `@supabase/supabase-js`. The plain client persists the session to
+ * localStorage, which the server cannot read: `src/middleware.ts` and
+ * `createServerSupabaseClient()` both resolve the session from cookies. With
+ * localStorage, sign-in appears to succeed, then every server-side check sees
+ * an anonymous request — the dashboard bounces straight back to /sign-in and
+ * every API route answers 401.
+ *
+ * `createBrowserClient` writes the session to cookies instead, so the browser,
+ * the middleware, and the API routes all read the same session.
+ *
+ * It already defaults to autoRefreshToken, persistSession, detectSessionInUrl
+ * and the PKCE flow, so the options block that used to be here is redundant.
+ * Do not pass a custom `auth.storage` — that reintroduces the split above.
+ */
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey)
 
 // Database types
 export interface Customer {

@@ -18,6 +18,19 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // Supabase CLI scratch space. `supabase start` writes generated runtime
+      // files here (start-secrets/ alone accounted for 154 of 182 lint errors).
+      // It is gitignored via supabase/.gitignore, but ESLint's flat config does
+      // not read nested .gitignore files.
+      "supabase/.temp/**",
+      "supabase/.branches/**",
+      // Migration baselines are dumped SQL, not TypeScript, but keep the whole
+      // directory out so a future .sql-adjacent tool cannot trip the linter.
+      "supabase/migrations/**",
+      // Test and coverage output.
+      "coverage/**",
+      "playwright-report/**",
+      "test-results/**",
     ],
   },
 ];

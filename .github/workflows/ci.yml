@@ -1,0 +1,152 @@
+name: CI
+
+# Runs on every PR and on pushes to the long-lived branches.
+#
+# Nothing in this workflow touches a hosted Supabase project. The migration job
+# replays against a throwaway local Postgres, so it needs no secrets and cannot
+# affect staging or production. That is what makes it safe to run on every PR,
+# including from forks.
+
+on:
+  pull_request:
+  push:
+    branches: [main, staging]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Static checks. Fast, no database.
+  # ───────────────────────────────────────────────────────────────────────────
+  checks:
+    name: lint · types · guards · tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # next.config.ts sets `eslint.ignoreDuringBuilds: true`, deliberately, so
+      # a lint error can never block an emergency production deploy. That means
+      # `next build` CANNOT fail on lint — this step is where lint is enforced.
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Every API route export must be wrapped in withAuth/withAdmin, and the
+      # service-role client must not be importable from client code. See
+      # scripts/check-route-guards.ts for why this is a shape check, not a grep.
+      - name: Route authorization guards
+        run: npx tsx scripts/check-route-guards.ts
+
+      # `supabase/migrations/` is the only path any deploy workflow applies to a
+      # hosted database. A .sql file anywhere else is either dead weight or, worse,
+      # something a human will eventually paste into the SQL Editor by hand — which
+      # is exactly how the schema drifted before migrations existed. See
+      # docs/SCHEMA-HISTORY.md.
+      - name: No loose SQL outside migrations
+        run: |
+          STRAY=$(git ls-files '*.sql' ':!supabase/migrations/*')
+          if [ -n "$STRAY" ]; then
+            echo "::error::SQL outside supabase/migrations/ — move it to a migration:"
+            echo "$STRAY"
+            exit 1
+          fi
+          echo "no loose SQL files"
+
+      - name: Unit tests
+        run: npm run test
+
+      # Build needs the three Supabase vars at module scope. These are the fixed
+      # local-stack demo values — public, identical on every machine, and not
+      # connected to anything. A build must never need real credentials.
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.LOCAL_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ vars.LOCAL_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU' }}
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Replay every migration from zero. This is the gate that would have caught the
+  # hand-applied add-payment-fields.sql before it ran against live data — see
+  # docs/SCHEMA-HISTORY.md.
+  # ───────────────────────────────────────────────────────────────────────────
+  migrations:
+    name: migrations replay from zero
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # Applies supabase/migrations/* in order against a fresh local Postgres.
+      # A migration that only works against an already-populated database fails
+      # here, which is the entire point.
+      - name: Start local database (applies all migrations)
+        run: supabase db start
+
+      # Belt and braces: reset replays them a second time from scratch, catching
+      # migrations that are not safely re-runnable.
+      - name: Replay again from scratch
+        run: supabase db reset
+
+      - name: Static SQL lint
+        run: supabase db lint --level warning
+
+      # Assert the schema actually materialised. `supabase db start` exiting 0
+      # is not by itself proof that objects exist.
+      - name: Verify schema materialised
+        run: |
+          PSQL="supabase --workdir . db"
+          COUNT=$(docker exec supabase_db_ar-studio-app psql -U postgres -d postgres -tAc \
+            "select count(*) from pg_tables where schemaname='public'")
+          POLICIES=$(docker exec supabase_db_ar-studio-app psql -U postgres -d postgres -tAc \
+            "select count(*) from pg_policies where schemaname='public'")
+          echo "public tables: $COUNT, policies: $POLICIES"
+          if [ "$COUNT" -lt 10 ]; then
+            echo "::error::expected at least 10 public tables, found $COUNT"
+            exit 1
+          fi
+          if [ "$POLICIES" -lt 21 ]; then
+            echo "::error::expected at least 21 RLS policies, found $POLICIES"
+            exit 1
+          fi
+
+      # Every public table must have RLS on. Catches a new table added without
+      # a policy, which would otherwise be silently world-readable via the
+      # public anon key.
+      - name: Verify RLS is enabled on every public table
+        run: |
+          UNPROTECTED=$(docker exec supabase_db_ar-studio-app psql -U postgres -d postgres -tAc \
+            "select coalesce(string_agg(tablename, ', '), '') from pg_tables where schemaname='public' and rowsecurity = false")
+          if [ -n "$UNPROTECTED" ]; then
+            echo "::error::tables without RLS: $UNPROTECTED"
+            exit 1
+          fi
+          echo "all public tables have RLS enabled"
+
+      # No policy may be readable by the anon role without a predicate. This is
+      # exactly the hole that existed on public.measurements.
+      - name: Verify no anon-readable policy
+        run: |
+          OPEN=$(docker exec supabase_db_ar-studio-app psql -U postgres -d postgres -tAc \
+            "select coalesce(string_agg(tablename || '.' || policyname, ', '), '')
+             from pg_policies
+             where schemaname='public' and cmd='SELECT' and coalesce(qual, 'true') = 'true'")
+          if [ -n "$OPEN" ]; then
+            echo "::error::SELECT policies with no predicate (readable by anon): $OPEN"
+            exit 1
+          fi
+          echo "no unrestricted SELECT policies"

@@ -1,13 +1,18 @@
-// Load environment variables from .env file
+// Load environment variables. .env.local wins, matching Next.js.
 import { config } from 'dotenv'
 import { resolve } from 'path'
 
-// Load .env file
+config({ path: resolve(__dirname, '../.env.local') })
 config({ path: resolve(__dirname, '../.env') })
 
 import { createClient } from '@supabase/supabase-js'
+import { requireNonProduction } from './lib/env-guard'
 
-// Create admin client directly
+// Default-deny. Exits(1) unless the target is LOCAL or STAGING.
+// NOTE: this script hardcodes a real person's email address (see below). It was
+// written to be run against production by hand. It must not be, ever again.
+requireNonProduction('setup-user-roles')
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
