@@ -147,7 +147,9 @@ function guard<C = void>(
   handler: AuthedHandler<C>,
 ): RouteHandler<C> {
   const wrapped = async (request: NextRequest, context?: C): Promise<NextResponse> => {
-    const user = await getAuthUser(request)
+    // No argument: the session comes from the cookie store via next/headers
+    // inside createServerSupabaseClient, not from the NextRequest.
+    const user = await getAuthUser()
 
     if (!user) {
       return NextResponse.json(

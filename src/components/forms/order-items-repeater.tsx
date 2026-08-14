@@ -88,7 +88,7 @@ export function OrderItemsRepeater({ control, disabled }: OrderItemsRepeaterProp
         {fields.length === 0 ? (
           <div className="text-center py-6 text-muted-foreground">
             <p className="text-sm">No order items added yet.</p>
-            <p className="text-xs mt-1">Click "Add Item" to get started.</p>
+            <p className="text-xs mt-1">Click &quot;Add Item&quot; to get started.</p>
           </div>
         ) : (
           <div className="space-y-4">

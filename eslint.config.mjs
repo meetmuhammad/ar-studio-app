@@ -33,6 +33,24 @@ const eslintConfig = [
       "test-results/**",
     ],
   },
+  {
+    rules: {
+      // Pre-existing debt, deliberately not a build failure.
+      //
+      // `next/typescript` has always flagged these, but next.config.ts sets
+      // `eslint.ignoreDuringBuilds: true` and nothing ran `npm run lint`, so
+      // the 23 existing `any` sites were never surfaced. Turning the CI lint
+      // gate on made all of them errors at once, across 20 files that the
+      // change introducing the gate never touched.
+      //
+      // Failing the build on them would have forced an unrelated 20-file
+      // refactor into an unrelated PR. Warning keeps them visible on every
+      // lint run — and every other rule newly enforced — without that.
+      //
+      // Pay this down separately, then raise it back to "error".
+      "@typescript-eslint/no-explicit-any": "warn",
+    },
+  },
 ];
 
 export default eslintConfig;
