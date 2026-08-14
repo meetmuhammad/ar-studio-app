@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
+import { withAuth } from '@/lib/api-auth'
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-export async function GET(
+async function GETHandler(
   request: NextRequest,
   { params }: RouteParams
 ) {
@@ -42,3 +43,10 @@ export async function GET(
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Authorization: any signed-in user
+// Mirrors the client-side RoleGuard on the corresponding page. The handlers
+// above are unchanged; only the exported entry points are wrapped.
+// ─────────────────────────────────────────────────────────────────────────────
+export const GET = withAuth<RouteParams>(GETHandler)

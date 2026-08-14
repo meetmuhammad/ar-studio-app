@@ -6,8 +6,11 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-// Client-side Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// This module is server-only — it imports next/headers. Browser code must use
+// `supabase` from './supabase-client', which is cookie-backed. Two dead browser
+// clients used to live here; both stored the session in localStorage, which the
+// server cannot read, so anything wired to them signed in and then bounced back
+// to /sign-in. Do not add another one.
 
 // Server-side Supabase client with cookie handling (anon role)
 export async function createServerSupabaseClient() {
@@ -29,11 +32,6 @@ export async function createServerSupabaseClient() {
       },
     },
   })
-}
-
-// Browser client for client-side usage (auth context)
-export function createBrowserSupabaseClient() {
-  return createClient(supabaseUrl, supabaseAnonKey)
 }
 
 // Admin (service role) Supabase client for server-side-only usage (API routes)

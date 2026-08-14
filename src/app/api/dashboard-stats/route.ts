@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
+import { withAdmin } from '@/lib/api-auth'
 
 // GET /api/dashboard-stats - Lightweight dashboard stats using SQL aggregates
-export async function GET() {
+async function GETHandler() {
   try {
     const supabase = createAdminSupabaseClient()
 
@@ -143,3 +144,10 @@ function buildChartData(entries: Array<{ entry_date: string; debit: number | nul
 
   return chartData
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Authorization: admin only
+// Mirrors the client-side RoleGuard on the corresponding page. The handlers
+// above are unchanged; only the exported entry points are wrapped.
+// ─────────────────────────────────────────────────────────────────────────────
+export const GET = withAdmin(GETHandler)

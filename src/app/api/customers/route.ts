@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCustomers, createCustomer } from '@/lib/database'
 import { CreateCustomerSchema, CustomerQuerySchema } from '@/lib/validators'
+import { withAuth } from '@/lib/api-auth'
 
 // GET /api/customers - List customers with search and pagination
-export async function GET(request: NextRequest) {
+async function GETHandler(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const query = CustomerQuerySchema.parse({
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/customers - Create a new customer
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   try {
     const body = await request.json()
     const validatedData = CreateCustomerSchema.parse(body)
@@ -69,3 +70,11 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Authorization: any signed-in user
+// Mirrors the client-side RoleGuard on the corresponding page. The handlers
+// above are unchanged; only the exported entry points are wrapped.
+// ─────────────────────────────────────────────────────────────────────────────
+export const GET = withAuth(GETHandler)
+export const POST = withAuth(POSTHandler)

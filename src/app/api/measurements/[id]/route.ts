@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { measurementSchema } from "@/types/measurements";
+import { withAuth } from '@/lib/api-auth'
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-export async function GET(
+async function GETHandler(
   request: NextRequest,
   { params }: RouteParams
 ) {
@@ -41,7 +42,7 @@ export async function GET(
   }
 }
 
-export async function PUT(
+async function PUTHandler(
   request: NextRequest,
   { params }: RouteParams
 ) {
@@ -120,7 +121,7 @@ export async function PUT(
   }
 }
 
-export async function DELETE(
+async function DELETEHandler(
   request: NextRequest,
   { params }: RouteParams
 ) {
@@ -150,3 +151,12 @@ export async function DELETE(
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Authorization: any signed-in user
+// Mirrors the client-side RoleGuard on the corresponding page. The handlers
+// above are unchanged; only the exported entry points are wrapped.
+// ─────────────────────────────────────────────────────────────────────────────
+export const GET = withAuth<RouteParams>(GETHandler)
+export const PUT = withAuth<RouteParams>(PUTHandler)
+export const DELETE = withAuth<RouteParams>(DELETEHandler)

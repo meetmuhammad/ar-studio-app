@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getAllOrdersSimple } from '@/lib/database'
+import { withAuth } from '@/lib/api-auth'
 
 // GET /api/orders/all - Get all orders (simplified, for dropdowns)
-export async function GET() {
+async function GETHandler() {
   try {
     const orders = await getAllOrdersSimple()
     return NextResponse.json({ data: orders })
@@ -14,3 +15,10 @@ export async function GET() {
     )
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Authorization: any signed-in user
+// Mirrors the client-side RoleGuard on the corresponding page. The handlers
+// above are unchanged; only the exported entry points are wrapped.
+// ─────────────────────────────────────────────────────────────────────────────
+export const GET = withAuth(GETHandler)

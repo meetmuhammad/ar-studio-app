@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
+import { withAdmin } from '@/lib/api-auth'
 
 // DELETE /api/vendor-tags/[id] - Delete vendor tag
-export async function DELETE(
+async function DELETEHandler(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -32,3 +33,10 @@ export async function DELETE(
     )
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Authorization: admin only
+// Mirrors the client-side RoleGuard on the corresponding page. The handlers
+// above are unchanged; only the exported entry points are wrapped.
+// ─────────────────────────────────────────────────────────────────────────────
+export const DELETE = withAdmin<{ params: Promise<{ id: string }> }>(DELETEHandler)

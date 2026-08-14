@@ -10,6 +10,22 @@ import { useAuth } from '@/contexts/auth-context'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 
+// Supabase answers a wrong password, an unknown account and a stray leading or
+// trailing space with the same opaque "Invalid login credentials". Name the
+// likely cause instead of leaving staff to guess at an invisible character.
+function signInErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : ''
+
+  if (/invalid login credentials/i.test(message)) {
+    return 'Incorrect email or password. Check for an extra space or an autocapitalized first letter.'
+  }
+  if (/email not confirmed/i.test(message)) {
+    return 'This account has not been confirmed yet. Ask an admin to confirm it.'
+  }
+
+  return message || 'Failed to sign in'
+}
+
 export default function SignInPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -30,12 +46,12 @@ export default function SignInPage() {
     setIsSubmitting(true)
 
     try {
-      await signIn(email, password)
+      await signIn(email.trim().toLowerCase(), password)
       toast.success('Successfully signed in!')
       router.push('/')
     } catch (error) {
       console.error('Sign in error:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to sign in')
+      toast.error(signInErrorMessage(error))
     } finally {
       setIsSubmitting(false)
     }
@@ -63,6 +79,11 @@ export default function SignInPage() {
                 <Input
                   id="email"
                   type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   placeholder="admin@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -77,6 +98,10 @@ export default function SignInPage() {
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
