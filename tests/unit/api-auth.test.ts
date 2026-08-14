@@ -67,18 +67,18 @@ beforeEach(() => {
 describe('getAuthUser', () => {
   it('returns null when there is no session', async () => {
     mockGetUser.mockResolvedValue(noUser)
-    expect(await getAuthUser(req())).toBeNull()
+    expect(await getAuthUser()).toBeNull()
   })
 
   it('returns null when the JWT is invalid', async () => {
     mockGetUser.mockResolvedValue(authError)
-    expect(await getAuthUser(req())).toBeNull()
+    expect(await getAuthUser()).toBeNull()
   })
 
   it('returns null when the auth user has no public.users row', async () => {
     mockGetUser.mockResolvedValue(asUser('u1', 'a@b.c'))
     mockSingle.mockResolvedValue({ data: null, error: null })
-    expect(await getAuthUser(req())).toBeNull()
+    expect(await getAuthUser()).toBeNull()
   })
 
   it('returns null when the role lookup errors', async () => {
@@ -87,13 +87,13 @@ describe('getAuthUser', () => {
     // pins the CURRENT behaviour so the follow-up change is visible as a diff.
     mockGetUser.mockResolvedValue(asUser('u1', 'a@b.c'))
     mockSingle.mockResolvedValue({ data: null, error: new Error('connection reset') })
-    expect(await getAuthUser(req())).toBeNull()
+    expect(await getAuthUser()).toBeNull()
   })
 
   it('returns the resolved user on the happy path', async () => {
     mockGetUser.mockResolvedValue(asUser('u1', 'staff@example.com'))
     mockSingle.mockResolvedValue({ data: { role: 'staff' }, error: null })
-    expect(await getAuthUser(req())).toEqual({
+    expect(await getAuthUser()).toEqual({
       id: 'u1',
       email: 'staff@example.com',
       role: 'staff',
@@ -102,13 +102,13 @@ describe('getAuthUser', () => {
 
   it('does not throw when the client itself blows up', async () => {
     mockGetUser.mockRejectedValue(new Error('network down'))
-    expect(await getAuthUser(req())).toBeNull()
+    expect(await getAuthUser()).toBeNull()
   })
 
   it('tolerates a user with no email', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: 'u1', email: undefined } }, error: null })
     mockSingle.mockResolvedValue({ data: { role: 'admin' }, error: null })
-    expect((await getAuthUser(req()))?.email).toBe('')
+    expect((await getAuthUser())?.email).toBe('')
   })
 })
 
