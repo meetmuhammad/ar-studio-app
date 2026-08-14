@@ -56,7 +56,7 @@ export function VendorBillDialog({
         <DialogHeader>
           <DialogTitle>Create Bill</DialogTitle>
           <DialogDescription>
-            Create a bill/invoice from this vendor. This creates a Credit entry in the vendor's sub-ledger only (not in main ledger).
+            Create a bill/invoice from this vendor. This creates a Credit entry in the vendor&apos;s sub-ledger only (not in main ledger).
           </DialogDescription>
         </DialogHeader>
         <VendorBillForm

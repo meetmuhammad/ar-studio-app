@@ -1,0 +1,74 @@
+name: Schema drift check
+
+# The half of the break-glass rule that makes it self-healing.
+#
+# The rule: the Supabase SQL Editor is off-limits EXCEPT during a declared
+# incident. When it is used, the change must be captured as a migration within
+# 24 hours.
+#
+# A ban with no exception gets broken under pressure and then never recorded —
+# which is exactly how this project ended up with a production schema that
+# existed nowhere but production. So the exception is written down, and this job
+# makes forgetting the follow-up impossible to ignore: any object in production
+# that is not in supabase/migrations/ turns the build red and keeps it red.
+#
+# Read-only. Never writes to any database.
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # 06:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  drift:
+    name: production vs supabase/migrations
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ${{ secrets.PRODUCTION_PROJECT_REF }}
+      DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link
+        run: supabase link --project-ref "$PROJECT_REF" --password "$DB_PASSWORD"
+
+      - name: Diff production against committed migrations
+        id: diff
+        run: |
+          set -o pipefail
+          supabase db diff --linked --schema public --password "$DB_PASSWORD" \
+            | tee /tmp/drift.sql
+          if [ -s /tmp/drift.sql ] && grep -qv '^\s*$' /tmp/drift.sql; then
+            echo "has_drift=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_drift=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report
+        run: |
+          if [ "${{ steps.diff.outputs.has_drift }}" = "true" ]; then
+            echo "::error::Production schema has drifted from supabase/migrations/."
+            echo ""
+            echo "Something changed the database outside the migration pipeline."
+            echo "If this was a declared incident, capture it now:"
+            echo ""
+            echo "    supabase db pull"
+            echo "    git add supabase/migrations && git commit -m 'capture break-glass change'"
+            echo ""
+            echo "Drift:"
+            cat /tmp/drift.sql
+            exit 1
+          fi
+          echo "No drift. Production matches supabase/migrations/."
+
+      - name: Upload drift for inspection
+        if: steps.diff.outputs.has_drift == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-drift
+          path: /tmp/drift.sql
+          retention-days: 30

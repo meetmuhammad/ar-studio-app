@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
+import { withAdmin } from '@/lib/api-auth'
 
 // GET /api/vendors - List all vendors
-export async function GET() {
+async function GETHandler() {
   try {
     const supabase = createAdminSupabaseClient()
 
@@ -30,7 +31,7 @@ export async function GET() {
 }
 
 // POST /api/vendors - Create new vendor
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   try {
     const supabase = createAdminSupabaseClient()
     const body = await request.json()
@@ -74,3 +75,11 @@ export async function POST(request: Request) {
     )
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Authorization: admin only
+// Mirrors the client-side RoleGuard on the corresponding page. The handlers
+// above are unchanged; only the exported entry points are wrapped.
+// ─────────────────────────────────────────────────────────────────────────────
+export const GET = withAdmin(GETHandler)
+export const POST = withAdmin(POSTHandler)

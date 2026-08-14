@@ -49,6 +49,13 @@ next-env.d.ts
 
 /src/generated/prisma
 
-# AI project reference (local only)
+# Local-only working notes and editor/tooling config (never committed)
 docs/PROJECT.md
 WARP.md
+CLAUDE.md
+TODOS.md
+.claude/
+.cursor/
+.windsurf/
+.aider*
+graphify-out/

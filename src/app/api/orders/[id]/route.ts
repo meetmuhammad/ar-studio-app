@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOrder, updateOrder, deleteOrder, updateOrderItems } from '@/lib/database'
 import { UpdateOrderSchema } from '@/lib/validators'
+import { withAuth } from '@/lib/api-auth'
 
 // GET /api/orders/[id] - Get order by ID
-export async function GET(
+async function GETHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -29,7 +30,7 @@ export async function GET(
 }
 
 // PATCH /api/orders/[id] - Update order
-export async function PATCH(
+async function PATCHHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -105,7 +106,7 @@ export async function PATCH(
 }
 
 // DELETE /api/orders/[id] - Delete order
-export async function DELETE(
+async function DELETEHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -121,3 +122,12 @@ export async function DELETE(
     )
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Authorization: any signed-in user
+// Mirrors the client-side RoleGuard on the corresponding page. The handlers
+// above are unchanged; only the exported entry points are wrapped.
+// ─────────────────────────────────────────────────────────────────────────────
+export const GET = withAuth<{ params: Promise<{ id: string }> }>(GETHandler)
+export const PATCH = withAuth<{ params: Promise<{ id: string }> }>(PATCHHandler)
+export const DELETE = withAuth<{ params: Promise<{ id: string }> }>(DELETEHandler)

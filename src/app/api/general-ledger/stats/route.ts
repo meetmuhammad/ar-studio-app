@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
+import { withAdmin } from '@/lib/api-auth'
 
 // GET /api/general-ledger/stats - Get ledger statistics using lightweight queries
-export async function GET() {
+async function GETHandler() {
   try {
     const supabase = createAdminSupabaseClient()
 
@@ -49,3 +50,10 @@ export async function GET() {
     )
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Authorization: admin only
+// Mirrors the client-side RoleGuard on the corresponding page. The handlers
+// above are unchanged; only the exported entry points are wrapped.
+// ─────────────────────────────────────────────────────────────────────────────
+export const GET = withAdmin(GETHandler)

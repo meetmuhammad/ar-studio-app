@@ -1,0 +1,123 @@
+name: Deploy production
+
+# Merging to `main` applies migrations to the PRODUCTION Supabase project —
+# the live database of a real business.
+#
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │  merge to main                                                           │
+# │      │                                                                   │
+# │      ▼                                                                   │
+# │  preflight  ── dry-run, print exactly what will change ── no writes      │
+# │      │                                                                   │
+# │      ▼                                                                   │
+# │  ⏸  MANUAL APPROVAL  (GitHub Environment "production")                    │
+# │      │                                                                   │
+# │      ▼                                                                   │
+# │  migrate ── push ── verify it actually applied                           │
+# └──────────────────────────────────────────────────────────────────────────┘
+#
+# THE APPROVAL GATE IS NOT CONFIGURED BY THIS FILE. You must create a GitHub
+# Environment named `production` and add yourself as a required reviewer:
+#
+#   Settings > Environments > New environment > production
+#     ✔ Required reviewers: <you>
+#     Secrets: SUPABASE_ACCESS_TOKEN, PRODUCTION_PROJECT_REF, PRODUCTION_DB_PASSWORD
+#
+# Without that, `environment: production` provides NO gate and this workflow
+# migrates production automatically on every merge to main. Verify it before
+# relying on it.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false # never interrupt a migration mid-flight
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Read-only. Runs before the approval gate so the reviewer can see exactly
+  # what they are approving.
+  # ───────────────────────────────────────────────────────────────────────────
+  preflight:
+    name: preflight (read-only)
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ${{ secrets.PRODUCTION_PROJECT_REF }}
+      DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link
+        run: supabase link --project-ref "$PROJECT_REF" --password "$DB_PASSWORD"
+
+      - name: What would change
+        run: supabase migration list --linked --password "$DB_PASSWORD"
+
+      - name: Dry run
+        run: supabase db push --linked --password "$DB_PASSWORD" --dry-run
+
+      # Destructive DDL still deploys — this is a heads-up in the log for the
+      # human about to approve, not a block. Under the expand/contract rule a
+      # destructive step should be a deliberate, separate PR.
+      - name: Flag destructive statements
+        run: |
+          FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- supabase/migrations/ 2>/dev/null || true)
+          if [ -z "$FILES" ]; then echo "no migration files changed"; exit 0; fi
+          echo "changed migrations:"; echo "$FILES"
+          HITS=$(grep -inE 'drop (table|column|constraint)|set not null|alter column .* type|truncate' $FILES || true)
+          if [ -n "$HITS" ]; then
+            echo "::warning::destructive DDL in this deploy — confirm it is the CONTRACT step of an expand/backfill/contract sequence:"
+            echo "$HITS"
+          else
+            echo "no destructive DDL detected"
+          fi
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Gated on the `production` GitHub Environment.
+  # ───────────────────────────────────────────────────────────────────────────
+  migrate:
+    name: apply migrations to PRODUCTION
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ${{ secrets.PRODUCTION_PROJECT_REF }}
+      DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link
+        run: supabase link --project-ref "$PROJECT_REF" --password "$DB_PASSWORD"
+
+      - name: Push migrations
+        run: supabase db push --linked --password "$DB_PASSWORD"
+
+      # See the note in deploy-staging.yml: `db push` can prompt, apply nothing,
+      # and exit 0. On production a false green is the worst possible outcome —
+      # the app deploys expecting a schema that was never applied.
+      - name: Verify migrations actually applied
+        run: |
+          set -o pipefail
+          supabase migration list --linked --password "$DB_PASSWORD" | tee /tmp/migration-list.txt
+          PENDING=$(awk -F'|' '
+            /^[[:space:]]*[0-9]{14}/ {
+              gsub(/ /,"",$1); gsub(/ /,"",$2);
+              if ($1 != "" && $2 == "") print $1
+            }' /tmp/migration-list.txt)
+          if [ -n "$PENDING" ]; then
+            echo "::error::migrations still pending after push — production did NOT receive them:"
+            echo "$PENDING"
+            exit 1
+          fi
+          echo "production migration history is up to date"
