@@ -39,9 +39,15 @@ jobs:
           version: latest
 
       # Fail early and loudly rather than half-configured.
-      - name: Verify target is not production
+      #
+      # Asserting equality with the known staging ref, not merely inequality with
+      # production, is deliberate. "Not production" would happily migrate some
+      # third project that a mistyped or stale secret points at — and a migration
+      # applied to the wrong project is not undone by fixing the secret.
+      - name: Verify target is staging
         run: |
           PRODUCTION_REF=drdnqsjjxmqiklwfadmk
+          STAGING_REF=ohgqgkraybpvnfdbgmvl
           if [ -z "$PROJECT_REF" ]; then
             echo "::error::STAGING_PROJECT_REF is not set"; exit 1
           fi
@@ -49,7 +55,11 @@ jobs:
             echo "::error::STAGING_PROJECT_REF is set to the PRODUCTION project. Refusing."
             exit 1
           fi
-          echo "target: $PROJECT_REF (not production)"
+          if [ "$PROJECT_REF" != "$STAGING_REF" ]; then
+            echo "::error::STAGING_PROJECT_REF is '$PROJECT_REF', expected the staging project '$STAGING_REF'. Refusing."
+            exit 1
+          fi
+          echo "target: $PROJECT_REF (staging)"
 
       - name: Link
         run: supabase link --project-ref "$PROJECT_REF" --password "$DB_PASSWORD"

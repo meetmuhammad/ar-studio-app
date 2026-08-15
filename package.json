@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "tsx scripts/check-deploy-env.ts",
     "dev": "next dev",
+    "prebuild": "tsx scripts/check-deploy-env.ts",
     "build": "next build",
     "start": "next start",
+    "env:deploy-check": "tsx scripts/check-deploy-env.ts",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "check:guards": "tsx scripts/check-route-guards.ts",

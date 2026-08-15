@@ -6,9 +6,15 @@
  * resolveTarget() is covered, including the ones that look paranoid.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { resolveTarget, projectRefFromUrl, PRODUCTION_REF } from '../../scripts/lib/env-guard'
+import {
+  resolveTarget,
+  projectRefFromUrl,
+  PRODUCTION_REF,
+  STAGING_REF,
+} from '../../scripts/lib/env-guard'
 
 const PROD_URL = `https://${PRODUCTION_REF}.supabase.co`
+const STAGING_URL = `https://${STAGING_REF}.supabase.co`
 
 describe('projectRefFromUrl', () => {
   it('extracts the ref from a Supabase URL', () => {
@@ -56,9 +62,33 @@ describe('resolveTarget', () => {
     expect(resolveTarget(PROD_URL).target).toBe('PRODUCTION')
   })
 
-  it('identifies STAGING only when the ref matches STAGING_PROJECT_REF', () => {
+  it('identifies STAGING from the hardcoded ref, with no env var set', () => {
+    // The whole point of hardcoding it: staging is recognised even when the
+    // environment is misconfigured, so the seed scripts do not fall through to
+    // UNKNOWN and refuse to run on the one project they are meant to run on.
+    expect(process.env.STAGING_PROJECT_REF).toBeUndefined()
+    const info = resolveTarget(STAGING_URL)
+    expect(info.target).toBe('STAGING')
+    expect(info.ref).toBe(STAGING_REF)
+  })
+
+  it('keeps production and staging distinct', () => {
+    expect(STAGING_REF).not.toBe(PRODUCTION_REF)
+    expect(resolveTarget(STAGING_URL).target).toBe('STAGING')
+    expect(resolveTarget(PROD_URL).target).toBe('PRODUCTION')
+  })
+
+  it('still honours STAGING_PROJECT_REF for ephemeral branch projects', () => {
     process.env.STAGING_PROJECT_REF = 'stagingrefxxxxxxxxxx'
     expect(resolveTarget('https://stagingrefxxxxxxxxxx.supabase.co').target).toBe('STAGING')
+  })
+
+  it('cannot be tricked into calling production "staging" via the override', () => {
+    // Belt and braces on the ordering: even with the override pointed at prod,
+    // and even asking for the prod URL directly, the answer stays PRODUCTION.
+    process.env.STAGING_PROJECT_REF = PRODUCTION_REF
+    expect(resolveTarget(PROD_URL).target).toBe('PRODUCTION')
+    expect(resolveTarget(STAGING_URL).target).toBe('STAGING')
   })
 
   it('treats an unrecognised project as UNKNOWN, not safe (default-deny)', () => {

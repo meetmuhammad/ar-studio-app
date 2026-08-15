@@ -6,6 +6,7 @@
  * │                                                                      │
  * │  host is 127.0.0.1 / localhost ──────────────────────────► LOCAL     │
  * │  ref === PRODUCTION_REF ─────────────────────────────────► PRODUCTION│
+ * │  ref === STAGING_REF ────────────────────────────────────► STAGING   │
  * │  ref === $STAGING_PROJECT_REF ───────────────────────────► STAGING   │
  * │  anything else ──────────────────────────────────────────► UNKNOWN   │
  * └──────────────────────────────────────────────────────────────────────┘
@@ -15,13 +16,23 @@
  * dangerous rather than safe, because the failure we are guarding against is
  * "I thought .env pointed somewhere else."
  *
- * Why a hardcoded production ref: the guard has to work when the environment is
- * already wrong. Reading the production ref from the environment would mean
- * trusting the same file we are trying to protect against.
+ * Why both refs are hardcoded: the guard has to work when the environment is
+ * already wrong. Reading either ref from the environment would mean trusting
+ * the same file we are trying to protect against. Neither ref is a secret —
+ * NEXT_PUBLIC_SUPABASE_URL ships inside the browser bundle, so the production
+ * ref is already public. Secrecy was never what protects the database; the anon
+ * key's RLS policies and the service key's absence from the client are.
+ *
+ * $STAGING_PROJECT_REF survives as an override for ephemeral Supabase branch
+ * projects, which get a fresh ref per branch and so cannot be hardcoded. It can
+ * never bless production: the PRODUCTION_REF check runs before it.
  */
 
 /** The production project. Never seeded, never reset, never written by a script. */
 export const PRODUCTION_REF = 'drdnqsjjxmqiklwfadmk'
+
+/** The staging project ("AR studio dummy database"). Synthetic data only. */
+export const STAGING_REF = 'ohgqgkraybpvnfdbgmvl'
 
 export type Target = 'LOCAL' | 'STAGING' | 'PRODUCTION' | 'UNKNOWN'
 
@@ -73,9 +84,13 @@ export function resolveTarget(rawUrl: string | undefined): TargetInfo {
     return { target: 'PRODUCTION', ref, url, label: `PRODUCTION (${ref})` }
   }
 
+  if (ref === STAGING_REF) {
+    return { target: 'STAGING', ref, url, label: `staging (${ref})` }
+  }
+
   const stagingRef = process.env.STAGING_PROJECT_REF?.trim()
   if (stagingRef && ref === stagingRef) {
-    return { target: 'STAGING', ref, url, label: `staging (${ref})` }
+    return { target: 'STAGING', ref, url, label: `staging branch project (${ref})` }
   }
 
   return {
@@ -83,7 +98,7 @@ export function resolveTarget(rawUrl: string | undefined): TargetInfo {
     ref,
     url,
     label: ref
-      ? `unrecognised project "${ref}" — not local, not production, and not $STAGING_PROJECT_REF`
+      ? `unrecognised project "${ref}" — not local, not production, not staging, and not $STAGING_PROJECT_REF`
       : `unrecognised host ${hostname}`,
   }
 }

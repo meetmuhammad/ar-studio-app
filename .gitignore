@@ -30,14 +30,14 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env
-.env.local
-.env.development
-.env.test
-.env.production
-.env.ledger
-# Allow template files (no credentials)
+# env files
+# Deny every .env variant, then allow back only the two credential-free template
+# forms. An allowlist rather than a list of known filenames, because the files
+# that leak are the ones nobody thought to name: .env.production.local (Next.js
+# reads it), .env.staging, and whatever Vercel CLI writes next. Order matters —
+# the negations must stay BELOW the wildcard or they do nothing.
+.env*
+!.env.example
 !.env*.template
 
 # vercel
