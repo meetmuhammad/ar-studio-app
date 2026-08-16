@@ -1,0 +1,38 @@
+-- =============================================================================
+-- Schema alignment applied directly to STAGING (ohgqgkraybpvnfdbgmvl)
+-- =============================================================================
+-- PROVENANCE: this version exists in staging's migration history as
+-- `20260815220132_sync_staging_public_schema_to_production`, applied out of band
+-- on 2026-08-15 to bring staging's `public` schema into line with production.
+-- It was never in this repository, which is why `supabase db push` refused to
+-- run: it will not operate against a remote holding versions it cannot see.
+--
+-- WHY THIS FILE IS INTENTIONALLY EMPTY OF DDL
+--
+-- The alignment target was production's schema. `20251125000000_initial_schema.sql`
+-- is itself a baseline captured from a production schema dump, so replaying this
+-- repository from zero already produces the shape that alignment was reaching
+-- for. Re-stating that DDL here would be duplicate work locally, and on staging
+-- it would never execute anyway — the version is already recorded as applied, so
+-- `db push` skips it permanently.
+--
+-- The file therefore exists to make local and remote history agree. That is its
+-- whole job.
+--
+-- WHAT THIS FILE IS NOT
+--
+-- It is not a verbatim copy of the SQL that ran on staging. Recovering that text
+-- means reading staging's own `supabase_migrations.schema_migrations` table. If
+-- an exact record is ever wanted, capture it with:
+--
+--     supabase db dump --linked --data-only --schema supabase_migrations
+--
+-- against STAGING, and replace this comment with the recovered statements. That
+-- reads staging's migration-history table only: no production project is
+-- contacted, and no business rows are involved.
+--
+-- SAFETY: contains no DDL, so replaying it from zero locally is a no-op and it
+-- can never re-execute alignment SQL against any database.
+-- =============================================================================
+
+-- (no statements — history reconciliation marker; see the note above)
