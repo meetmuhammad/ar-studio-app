@@ -18,7 +18,9 @@ interface HeaderProps {
  */
 export function Header({ onMenuClick }: HeaderProps) {
   return (
-    <header className="bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
+    // Solid, not translucent-blurred: a frosted bar is the one glassmorphic
+    // note left in the chrome, and it fights a flat, data-first surface.
+    <header className="bg-background border-b border-border">
       <div className="flex items-center justify-between gap-2 px-3 py-3 sm:px-6">
         <Button
           variant="ghost"

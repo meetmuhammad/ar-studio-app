@@ -67,6 +67,46 @@ deliberate, not omissions:
 | "Data-Dense Dashboard" style | **Accepted** | Correct match: KPI cards, tables, tight padding, maximum data per screen. |
 | Density 8/10 spacing | **Accepted**, remapped to Tailwind steps | See spacing scale below. |
 
+## 0b. Visual identity (second pass — locked)
+
+**Graphite / Steel Blue.** Replaces the stock shadcn violet. Neutrals are
+near-achromatic (chroma 0.002–0.006 at hue 250) so the only colour on screen
+belongs to **data and state**. Radius `0.65rem → 0.375rem`.
+
+| Role | Light | Dark |
+|---|---|---|
+| Primary / brand / ring | `#02578B` | `#5096CE` |
+| Background (page) | `#F8F8F9` | `#0B0C0D` |
+| Card | `#FFFFFF` | `#151618` |
+| Sidebar | `#FAFAFB` | `#111213` |
+| Border / input | `#DBDCDE` | `#2E3133` |
+| Muted foreground | `#5E6164` | `#9B9FA3` |
+| chart-1 (revenue) | `#266EA4` | `#5FA5DE` |
+
+**Type:** Manrope 500/600 headings (tracking `-0.011em`, weight capped at 600) ·
+Inter body/UI · Geist Mono for all numerics (`tnum`, `zero`). All three are
+self-hosted via `next/font` — no external requests.
+
+### Rules this pass added
+
+- **Surface hierarchy is real.** `--background` is a tinted step *below* `--card`;
+  previously both were pure white and the page read flat. `<main>` no longer
+  needs `bg-muted/40`.
+- **Dark borders are opaque**, not `oklch(1 0 0 / 10%)` — alpha borders shift
+  with whatever sits behind them and read inconsistently across stacked surfaces.
+- **No frosted chrome.** The header is solid; `backdrop-blur` is gone.
+- **Colour is never chrome.** The sidebar wordmark block was a solid primary
+  slab; it is now a neutral surface with a hairline.
+- **Never hardcode button text colour.** `text-white` on `bg-primary` was a
+  workaround for the old violet and measured 3.18:1 against the new dark-mode
+  primary. Use `text-primary-foreground`.
+
+Font CSS variables must not collide with Tailwind theme keys: naming next/font's
+variable `--font-sans` makes `--font-sans: var(--font-sans)` self-referential and
+the page silently falls back to the system stack. Use `--font-inter` /
+`--font-manrope`. Because next/font puts those variables on `<body>` while
+preflight sets `font-family` on `<html>`, `body` declares its family explicitly.
+
 ## 1. Color
 
 **Source of truth:** `src/app/globals.css`. Components consume semantic tokens only. **Never** write a

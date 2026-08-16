@@ -89,7 +89,9 @@ export default function DashboardLayout({
 
         <div className="flex flex-col flex-1 overflow-hidden">
           <Header onMenuClick={() => setMobileMenuOpen(true)} />
-          <main className="flex-1 overflow-x-hidden overflow-y-auto bg-muted/40 p-3 sm:p-4 md:p-6">
+          {/* bg-background, not bg-muted/40: the page surface is now a distinct
+              step below the white cards, so the extra tint only muddied it. */}
+          <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-3 sm:p-4 md:p-6">
             {children}
           </main>
         </div>

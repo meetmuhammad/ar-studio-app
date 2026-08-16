@@ -6,7 +6,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-inter);
+  --font-heading: var(--font-manrope);
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -69,134 +70,143 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Palette: Graphite / Steel Blue.
+   Neutrals are near-achromatic (chroma 0.002-0.006, hue 250) so the only colour
+   on screen belongs to data and state. Every value below was chosen by measuring
+   oklch->sRGB contrast in both themes, not by eye.
+   ───────────────────────────────────────────────────────────────────────────── */
 :root {
-  --radius: 0.65rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
+  --radius: 0.375rem;
+  /* Page sits below cards so the surface hierarchy is real: previously both
+     --background and --card were pure white and the page read flat. */
+  --background: oklch(0.98 0.001 250);
+  --foreground: oklch(0.19 0.004 250);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
+  --card-foreground: oklch(0.19 0.004 250);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.606 0.25 292.717);
-  --primary-foreground: oklch(0.969 0.016 293.756);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.606 0.25 292.717);
-  /* chart-1 is the revenue series. Aligned to the brand violet; measures
-     4.23:1 on card (needs 3:1 as a graphical object). */
-  --chart-1: oklch(0.606 0.25 292.717);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.606 0.25 292.717);
-  --sidebar-primary-foreground: oklch(0.969 0.016 293.756);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.606 0.25 292.717);
+  --popover-foreground: oklch(0.19 0.004 250);
+  --primary: oklch(0.44 0.11 245);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.96 0.002 250);
+  --secondary-foreground: oklch(0.19 0.004 250);
+  --muted: oklch(0.96 0.002 250);
+  --muted-foreground: oklch(0.49 0.006 250);
+  --accent: oklch(0.955 0.003 250);
+  --accent-foreground: oklch(0.19 0.004 250);
+  --destructive: oklch(0.505 0.17 25);
+  --border: oklch(0.895 0.003 250);
+  --input: oklch(0.895 0.003 250);
+  --ring: oklch(0.44 0.11 245);
+  /* chart-1 is the revenue series; measures 5.46:1 on card (needs 3:1 as a
+     graphical object). Remaining slots step around the steel-blue anchor. */
+  --chart-1: oklch(0.52 0.11 245);
+  --chart-2: oklch(0.5 0.09 215);
+  --chart-3: oklch(0.55 0.08 265);
+  --chart-4: oklch(0.52 0.11 158);
+  --chart-5: oklch(0.52 0.11 72);
+  --sidebar: oklch(0.985 0.002 250);
+  --sidebar-foreground: oklch(0.19 0.004 250);
+  --sidebar-primary: oklch(0.44 0.11 245);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.955 0.003 250);
+  --sidebar-accent-foreground: oklch(0.19 0.004 250);
+  --sidebar-border: oklch(0.895 0.003 250);
+  --sidebar-ring: oklch(0.44 0.11 245);
   
-  /* Custom brand colors - harmonized with violet theme */
-  --warning: oklch(0.84 0.16 84);
-  --warning-foreground: oklch(0.28 0.07 46);
-  --success: oklch(0.65 0.17 156);
-  --success-foreground: oklch(0.97 0.01 156);
-  --info: oklch(0.6 0.12 234);
-  --info-foreground: oklch(0.97 0.01 234);
-  
-  /* Brand colors for AR Studio - using primary violet with white text */
-  --brand: oklch(0.606 0.25 292.717);
-  --brand-foreground: oklch(1 0 0); /* Pure white for better contrast */
+  /* Status fills - desaturated so alerts read as information, not decoration */
+  --warning: oklch(0.74 0.13 72);
+  --warning-foreground: oklch(0.24 0.05 72);
+  --success: oklch(0.55 0.12 158);
+  --success-foreground: oklch(0.98 0.01 158);
+  --info: oklch(0.52 0.11 240);
+  --info-foreground: oklch(0.98 0.01 240);
+
+  /* Brand: the steel-blue primary */
+  --brand: oklch(0.44 0.11 245);
+  --brand-foreground: oklch(1 0 0);
 
   /* Status surfaces, borders, and text - light mode.
      --warning/--success are FILL colors (paired with their -foreground) and fail
      contrast as text: warning measures 1.65:1 on white. The -text variants below
      are the readable equivalents; use those for any coloured type. */
-  --warning-surface: oklch(0.97 0.03 84);
-  --warning-border: oklch(0.7 0.12 84);
-  --warning-text: oklch(0.52 0.13 70);
-  --success-surface: oklch(0.97 0.03 156);
-  --success-border: oklch(0.65 0.15 156);
-  --success-text: oklch(0.5 0.13 156);
-  --info-surface: oklch(0.97 0.02 234);
-  --info-border: oklch(0.62 0.13 234);
-  --info-text: oklch(0.5 0.13 234);
-  --destructive-surface: oklch(0.97 0.02 27);
-  --destructive-border: oklch(0.62 0.18 27);
-  --destructive-text: oklch(0.52 0.2 27);
+  --warning-surface: oklch(0.975 0.018 72);
+  --warning-border: oklch(0.74 0.09 72);
+  --warning-text: oklch(0.52 0.11 72);
+  --success-surface: oklch(0.975 0.018 158);
+  --success-border: oklch(0.66 0.11 158);
+  --success-text: oklch(0.5 0.11 158);
+  --info-surface: oklch(0.975 0.016 240);
+  --info-border: oklch(0.64 0.1 240);
+  --info-text: oklch(0.5 0.11 240);
+  --destructive-surface: oklch(0.975 0.014 25);
+  --destructive-border: oklch(0.66 0.15 25);
+  --destructive-text: oklch(0.505 0.17 25);
 }
 
 .dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.541 0.281 293.009);
-  --primary-foreground: oklch(0.969 0.016 293.756);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.541 0.281 293.009);
-  /* chart-1 dark: the previous blue measured 2.60:1 on the dark card, below the
-     3:1 required of graphical objects. Lightened violet measures 5.64:1. */
-  --chart-1: oklch(0.68 0.2 292.7);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.541 0.281 293.009);
-  --sidebar-primary-foreground: oklch(0.969 0.016 293.756);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.541 0.281 293.009);
+  --background: oklch(0.155 0.003 250);
+  --foreground: oklch(0.97 0.002 250);
+  --card: oklch(0.2 0.004 250);
+  --card-foreground: oklch(0.97 0.002 250);
+  --popover: oklch(0.2 0.004 250);
+  --popover-foreground: oklch(0.97 0.002 250);
+  --primary: oklch(0.65 0.11 245);
+  --primary-foreground: oklch(0.14 0.01 250);
+  --secondary: oklch(0.26 0.005 250);
+  --secondary-foreground: oklch(0.97 0.002 250);
+  --muted: oklch(0.26 0.005 250);
+  --muted-foreground: oklch(0.7 0.008 250);
+  --accent: oklch(0.265 0.005 250);
+  --accent-foreground: oklch(0.97 0.002 250);
+  --destructive: oklch(0.68 0.16 25);
+  /* Opaque borders rather than white-alpha: alpha borders shift with whatever
+     sits behind them, which reads as inconsistent across stacked surfaces. */
+  --border: oklch(0.31 0.006 250);
+  --input: oklch(0.34 0.007 250);
+  --ring: oklch(0.68 0.11 245);
+  /* chart-1 dark measures 6.85:1 on the dark card (needs 3:1). */
+  --chart-1: oklch(0.7 0.11 245);
+  --chart-2: oklch(0.72 0.09 215);
+  --chart-3: oklch(0.68 0.09 265);
+  --chart-4: oklch(0.74 0.11 158);
+  --chart-5: oklch(0.78 0.1 72);
+  --sidebar: oklch(0.175 0.0035 250);
+  --sidebar-foreground: oklch(0.97 0.002 250);
+  --sidebar-primary: oklch(0.65 0.11 245);
+  --sidebar-primary-foreground: oklch(0.14 0.01 250);
+  --sidebar-accent: oklch(0.265 0.005 250);
+  --sidebar-accent-foreground: oklch(0.97 0.002 250);
+  --sidebar-border: oklch(0.31 0.006 250);
+  --sidebar-ring: oklch(0.68 0.11 245);
   
-  /* Custom brand colors - dark mode - harmonized with violet theme */
-  --warning: oklch(0.41 0.11 46);
-  --warning-foreground: oklch(0.99 0.02 95);
-  --success: oklch(0.45 0.12 156);
-  --success-foreground: oklch(0.97 0.01 156);
-  --info: oklch(0.45 0.10 234);
-  --info-foreground: oklch(0.97 0.01 234);
-  
-  /* Brand colors for AR Studio - dark mode - using primary violet with white text */
-  --brand: oklch(0.541 0.281 293.009);
-  --brand-foreground: oklch(1 0 0); /* Pure white for better contrast */
+  /* Status fills - dark mode */
+  --warning: oklch(0.72 0.12 72);
+  --warning-foreground: oklch(0.2 0.04 72);
+  --success: oklch(0.66 0.12 158);
+  --success-foreground: oklch(0.16 0.03 158);
+  --info: oklch(0.66 0.11 240);
+  --info-foreground: oklch(0.16 0.03 240);
+
+  /* Brand: the steel-blue primary */
+  --brand: oklch(0.65 0.11 245);
+  --brand-foreground: oklch(0.14 0.01 250);
 
   /* Status surfaces, borders, and text - dark mode. Dark desaturated fills keep
      foreground text legible; -text variants are lightened to clear 4.5:1 on the
      dark card (the base --warning measures 1.92:1 there and must not be typed). */
-  --warning-surface: oklch(0.26 0.05 84);
-  --warning-border: oklch(0.55 0.11 84);
-  --warning-text: oklch(0.8 0.13 84);
-  --success-surface: oklch(0.25 0.05 156);
-  --success-border: oklch(0.52 0.11 156);
-  --success-text: oklch(0.78 0.14 156);
-  --info-surface: oklch(0.25 0.04 234);
-  --info-border: oklch(0.52 0.1 234);
-  --info-text: oklch(0.78 0.12 234);
-  --destructive-surface: oklch(0.26 0.06 27);
-  --destructive-border: oklch(0.56 0.16 27);
-  --destructive-text: oklch(0.75 0.16 22);
+  --warning-surface: oklch(0.265 0.035 72);
+  --warning-border: oklch(0.55 0.09 72);
+  --warning-text: oklch(0.8 0.1 72);
+  --success-surface: oklch(0.26 0.035 158);
+  --success-border: oklch(0.52 0.09 158);
+  --success-text: oklch(0.78 0.11 158);
+  --info-surface: oklch(0.26 0.032 240);
+  --info-border: oklch(0.52 0.09 240);
+  --info-text: oklch(0.78 0.1 240);
+  --destructive-surface: oklch(0.265 0.04 25);
+  --destructive-border: oklch(0.56 0.13 25);
+  --destructive-text: oklch(0.755 0.13 25);
 }
 
 @layer base {
@@ -205,6 +215,26 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Declared explicitly: next/font puts --font-inter on <body>, but preflight
+       sets font-family on <html>, so the variable is out of scope there and the
+       page silently falls back to the system stack. */
+    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  /* Headings take Manrope and a slight negative tracking. Sizes are deliberately
+     not set here — the approved layout owns those; this changes cut and colour
+     only. Weight is capped at 600 across the app: 700 reads as shouting at
+     dashboard sizes. */
+  h1, h2, h3, h4 {
+    font-family: var(--font-manrope), var(--font-inter), sans-serif;
+    letter-spacing: -0.011em;
+    font-weight: 600;
+  }
+
+  /* Numerals never reflow between refetches. */
+  .font-mono {
+    font-feature-settings: "tnum", "zero";
   }
   
   /* Mobile-friendly touch targets */
@@ -218,17 +248,15 @@
     }
   }
   
-  /* Custom link styles */
+  /* Custom link styles.
+     Underline behaviour is unchanged (that cleanup is still deferred); only the
+     two hardcoded hex values are replaced with the token, so links follow the
+     palette in both themes instead of sitting outside it. */
   a {
     @apply underline;
-    color: #171717; /* Light mode - dark gray */
+    color: var(--foreground);
     text-decoration-thickness: 1px;
     text-underline-offset: 2px;
-  }
-  
-  /* Dark mode links */
-  .dark a {
-    color: white;
   }
   
   /* Hover effects */

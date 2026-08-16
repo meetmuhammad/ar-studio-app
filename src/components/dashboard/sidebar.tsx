@@ -82,12 +82,17 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     : []
 
   return (
-    <div className="flex flex-col h-full bg-card border-border">
-      <div className="flex items-center justify-center h-16 px-4 bg-primary text-primary-foreground">
+    <div className="flex flex-col h-full bg-sidebar border-border">
+      {/* Was a solid primary-filled block. In a palette where colour is reserved
+          for data and state, a saturated slab of chrome is the loudest thing on
+          screen and reads as template styling. Now a neutral surface. */}
+      <div className="flex items-center justify-center h-16 px-4 border-b border-sidebar-border">
         {/* Wordmark, not a heading: the page's own h1 belongs to its content.
             Rendering this as an h1 put two (three with the mobile sheet) on every
             page and broke heading order for screen readers. */}
-        <span className="text-xl font-bold">AR Dashboard</span>
+        <span className="text-base font-semibold tracking-tight text-sidebar-foreground">
+          AR Dashboard
+        </span>
       </div>
       
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
