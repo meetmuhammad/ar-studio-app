@@ -52,3 +52,18 @@ next-env.d.ts
 # AI project reference (local only)
 docs/PROJECT.md
 WARP.md
+
+# AI agent config, instructions, and skills — never publish
+.claude/
+.claude-*/
+CLAUDE.md
+**/CLAUDE.md
+AGENTS.md
+**/AGENTS.md
+.cursor/
+.cursorrules
+.windsurfrules
+.aider*
+.mcp.json
+**/SKILL.md
+**/skills/
