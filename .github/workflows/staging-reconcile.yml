@@ -100,8 +100,16 @@ jobs:
       # Applies only 20260814202134 (the measurements RLS fix). 20251125000000 is
       # now recorded as applied, and 20260815220132 already was, so both are
       # skipped rather than re-executed.
+      #
+      # --include-all is required because the fix is dated 2026-08-14, BEHIND the
+      # already-applied 2026-08-15 alignment, and `db push` refuses to insert
+      # behind the latest remote migration without it. That guard exists to stop
+      # a migration written against an older schema landing on a newer one — here
+      # the ordering is an artefact of the alignment being applied out of band,
+      # and the fix is order-independent anyway: it drops a policy `if exists`
+      # and creates a differently-named one. Safe, and verified below regardless.
       - name: Push remaining migrations
-        run: supabase db push --linked --password "$DB_PASSWORD"
+        run: supabase db push --linked --include-all --password "$DB_PASSWORD"
 
       # `db push` can prompt, apply nothing, and still exit 0. Assert the
       # history rather than trusting the exit code.
