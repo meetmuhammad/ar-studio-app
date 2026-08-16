@@ -13,7 +13,7 @@ import { toast } from 'sonner'
 // DASHBOARD
 // =============================================================================
 
-interface DashboardStatsResponse {
+export interface DashboardStatsResponse {
   totalCustomers: number
   totalOrders: number
   totalRevenue: number

@@ -47,7 +47,22 @@
   --color-info-foreground: var(--info-foreground);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
-  
+
+  /* Status surfaces + borders — low-emphasis pairs for tinted rows and callouts.
+     Without these, call sites reach for raw palette utilities (bg-orange-50). */
+  --color-warning-surface: var(--warning-surface);
+  --color-warning-border: var(--warning-border);
+  --color-warning-text: var(--warning-text);
+  --color-success-surface: var(--success-surface);
+  --color-success-border: var(--success-border);
+  --color-success-text: var(--success-text);
+  --color-info-surface: var(--info-surface);
+  --color-info-border: var(--info-border);
+  --color-info-text: var(--info-text);
+  --color-destructive-surface: var(--destructive-surface);
+  --color-destructive-border: var(--destructive-border);
+  --color-destructive-text: var(--destructive-text);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -74,7 +89,9 @@
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
   --ring: oklch(0.606 0.25 292.717);
-  --chart-1: oklch(0.646 0.222 41.116);
+  /* chart-1 is the revenue series. Aligned to the brand violet; measures
+     4.23:1 on card (needs 3:1 as a graphical object). */
+  --chart-1: oklch(0.606 0.25 292.717);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
@@ -99,6 +116,23 @@
   /* Brand colors for AR Studio - using primary violet with white text */
   --brand: oklch(0.606 0.25 292.717);
   --brand-foreground: oklch(1 0 0); /* Pure white for better contrast */
+
+  /* Status surfaces, borders, and text - light mode.
+     --warning/--success are FILL colors (paired with their -foreground) and fail
+     contrast as text: warning measures 1.65:1 on white. The -text variants below
+     are the readable equivalents; use those for any coloured type. */
+  --warning-surface: oklch(0.97 0.03 84);
+  --warning-border: oklch(0.7 0.12 84);
+  --warning-text: oklch(0.52 0.13 70);
+  --success-surface: oklch(0.97 0.03 156);
+  --success-border: oklch(0.65 0.15 156);
+  --success-text: oklch(0.5 0.13 156);
+  --info-surface: oklch(0.97 0.02 234);
+  --info-border: oklch(0.62 0.13 234);
+  --info-text: oklch(0.5 0.13 234);
+  --destructive-surface: oklch(0.97 0.02 27);
+  --destructive-border: oklch(0.62 0.18 27);
+  --destructive-text: oklch(0.52 0.2 27);
 }
 
 .dark {
@@ -120,7 +154,9 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.541 0.281 293.009);
-  --chart-1: oklch(0.488 0.243 264.376);
+  /* chart-1 dark: the previous blue measured 2.60:1 on the dark card, below the
+     3:1 required of graphical objects. Lightened violet measures 5.64:1. */
+  --chart-1: oklch(0.68 0.2 292.7);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
@@ -145,6 +181,22 @@
   /* Brand colors for AR Studio - dark mode - using primary violet with white text */
   --brand: oklch(0.541 0.281 293.009);
   --brand-foreground: oklch(1 0 0); /* Pure white for better contrast */
+
+  /* Status surfaces, borders, and text - dark mode. Dark desaturated fills keep
+     foreground text legible; -text variants are lightened to clear 4.5:1 on the
+     dark card (the base --warning measures 1.92:1 there and must not be typed). */
+  --warning-surface: oklch(0.26 0.05 84);
+  --warning-border: oklch(0.55 0.11 84);
+  --warning-text: oklch(0.8 0.13 84);
+  --success-surface: oklch(0.25 0.05 156);
+  --success-border: oklch(0.52 0.11 156);
+  --success-text: oklch(0.78 0.14 156);
+  --info-surface: oklch(0.25 0.04 234);
+  --info-border: oklch(0.52 0.1 234);
+  --info-text: oklch(0.78 0.12 234);
+  --destructive-surface: oklch(0.26 0.06 27);
+  --destructive-border: oklch(0.56 0.16 27);
+  --destructive-text: oklch(0.75 0.16 22);
 }
 
 @layer base {

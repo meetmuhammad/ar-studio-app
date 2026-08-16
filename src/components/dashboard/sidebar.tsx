@@ -84,7 +84,10 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
   return (
     <div className="flex flex-col h-full bg-card border-border">
       <div className="flex items-center justify-center h-16 px-4 bg-primary text-primary-foreground">
-        <h1 className="text-xl font-bold">AR Dashboard</h1>
+        {/* Wordmark, not a heading: the page's own h1 belongs to its content.
+            Rendering this as an h1 put two (three with the mobile sheet) on every
+            page and broke heading order for screen readers. */}
+        <span className="text-xl font-bold">AR Dashboard</span>
       </div>
       
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">

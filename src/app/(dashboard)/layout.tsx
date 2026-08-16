@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Sidebar } from '@/components/dashboard/sidebar'
 import { Header } from '@/components/dashboard/header'
 import { RouteGuard } from '@/components/auth/route-guard'
@@ -8,6 +8,7 @@ import { OrderDialog } from '@/components/dialogs/order-dialog'
 import { PaymentDialog } from '@/components/dialogs/payment-dialog'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { CreateOrderInput } from '@/lib/validators'
+import { DashboardActionsProvider } from '@/contexts/dashboard-actions'
 import { toast } from 'sonner'
 
 export default function DashboardLayout({
@@ -63,8 +64,16 @@ export default function DashboardLayout({
     window.dispatchEvent(new CustomEvent('paymentAdded'))
   }
 
+  // Exposed to pages so PageHeader can render these as page-level actions.
+  // The dialogs, handlers, and events above are unchanged.
+  const dashboardActions = useMemo(
+    () => ({ openOrderDialog, openPaymentDialog }),
+    []
+  )
+
   return (
     <RouteGuard requireAuth={true} requiredRoles={['admin', 'staff']}>
+      <DashboardActionsProvider value={dashboardActions}>
       <div className="flex h-screen bg-background">
         {/* Desktop Sidebar */}
         <aside className="hidden lg:flex w-64 border-r">
@@ -79,11 +88,7 @@ export default function DashboardLayout({
         </Sheet>
 
         <div className="flex flex-col flex-1 overflow-hidden">
-          <Header 
-            onCreateOrder={openOrderDialog}
-            onAddPayment={openPaymentDialog}
-            onMenuClick={() => setMobileMenuOpen(true)}
-          />
+          <Header onMenuClick={() => setMobileMenuOpen(true)} />
           <main className="flex-1 overflow-x-hidden overflow-y-auto bg-muted/40 p-3 sm:p-4 md:p-6">
             {children}
           </main>
@@ -104,6 +109,7 @@ export default function DashboardLayout({
           onSuccess={handlePaymentSuccess}
         />
       </div>
+      </DashboardActionsProvider>
     </RouteGuard>
   )
 }
