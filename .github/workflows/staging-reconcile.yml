@@ -1,6 +1,6 @@
 name: Staging migration reconcile
 
-# One-off, manually dispatched reconciliation of STAGING's migration history.
+# One-off reconciliation of STAGING's migration history.
 #
 # Staging was schema-aligned with production by `20260815220132`, a migration
 # that only ever existed on the remote, so `supabase db push` refuses to run:
@@ -19,19 +19,24 @@ name: Staging migration reconcile
 #   * NO schema dumps, NO data dumps, NO copying anything between environments
 #   * production is never contacted, read, or written
 
+# TRIGGER: pushing the one-shot branch `chore/reconcile-staging-history`.
+#
+# Not `workflow_dispatch`: GitHub only offers manual dispatch for workflows that
+# exist on the DEFAULT branch, and this one deliberately does not — `main` is the
+# production branch, and putting it there would trigger a production deployment
+# to land a staging-only maintenance job.
+#
+# Not `push: [staging]` either: repairing history on every staging push is the
+# opposite of what a one-off reconciliation should do. The dedicated branch makes
+# this run exactly once, on purpose, and is deleted afterwards.
 on:
-  workflow_dispatch:
-    inputs:
-      repair_applied:
-        description: "space-separated versions to mark as ALREADY applied (history row only, no DDL runs)"
-        required: false
-        default: ""
-      do_push:
-        description: "run `supabase db push` after repairing"
-        required: false
-        default: "false"
-        type: choice
-        options: ["false", "true"]
+  push:
+    branches: [chore/reconcile-staging-history]
+
+env:
+  # Staging already has this schema — it is the production-shaped baseline. Its
+  # DDL must never re-run: 21 duplicate policies and 26 duplicate indexes.
+  REPAIR_APPLIED: "20251125000000"
 
 concurrency:
   group: staging-reconcile
@@ -82,9 +87,8 @@ jobs:
       # describe already exist on staging; re-running their DDL would fail on
       # duplicate policies and indexes, which is exactly what this avoids.
       - name: Repair history (no DDL executed)
-        if: inputs.repair_applied != ''
         run: |
-          for v in ${{ inputs.repair_applied }}; do
+          for v in $REPAIR_APPLIED; do
             echo "::group::repair $v --status applied"
             supabase migration repair --status applied "$v" --linked --password "$DB_PASSWORD"
             echo "::endgroup::"
@@ -93,14 +97,15 @@ jobs:
       - name: Migration list (after repair)
         run: supabase migration list --linked --password "$DB_PASSWORD"
 
+      # Applies only 20260814202134 (the measurements RLS fix). 20251125000000 is
+      # now recorded as applied, and 20260815220132 already was, so both are
+      # skipped rather than re-executed.
       - name: Push remaining migrations
-        if: inputs.do_push == 'true'
         run: supabase db push --linked --password "$DB_PASSWORD"
 
       # `db push` can prompt, apply nothing, and still exit 0. Assert the
       # history rather than trusting the exit code.
       - name: Verify nothing left pending
-        if: inputs.do_push == 'true'
         run: |
           set -o pipefail
           supabase migration list --linked --password "$DB_PASSWORD" | tee /tmp/list.txt
