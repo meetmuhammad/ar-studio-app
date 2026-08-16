@@ -6,8 +6,11 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-// Client-side Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// NOTE: there is deliberately no browser client in this file. The single browser
+// client lives in ./supabase-client.ts and must be cookie-based so the server can
+// see the session. Two localStorage-backed clients previously lived here -- a
+// bare `export const supabase` and a `createBrowserSupabaseClient()` factory --
+// both with zero callers. They were removed rather than left as a trap.
 
 // Server-side Supabase client with cookie handling (anon role)
 export async function createServerSupabaseClient() {
@@ -29,11 +32,6 @@ export async function createServerSupabaseClient() {
       },
     },
   })
-}
-
-// Browser client for client-side usage (auth context)
-export function createBrowserSupabaseClient() {
-  return createClient(supabaseUrl, supabaseAnonKey)
 }
 
 // Admin (service role) Supabase client for server-side-only usage (API routes)
