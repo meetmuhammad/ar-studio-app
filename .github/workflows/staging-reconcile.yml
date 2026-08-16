@@ -1,0 +1,163 @@
+name: Staging migration reconcile
+
+# One-off, manually dispatched reconciliation of staging's migration history.
+#
+# Staging was schema-aligned with production by a migration that only ever
+# existed on the remote (`20260815220132_sync_staging_public_schema_to_production`),
+# so `supabase db push` refuses to run: local and remote histories disagree.
+#
+# Reconciling that needs the staging credentials, which live in this repo's
+# `staging` GitHub Environment and cannot be read back out. So the work happens
+# here rather than on a laptop — no secret is ever copied anywhere.
+#
+#   mode=inspect   READ-ONLY. Dumps the remote migration history and the live
+#                  schema so a human can decide what is already applied.
+#   mode=apply     Marks the listed versions as already-applied (history only,
+#                  no DDL), then optionally pushes what genuinely remains.
+#
+# Never runs on push. Never targets production: the guard below asserts equality
+# with the staging ref, so a wrong or stale secret aborts before connecting.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "inspect (read-only) or apply (repair + optional push)"
+        required: true
+        default: inspect
+        type: choice
+        options: [inspect, apply]
+      repair_applied:
+        description: "apply mode: space-separated versions to mark as ALREADY applied (history only, no DDL)"
+        required: false
+        default: ""
+      do_push:
+        description: "apply mode: run `supabase db push` after repairing"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+
+concurrency:
+  group: staging-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: reconcile staging migration history
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ${{ secrets.STAGING_PROJECT_REF }}
+      DB_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # Equality, not "is not production". A stale secret pointing at some third
+      # project would otherwise be repaired and pushed to, and a migration
+      # applied to the wrong database is not undone by fixing the secret.
+      - name: Verify target is staging
+        run: |
+          PRODUCTION_REF=drdnqsjjxmqiklwfadmk
+          STAGING_REF=ohgqgkraybpvnfdbgmvl
+          echo "TARGET DATABASE: STAGING - $STAGING_REF"
+          if [ -z "$PROJECT_REF" ]; then
+            echo "::error::STAGING_PROJECT_REF is not set"; exit 1
+          fi
+          if [ "$PROJECT_REF" = "$PRODUCTION_REF" ]; then
+            echo "::error::PROJECT_REF is the PRODUCTION project. Refusing."; exit 1
+          fi
+          if [ "$PROJECT_REF" != "$STAGING_REF" ]; then
+            echo "::error::PROJECT_REF is not the staging project. Refusing."; exit 1
+          fi
+          echo "confirmed: target is staging"
+
+      - name: Link
+        run: supabase link --project-ref "$PROJECT_REF" --password "$DB_PASSWORD"
+
+      - name: Migration list (before)
+        run: supabase migration list --linked --password "$DB_PASSWORD"
+
+      # ── inspect ───────────────────────────────────────────────────────────
+      # Both dumps are read-only. The history dump carries the `statements`
+      # array of every applied migration, which is how the remote-only migration
+      # gets recovered into the repository verbatim.
+      - name: Dump remote migration history
+        if: inputs.mode == 'inspect'
+        run: |
+          supabase db dump --linked --password "$DB_PASSWORD" \
+            --data-only --schema supabase_migrations -f migration-history.sql
+          echo "bytes: $(wc -c < migration-history.sql)"
+
+      - name: Dump remote schema
+        if: inputs.mode == 'inspect'
+        run: |
+          supabase db dump --linked --password "$DB_PASSWORD" -f remote-schema.sql
+          echo "bytes: $(wc -c < remote-schema.sql)"
+
+      # The one question that decides whether 20260814202134 may be marked
+      # applied: does the anon read hole on measurements still exist?
+      - name: Measurements RLS policies on staging
+        if: inputs.mode == 'inspect'
+        run: |
+          echo "=== policies on public.measurements ==="
+          grep -iE 'CREATE POLICY .* ON "?public"?\."?measurements"?' remote-schema.sql || echo "(none found)"
+          echo
+          echo "=== does the permissive USING (true) policy still exist? ==="
+          if grep -iE 'CREATE POLICY .*ON "?public"?\."?measurements"?' remote-schema.sql | grep -qiE 'USING \(true\)'; then
+            echo "VERDICT: anon read hole STILL PRESENT -> 20260814202134 is NOT applied"
+          else
+            echo "VERDICT: no USING (true) policy -> fix may already be applied"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: inputs.mode == 'inspect'
+        with:
+          name: staging-inspect
+          path: |
+            migration-history.sql
+            remote-schema.sql
+          retention-days: 3
+
+      # ── apply ─────────────────────────────────────────────────────────────
+      # `migration repair --status applied` writes only to
+      # supabase_migrations.schema_migrations. It executes none of the
+      # migration's SQL, which is the entire point: the objects already exist.
+      - name: Repair history (no DDL executed)
+        if: inputs.mode == 'apply' && inputs.repair_applied != ''
+        run: |
+          for v in ${{ inputs.repair_applied }}; do
+            echo "::group::repair $v --status applied"
+            supabase migration repair --status applied "$v" --linked --password "$DB_PASSWORD"
+            echo "::endgroup::"
+          done
+
+      - name: Migration list (after repair)
+        if: inputs.mode == 'apply'
+        run: supabase migration list --linked --password "$DB_PASSWORD"
+
+      - name: Push remaining migrations
+        if: inputs.mode == 'apply' && inputs.do_push == 'true'
+        run: supabase db push --linked --password "$DB_PASSWORD"
+
+      # `db push` can prompt, apply nothing, and still exit 0. Assert the
+      # history instead of trusting the exit code.
+      - name: Verify nothing left pending
+        if: inputs.mode == 'apply' && inputs.do_push == 'true'
+        run: |
+          set -o pipefail
+          supabase migration list --linked --password "$DB_PASSWORD" | tee /tmp/list.txt
+          PENDING=$(awk -F'|' '
+            /^[[:space:]]*[0-9]{14}/ {
+              gsub(/ /,"",$1); gsub(/ /,"",$2);
+              if ($1 != "" && $2 == "") print $1
+            }' /tmp/list.txt)
+          if [ -n "$PENDING" ]; then
+            echo "::error::still pending after push:"; echo "$PENDING"; exit 1
+          fi
+          echo "staging migration history is consistent"
