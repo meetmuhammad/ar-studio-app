@@ -28,8 +28,13 @@ export const GET = withAdmin(async (request: Request) => {
         )
       `)
       .eq('vendor_id', vendorId)
+      // (entry_date, created_at, id) is the total order the database now stores
+      // balances in. Without `id` the ordering is not total and two rows tying
+      // on both timestamps could be displayed in an order their running
+      // balances disagree with.
       .order('entry_date', { ascending: false })
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
 
     if (error) {
       console.error('Error fetching vendor ledger:', error)
@@ -80,20 +85,14 @@ export const POST = withAdmin(async (request: Request) => {
       )
     }
 
-    // Get the last balance for this vendor
-    const { data: lastEntry } = await supabase
-      .from('vendor_ledger')
-      .select('balance')
-      .eq('vendor_id', vendor_id)
-      .order('entry_date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
-
-    const previousBalance = lastEntry?.balance || 0
-    const newBalance = previousBalance + (debit || 0) - (credit || 0)
-
-    // Create vendor_ledger entry only (no general ledger entry)
+    // `balance` is derived, never supplied. It used to be computed here from
+    // `order by entry_date desc, created_at desc limit 1`, which is not a total
+    // order and, for a back-dated entry, read the newest row rather than the
+    // row this entry actually follows. The database now owns it:
+    // trg_calculate_vendor_ledger_balance seeds the new row from its true
+    // predecessor within this vendor, and the statement-level AFTER INSERT
+    // trigger repairs every later row for that vendor. See
+    // supabase/migrations/20260817160000_vendor_ledger_balance_integrity.sql.
     const { data: entry, error } = await supabase
       .from('vendor_ledger')
       .insert({
@@ -103,7 +102,7 @@ export const POST = withAdmin(async (request: Request) => {
         particulars: particulars.trim(),
         debit: debit || null,
         credit: credit || null,
-        balance: newBalance,
+        balance: 0, // overwritten by the BEFORE INSERT trigger
         notes: notes?.trim() || null,
       })
       .select()
