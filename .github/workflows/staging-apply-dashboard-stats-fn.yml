@@ -1,0 +1,452 @@
+name: Apply dashboard_stats to staging
+
+# One-off, staging-only application of
+# supabase/migrations/20260817120000_dashboard_stats_fn.sql, plus the proofs
+# that the function is correct and that it is NOT reachable with the anon key.
+#
+# Why this runs here and not on a laptop: the staging credentials live in this
+# repo's `staging` GitHub Environment and cannot be read back out. Nothing is
+# copied anywhere, and no secret is printed -- the repository is public, so
+# these logs are public too.
+#
+# TRIGGER: pushing the one-shot branch `chore/apply-dashboard-stats-fn`.
+# Not `workflow_dispatch`: GitHub only offers manual dispatch for workflows on
+# the DEFAULT branch, and `main` here deploys to production, so a dispatchable
+# copy must not live there. Follows the precedent set by
+# .github/workflows/staging-reconcile.yml.
+#
+# SCOPE -- deliberately narrow:
+#   * STAGING only; the first step aborts on anything else, by equality
+#   * creates one function and sets its privileges; no existing table, column
+#     or row of staging data is altered
+#   * the two proofs that need rows insert throwaway orders under reserved
+#     `ZZCANCEL-` / `ZZTRUNC-` order_number prefixes and delete them again,
+#     with the deletes also running on failure
+#   * production is never contacted, read, or written
+on:
+  push:
+    branches: [chore/apply-dashboard-stats-fn]
+
+concurrency:
+  group: staging-dashboard-stats-fn
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: apply and verify dashboard_stats on staging
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ${{ secrets.STAGING_PROJECT_REF }}
+      ANON_KEY: ${{ secrets.STAGING_ANON_KEY }}
+      SERVICE_ROLE_KEY: ${{ secrets.STAGING_SERVICE_ROLE_KEY }}
+      MIGRATION: supabase/migrations/20260817120000_dashboard_stats_fn.sql
+      MIGRATION_VERSION: "20260817120000"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Equality, not "is not production". A stale secret pointing at some third
+      # project would otherwise have DDL applied to it, and a function created
+      # on the wrong database is not undone by fixing the secret afterwards.
+      - name: Verify target is staging
+        run: |
+          set -euo pipefail
+          PRODUCTION_REF=drdnqsjjxmqiklwfadmk
+          STAGING_REF=ohgqgkraybpvnfdbgmvl
+          echo "TARGET DATABASE: STAGING - $STAGING_REF"
+          if [ -z "${PROJECT_REF:-}" ]; then
+            echo "::error::STAGING_PROJECT_REF is not set"; exit 1
+          fi
+          if [ "$PROJECT_REF" = "$PRODUCTION_REF" ]; then
+            echo "::error::PROJECT_REF is the PRODUCTION project. Refusing."; exit 1
+          fi
+          if [ "$PROJECT_REF" != "$STAGING_REF" ]; then
+            echo "::error::PROJECT_REF is not the staging project. Refusing."; exit 1
+          fi
+          for v in SUPABASE_ACCESS_TOKEN ANON_KEY SERVICE_ROLE_KEY; do
+            if [ -z "${!v:-}" ]; then echo "::error::$v is not set"; exit 1; fi
+          done
+          echo "confirmed: target is staging"
+
+      # Belt and braces. GitHub masks secret values automatically, but the
+      # project URL is derived rather than a secret itself, so mask it too --
+      # otherwise it prints the staging ref into a public log.
+      - name: Mask derived values
+        run: |
+          echo "::add-mask::https://$PROJECT_REF.supabase.co"
+
+      - name: Install SQL helper
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bin"
+          cat > "$RUNNER_TEMP/bin/run_sql" <<'HELPER'
+          #!/usr/bin/env bash
+          # run_sql <file containing SQL> -> JSON array of result rows on stdout.
+          # Uses the Supabase Management API rather than a direct connection:
+          # Supabase's direct Postgres host is IPv6-only and GitHub runners are
+          # IPv4-only, and the pooler hostname is region-dependent and would have
+          # to be guessed. This needs only the access token that is already here.
+          set -euo pipefail
+          jq -Rs '{query: .}' < "$1" > "$RUNNER_TEMP/query.json"
+          code=$(curl -sS -o "$RUNNER_TEMP/sql-out.json" -w '%{http_code}' \
+            -X POST "https://api.supabase.com/v1/projects/$PROJECT_REF/database/query" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @"$RUNNER_TEMP/query.json")
+          if [ "$code" != "200" ] && [ "$code" != "201" ]; then
+            echo "::error::SQL call failed with HTTP $code" >&2
+            cat "$RUNNER_TEMP/sql-out.json" >&2
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/sql-out.json"
+          HELPER
+          chmod +x "$RUNNER_TEMP/bin/run_sql"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Preflight - SQL channel works
+        run: |
+          set -euo pipefail
+          echo "select 1 as ok, current_user as as_role;" > "$RUNNER_TEMP/pre.sql"
+          run_sql "$RUNNER_TEMP/pre.sql" | jq -c .
+
+      # Pre-clean, so an aborted earlier run cannot poison the baseline.
+      - name: Pre-clean test fixtures
+        run: |
+          set -euo pipefail
+          echo "delete from public.orders where order_number like 'ZZTRUNC-%' or order_number = 'ZZCANCEL-1';" > "$RUNNER_TEMP/clean.sql"
+          run_sql "$RUNNER_TEMP/clean.sql" | jq -c .
+
+      # Ranges are derived from the data rather than hard-coded, so neither test
+      # range can quietly be empty and pass by vacuity.
+      - name: Baseline and range selection
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/base.sql" <<'SQL'
+          with m as (
+            select date_trunc('month', booking_date)::date as ms, count(*) as n
+            from public.orders
+            where status <> 'Cancelled'
+            group by 1
+            order by n desc, ms desc
+            limit 1
+          )
+          select
+            to_char((select min(booking_date) from public.orders), 'YYYY-MM-DD') as a_start,
+            to_char((select max(booking_date) from public.orders), 'YYYY-MM-DD') as a_end,
+            to_char(m.ms, 'YYYY-MM-DD') as b_start,
+            to_char((m.ms + interval '1 month - 1 day')::date, 'YYYY-MM-DD') as b_end,
+            m.n as b_count,
+            (select count(*) from public.orders) as all_orders,
+            (select count(*) from public.orders where status = 'Cancelled') as cancelled_orders,
+            (select count(*) from public.payments) as all_payments
+          from m;
+          SQL
+          run_sql "$RUNNER_TEMP/base.sql" | tee "$RUNNER_TEMP/base.json" | jq -c .
+          {
+            echo "RANGE_A_START=$(jq -r '.[0].a_start' "$RUNNER_TEMP/base.json")"
+            echo "RANGE_A_END=$(jq -r '.[0].a_end' "$RUNNER_TEMP/base.json")"
+            echo "RANGE_B_START=$(jq -r '.[0].b_start' "$RUNNER_TEMP/base.json")"
+            echo "RANGE_B_END=$(jq -r '.[0].b_end' "$RUNNER_TEMP/base.json")"
+          } >> "$GITHUB_ENV"
+
+      - name: Apply migration (create or replace + privileges)
+        run: |
+          set -euo pipefail
+          echo "TARGET DATABASE: STAGING - ohgqgkraybpvnfdbgmvl"
+          run_sql "$MIGRATION" | jq -c .
+
+      # Keeps `supabase db push` honest later: the version is recorded as applied
+      # so a future push neither re-runs it nor refuses over a history mismatch.
+      - name: Record migration version in history
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/hist.sql" <<SQL
+          insert into supabase_migrations.schema_migrations (version, name)
+          values ('$MIGRATION_VERSION', 'dashboard_stats_fn')
+          on conflict (version) do nothing;
+          select version from supabase_migrations.schema_migrations order by version;
+          SQL
+          run_sql "$RUNNER_TEMP/hist.sql" | jq -c .
+
+      - name: Show resulting function ACL
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/acl.sql" <<'SQL'
+          select p.proname,
+                 p.prosecdef as security_definer,
+                 coalesce(array_to_string(p.proacl, ' | '), '(default: EXECUTE to PUBLIC)') as acl
+          from pg_proc p
+          join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.proname = 'dashboard_stats';
+          SQL
+          run_sql "$RUNNER_TEMP/acl.sql" | jq -c .
+
+      # ---------------------------------------------------------------------
+      # THE SECURITY PROOF. Every function in `public` is published by PostgREST
+      # at /rest/v1/rpc/<name>, and the anon key ships inside the browser
+      # bundle, so "callable by anon" means "callable by anyone with a browser"
+      # -- straight past withAdmin. This step fails the build unless anon is
+      # refused.
+      # ---------------------------------------------------------------------
+      - name: PROOF - anon key cannot execute dashboard_stats
+        run: |
+          set -euo pipefail
+          URL="https://$PROJECT_REF.supabase.co/rest/v1/rpc/dashboard_stats"
+          code=$(curl -sS -o "$RUNNER_TEMP/anon.json" -w '%{http_code}' -X POST "$URL" \
+            -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"p_start\":\"$RANGE_B_START\",\"p_end\":\"$RANGE_B_END\"}")
+          echo "anon HTTP $code"
+          cat "$RUNNER_TEMP/anon.json"; echo
+          if [ "$code" = "200" ]; then
+            echo "::error::anon executed dashboard_stats. Financials are world-readable. FAIL."
+            exit 1
+          fi
+          if ! jq -e '.code == "42501"' "$RUNNER_TEMP/anon.json" > /dev/null; then
+            echo "::warning::anon was refused, but not with 42501 (permission denied); see body above"
+          fi
+          echo "confirmed: anon is refused"
+
+      - name: PROOF - execute privilege is service_role only
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/hasperm.sql" <<'SQL'
+          select
+            has_function_privilege('anon',          'public.dashboard_stats(date,date)', 'execute') as anon_execute,
+            has_function_privilege('authenticated', 'public.dashboard_stats(date,date)', 'execute') as authenticated_execute,
+            has_function_privilege('service_role',  'public.dashboard_stats(date,date)', 'execute') as service_role_execute;
+          SQL
+          run_sql "$RUNNER_TEMP/hasperm.sql" | tee "$RUNNER_TEMP/hasperm.json" | jq -c .
+          jq -e '.[0].anon_execute == false and .[0].authenticated_execute == false and .[0].service_role_execute == true' \
+            "$RUNNER_TEMP/hasperm.json" > /dev/null
+          echo "confirmed: a signed-in staff JWT (role authenticated) cannot execute it either"
+
+      - name: PROOF - service_role can execute it
+        run: |
+          set -euo pipefail
+          URL="https://$PROJECT_REF.supabase.co/rest/v1/rpc/dashboard_stats"
+          for spec in "A:$RANGE_A_START:$RANGE_A_END" "B:$RANGE_B_START:$RANGE_B_END"; do
+            name=${spec%%:*}; rest=${spec#*:}; s=${rest%%:*}; e=${rest##*:}
+            code=$(curl -sS -o "$RUNNER_TEMP/rpc-$name.json" -w '%{http_code}' -X POST "$URL" \
+              -H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"p_start\":\"$s\",\"p_end\":\"$e\"}")
+            echo "range $name ($s .. $e) -> HTTP $code"
+            cat "$RUNNER_TEMP/rpc-$name.json"; echo
+            [ "$code" = "200" ] || { echo "::error::service_role call failed"; exit 1; }
+          done
+
+      # ---------------------------------------------------------------------
+      # CORRECTNESS. Row-level orders and payments are pulled over REST and the
+      # four KPIs are recomputed here from the raw rows -- an independent path
+      # that shares no code with the SQL function. This is a test oracle only;
+      # the shipped route never fetches rows to aggregate.
+      # ---------------------------------------------------------------------
+      - name: PROOF - KPIs match a row-level recomputation (two ranges)
+        run: |
+          set -euo pipefail
+          BASE="https://$PROJECT_REF.supabase.co/rest/v1"
+          curl -sS -H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+            "$BASE/orders?select=id,booking_date,status,total_amount,advance_paid,balance&limit=100000" \
+            > "$RUNNER_TEMP/orders.json"
+          curl -sS -H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+            "$BASE/payments?select=order_id,amount&limit=100000" \
+            > "$RUNNER_TEMP/payments.json"
+          echo "row-level orders fetched:   $(jq 'length' "$RUNNER_TEMP/orders.json")"
+          echo "row-level payments fetched: $(jq 'length' "$RUNNER_TEMP/payments.json")"
+          python3 - <<'PY'
+          import json, os
+          from decimal import Decimal
+          tmp = os.environ["RUNNER_TEMP"]
+          D = lambda v: Decimal(str(v if v is not None else 0))
+          orders = json.load(open(f"{tmp}/orders.json"))
+          payments = json.load(open(f"{tmp}/payments.json"))
+          paid = {}
+          for p in payments:
+              paid[p["order_id"]] = paid.get(p["order_id"], Decimal(0)) + D(p["amount"])
+          ranges = {
+              "A": (os.environ["RANGE_A_START"], os.environ["RANGE_A_END"]),
+              "B": (os.environ["RANGE_B_START"], os.environ["RANGE_B_END"]),
+          }
+          failures = []
+          for name, (s, e) in ranges.items():
+              rows = [o for o in orders if o["status"] != "Cancelled" and s <= o["booking_date"] <= e]
+              n = len(rows)
+              revenue = sum((D(o["total_amount"]) for o in rows), Decimal(0))
+              collected = sum((D(o["advance_paid"]) + paid.get(o["id"], Decimal(0)) for o in rows), Decimal(0))
+              outstanding = revenue - collected
+              rpc = json.load(open(f"{tmp}/rpc-{name}.json"))
+              got = (int(rpc["total_orders"]), D(rpc["total_revenue"]), D(rpc["collected"]), D(rpc["outstanding"]))
+              want = (n, revenue, collected, outstanding)
+              print(f"range {name} {s}..{e}")
+              print(f"  recomputed from rows: orders={n} revenue={revenue} collected={collected} outstanding={outstanding}")
+              print(f"  dashboard_stats     : orders={got[0]} revenue={got[1]} collected={got[2]} outstanding={got[3]}")
+              if got != want:
+                  failures.append(f"range {name}: rpc {got} != recomputed {want}")
+              if got[1] != got[2] + got[3]:
+                  failures.append(f"range {name}: revenue != collected + outstanding")
+              else:
+                  print(f"  identity            : revenue {got[1]} == collected {got[2]} + outstanding {got[3]}  OK")
+              chart_total = sum((D(p["revenue"]) for p in rpc["chart"]), Decimal(0))
+              print(f"  chart               : {len(rpc['chart'])} monthly buckets, total {chart_total}")
+              if chart_total != got[1]:
+                  failures.append(f"range {name}: chart total {chart_total} != revenue {got[1]}")
+              if n == 0:
+                  failures.append(f"range {name} is empty -- the check would pass by vacuity")
+          # Justify never reading orders.balance: count how many rows it lies on.
+          live = [o for o in orders if o["status"] != "Cancelled"]
+          stale = [o for o in live
+                   if D(o["balance"]) != D(o["total_amount"]) - (D(o["advance_paid"]) + paid.get(o["id"], Decimal(0)))]
+          print(f"orders.balance disagrees with total_amount - collected on {len(stale)} of {len(live)} live orders")
+          if failures:
+              for f in failures:
+                  print("FAIL:", f)
+              raise SystemExit(1)
+          print("all KPI checks passed")
+          PY
+
+      # ---------------------------------------------------------------------
+      # CANCELLED EXCLUSION. Staging has no Cancelled rows, so the filter cannot
+      # be validated against existing data. Create one inside range B, prove the
+      # KPIs do not move; flip it to In Process, prove they do; delete it.
+      # ---------------------------------------------------------------------
+      - name: PROOF - Cancelled orders are excluded
+        run: |
+          set -euo pipefail
+          echo "TARGET DATABASE: STAGING - ohgqgkraybpvnfdbgmvl"
+          URL="https://$PROJECT_REF.supabase.co/rest/v1/rpc/dashboard_stats"
+          call() {
+            curl -sS -X POST "$URL" \
+              -H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"p_start\":\"$RANGE_B_START\",\"p_end\":\"$RANGE_B_END\"}"
+          }
+          call > "$RUNNER_TEMP/cancel-before.json"
+          echo "before:                    $(cat "$RUNNER_TEMP/cancel-before.json")"
+
+          cat > "$RUNNER_TEMP/mkcancel.sql" <<SQL
+          insert into public.orders
+            (order_number, customer_id, booking_date, delivery_date, status, total_amount, advance_paid, balance)
+          select 'ZZCANCEL-1', c.id, date '$RANGE_B_START' + 5, date '$RANGE_B_START' + 20,
+                 'Cancelled', 777777, 100000, 0
+          from (select id from public.customers order by created_at limit 1) c
+          on conflict (order_number) do nothing;
+          select count(*) as fixture_rows from public.orders where order_number = 'ZZCANCEL-1';
+          SQL
+          run_sql "$RUNNER_TEMP/mkcancel.sql" | jq -c .
+
+          call > "$RUNNER_TEMP/cancel-after.json"
+          echo "with Cancelled PKR 777,777: $(cat "$RUNNER_TEMP/cancel-after.json")"
+          if ! diff <(jq -S . "$RUNNER_TEMP/cancel-before.json") <(jq -S . "$RUNNER_TEMP/cancel-after.json") > /dev/null; then
+            echo "::error::a Cancelled order changed the KPIs. The exclusion is broken."
+            exit 1
+          fi
+          echo "confirmed: the Cancelled order moved nothing"
+
+          echo "update public.orders set status = 'In Process' where order_number = 'ZZCANCEL-1';" > "$RUNNER_TEMP/uncancel.sql"
+          run_sql "$RUNNER_TEMP/uncancel.sql" | jq -c .
+          call > "$RUNNER_TEMP/cancel-flipped.json"
+          echo "same row as In Process:     $(cat "$RUNNER_TEMP/cancel-flipped.json")"
+          python3 - <<'PY'
+          import json, os
+          from decimal import Decimal
+          tmp = os.environ["RUNNER_TEMP"]
+          D = lambda v: Decimal(str(v))
+          before = json.load(open(f"{tmp}/cancel-before.json"))
+          after = json.load(open(f"{tmp}/cancel-flipped.json"))
+          d_orders = after["total_orders"] - before["total_orders"]
+          d_rev = D(after["total_revenue"]) - D(before["total_revenue"])
+          d_col = D(after["collected"]) - D(before["collected"])
+          d_out = D(after["outstanding"]) - D(before["outstanding"])
+          print(f"delta once un-cancelled: orders +{d_orders} revenue +{d_rev} collected +{d_col} outstanding +{d_out}")
+          assert d_orders == 1, d_orders
+          assert d_rev == Decimal("777777"), d_rev
+          assert d_col == Decimal("100000"), d_col
+          assert d_out == Decimal("677777"), d_out
+          print("confirmed: the very same row IS counted when its status is not Cancelled")
+          PY
+
+      - name: Remove Cancelled-test fixture
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "delete from public.orders where order_number = 'ZZCANCEL-1';" > "$RUNNER_TEMP/rmcancel.sql"
+          run_sql "$RUNNER_TEMP/rmcancel.sql" | jq -c . || true
+
+      # ---------------------------------------------------------------------
+      # THE 1000-ROW TRUNCATION. PostgREST caps a response at 1000 rows, which
+      # is what silently corrupted the old JS-side sum. Staging has far fewer
+      # orders than that, so the cap cannot be reached with real data: insert
+      # 1200 throwaway rows dated 1990, show the old approach under-reports and
+      # the RPC does not, then delete them.
+      # ---------------------------------------------------------------------
+      - name: PROOF - the 1000-row truncation is gone
+        run: |
+          set -euo pipefail
+          echo "TARGET DATABASE: STAGING - ohgqgkraybpvnfdbgmvl"
+          cat > "$RUNNER_TEMP/bulk.sql" <<'SQL'
+          insert into public.orders
+            (order_number, customer_id, booking_date, delivery_date, status, total_amount, advance_paid, balance)
+          select 'ZZTRUNC-' || lpad(g::text, 5, '0'),
+                 (select id from public.customers order by created_at limit 1),
+                 date '1990-01-01' + (g % 28), date '1990-02-01', 'In Process', 1000, 400, 0
+          from generate_series(1, 1200) g;
+          select count(*) as fixture_rows from public.orders where order_number like 'ZZTRUNC-%';
+          SQL
+          run_sql "$RUNNER_TEMP/bulk.sql" | jq -c .
+
+          BASE="https://$PROJECT_REF.supabase.co/rest/v1"
+          echo "--- old approach: fetch the rows, sum them in JS ---"
+          curl -sS -H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+            "$BASE/orders?select=id,total_amount&booking_date=gte.1990-01-01&booking_date=lte.1990-01-31" \
+            > "$RUNNER_TEMP/trunc-rows.json"
+          echo "rows PostgREST actually returned: $(jq 'length' "$RUNNER_TEMP/trunc-rows.json")"
+
+          echo "--- new approach: dashboard_stats RPC ---"
+          curl -sS -X POST "$BASE/rpc/dashboard_stats" \
+            -H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"p_start":"1990-01-01","p_end":"1990-01-31"}' > "$RUNNER_TEMP/trunc-rpc.json"
+          cat "$RUNNER_TEMP/trunc-rpc.json"; echo
+
+          python3 - <<'PY'
+          import json, os
+          from decimal import Decimal
+          tmp = os.environ["RUNNER_TEMP"]
+          rows = json.load(open(f"{tmp}/trunc-rows.json"))
+          rpc = json.load(open(f"{tmp}/trunc-rpc.json"))
+          old_sum = sum((Decimal(str(r["total_amount"])) for r in rows), Decimal(0))
+          print(f"OLD (fetch rows + JS sum): {len(rows)} of 1200 rows, revenue {old_sum}")
+          print(f"NEW (dashboard_stats)    : {rpc['total_orders']} orders, revenue {rpc['total_revenue']}")
+          assert len(rows) == 1000, f"expected PostgREST to cap at 1000, got {len(rows)}"
+          assert old_sum == Decimal("1000000.00"), old_sum
+          assert rpc["total_orders"] == 1200, rpc["total_orders"]
+          assert Decimal(str(rpc["total_revenue"])) == Decimal("1200000.00"), rpc["total_revenue"]
+          assert Decimal(str(rpc["collected"])) == Decimal("480000.00"), rpc["collected"]
+          assert Decimal(str(rpc["outstanding"])) == Decimal("720000.00"), rpc["outstanding"]
+          print("confirmed: the old path under-reported by 200,000 (16.7%); the RPC is exact")
+          PY
+
+      - name: Remove truncation fixtures
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "TARGET DATABASE: STAGING - ohgqgkraybpvnfdbgmvl"
+          cat > "$RUNNER_TEMP/rmbulk.sql" <<'SQL'
+          delete from public.orders where order_number like 'ZZTRUNC-%';
+          select count(*) as remaining_fixtures from public.orders
+          where order_number like 'ZZTRUNC-%' or order_number = 'ZZCANCEL-1';
+          SQL
+          run_sql "$RUNNER_TEMP/rmbulk.sql" | jq -c . || true
+
+      - name: Final - staging order population restored
+        if: always()
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/final.sql" <<'SQL'
+          select status::text as status, count(*) as n, coalesce(sum(total_amount), 0) as revenue
+          from public.orders group by status order by status;
+          SQL
+          run_sql "$RUNNER_TEMP/final.sql" | jq -c . || true
