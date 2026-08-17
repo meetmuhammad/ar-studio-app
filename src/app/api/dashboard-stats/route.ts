@@ -96,7 +96,19 @@ export const GET = withAdmin(async () => {
       chartData,
     }, {
       headers: {
-        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
+        // Was `public, s-maxage=60, stale-while-revalidate=120`, which handed
+        // this response to Vercel's shared edge cache. `public` means any cache
+        // may store it and replay it to anyone -- the CDN has no idea the body
+        // was authorized for one specific role. Once an admin warmed the entry,
+        // an unauthenticated request got 200 with x-vercel-cache: HIT and the
+        // full revenue, receipts and outstanding-balance figures. withAdmin was
+        // doing its job; the cache was answering before the route ran at all.
+        //
+        // no-store rather than `private, max-age=N`: this is a shared browser
+        // in a studio, and a private entry survives sign-out, so the next
+        // person to sign in could be served the previous admin's figures from
+        // local cache. The saved round trip is not worth either exposure.
+        'Cache-Control': 'no-store',
       }
     })
   } catch (error) {

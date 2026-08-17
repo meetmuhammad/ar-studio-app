@@ -39,7 +39,10 @@ export const GET = withAdmin(async () => {
       entryCount: countResult.count || 0,
     }, {
       headers: {
-        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
+        // Same shared-cache leak as /api/dashboard-stats -- see the note there.
+        // `public` let Vercel's edge serve these ledger totals to callers the
+        // withAdmin guard had never seen.
+        'Cache-Control': 'no-store',
       }
     })
   } catch (error) {
