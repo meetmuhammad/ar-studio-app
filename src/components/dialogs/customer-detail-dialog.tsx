@@ -19,11 +19,13 @@ import type { Customer } from "@/lib/supabase-client"
  * The shape this dialog needs out of GET /api/orders.
  *
  * `balance` is deliberately absent. That column is the retired denormalised
- * `orders.balance`: nothing keeps it current, and on staging it disagrees with
- * what the customer actually owes on 58 of 65 orders -- e.g. AR-00047 stored
- * 1,050,000 against a real outstanding of 50,000. This dialog used to render it
- * verbatim as "PKR ... pending". Leaving the field off the type is what stops
- * it being read again by accident.
+ * `orders.balance`: nothing keeps it current, and on staging it misrepresents
+ * money owed on 50 of 65 orders (42 stored values that disagree with the truth,
+ * plus 8 NULLs on orders that genuinely owe something). AR-00047 stored
+ * 1,050,000 against a real outstanding of 50,000; AR-00063 stores NULL against
+ * a real 1,000,000. This dialog used to render that verbatim as
+ * "PKR ... pending". Leaving the field off the type is what stops it being read
+ * again by accident.
  *
  * `current_balance` and `total_paid` come from the `orders_with_payment_status`
  * view, which GET /api/orders now reads (see getOrders in src/lib/database.ts).

@@ -221,10 +221,18 @@ export async function getOrders({
   // derived on every read, so it cannot go stale. `orders.balance` is the
   // retired denormalised column -- nothing has ever kept it current (POST
   // /api/orders never wrote it, PATCH /api/orders/[id] discards it, recording a
-  // payment does not touch it), and on staging it disagrees with the truth on
-  // 58 of 65 orders. It is still selected below only because the column still
-  // exists and dropping it from the payload would be a separate breaking
-  // change; every caller must read `current_balance`.
+  // payment does not touch it).
+  //
+  // On staging it misrepresents money owed on 50 of 65 orders: 42 stored values
+  // that disagree with `total_amount - total_paid`, plus 8 NULLs sitting on
+  // orders that genuinely owe something (AR-00063 stores NULL against a real
+  // 1,000,000 outstanding). A further 8 rows are NULL with nothing outstanding
+  // -- unusable for display, but not financially misleading -- and only 7 of
+  // the 65 happen to be right.
+  //
+  // It is still selected below only because the column exists and dropping it
+  // from the payload would be a separate breaking change; every caller must
+  // read `current_balance`.
   //
   // Note the view also carries a column literally named `balance`. That is the
   // SAME stale value, not a replacement.

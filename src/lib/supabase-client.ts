@@ -58,8 +58,10 @@ export interface Order {
    *
    * `orders.balance` is a denormalised column that nothing keeps current: POST
    * /api/orders never wrote it, PATCH /api/orders/[id] discards it, and
-   * recording a payment does not touch it. On staging it disagrees with
-   * `total_amount - total_paid` on 58 of 65 orders. It is still typed here only
+   * recording a payment does not touch it. On staging it misrepresents money
+   * owed on 50 of 65 orders: 42 stored values that disagree with
+   * `total_amount - total_paid`, plus 8 NULLs on orders that genuinely owe
+   * something. It is still typed here only
    * because the column still exists and GET /api/orders still returns it.
    *
    * Read `current_balance` instead.
