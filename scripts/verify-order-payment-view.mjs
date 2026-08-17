@@ -54,7 +54,10 @@ function loadEnvFallback() {
 }
 
 const fallback = loadEnvFallback()
-const URL_ = process.env.SUPABASE_URL || fallback.NEXT_PUBLIC_SUPABASE_URL
+const URL_ =
+  process.env.SUPABASE_URL ||
+  (process.env.REF ? `https://${process.env.REF}.supabase.co` : undefined) ||
+  fallback.NEXT_PUBLIC_SUPABASE_URL
 const KEY =
   process.env.SUPABASE_KEY ||
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
@@ -62,8 +65,8 @@ const KEY =
   fallback.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 if (!URL_ || !KEY) {
-  console.error('FATAL: set SUPABASE_URL and SUPABASE_KEY, or provide .env.local')
-  process.exit(2)
+  console.error('FATAL: set SUPABASE_URL (or REF) and SUPABASE_KEY, or provide .env.local')
+  process.exit(1)
 }
 
 /** apikey must be the project's publishable key; KEY may be a user JWT. */
@@ -72,13 +75,27 @@ const APIKEY =
 
 const headers = { apikey: APIKEY, Authorization: `Bearer ${KEY}` }
 
-/** PostgREST caps a response at 1000 rows; page explicitly or silently truncate. */
-async function fetchAll(path, select) {
+/**
+ * PostgREST caps a response at 1000 rows; page explicitly or silently truncate.
+ *
+ * `order` is required, not decorative. Range offsets over an unordered result
+ * are offsets into whatever order the planner happened to produce, so a row can
+ * repeat on one page and be skipped on the next -- which would corrupt the
+ * independent recomputation this file exists to provide, and do it silently.
+ * The exported-ledger CSV in this repo shipped with exactly that defect. The
+ * order must also be total: `id` is the primary key, so ties are impossible.
+ */
+async function fetchAll(path, select, order = 'id.asc') {
   const rows = []
   const page = 1000
   for (let from = 0; ; from += page) {
-    const res = await fetch(`${URL_}/rest/v1/${path}?select=${select}`, {
-      headers: { ...headers, Range: `${from}-${from + page - 1}`, Prefer: 'count=none' },
+    const res = await fetch(`${URL_}/rest/v1/${path}?select=${select}&order=${order}`, {
+      headers: {
+        ...headers,
+        Range: `${from}-${from + page - 1}`,
+        'Range-Unit': 'items',
+        Prefer: 'count=none',
+      },
     })
     if (!res.ok) {
       const body = await res.text()
@@ -89,7 +106,7 @@ async function fetchAll(path, select) {
     }
     const batch = await res.json()
     rows.push(...batch)
-    if (batch.length === 0 || batch.length < page) break
+    if (batch.length < page) break
   }
   return rows
 }
@@ -118,7 +135,7 @@ async function main() {
     throw err
   }
 
-  const payments = await fetchAll('payments', 'order_id,amount')
+  const payments = await fetchAll('payments', 'order_id,amount', 'id.asc')
   const orders = await fetchAll('orders', 'id,total_amount,advance_paid')
 
   // Independent recomputation: group payments in a Map, never with SQL.
@@ -207,13 +224,23 @@ async function main() {
   console.log(`  multiple payments: ${stats.multiPayments}`)
   console.log(`mismatches         : ${failures.length}`)
 
-  if (coverage.length && process.env.REQUIRE_COVERAGE === '1') {
+  // Coverage is fatal by default. The spec named zero-advance, no-payments and
+  // multiple-payments explicitly; a green run over a dataset containing none of
+  // them proves nothing, and defaulting to a warning is how that goes unnoticed.
+  // ALLOW_MISSING_COVERAGE=1 is for pointing this at arbitrary real data.
+  if (coverage.length && process.env.ALLOW_MISSING_COVERAGE !== '1') {
     console.error(`\nFAIL: dataset does not exercise: ${coverage.join(', ')}`)
-    console.error('      Seed those cases before treating this run as proof.')
+    console.error('      Load scripts/fixtures/order-payment-view-cases.sql, or set')
+    console.error('      ALLOW_MISSING_COVERAGE=1 if you are checking real data as-is.')
     process.exit(1)
   }
-  if (coverage.length) {
-    console.warn(`\nNOTE: dataset does not exercise: ${coverage.join(', ')} (set REQUIRE_COVERAGE=1 to make this fatal)`)
+
+  // ALLOW_MISMATCH matches the sibling verifiers: it lets a runbook capture a
+  // before-state snapshot of a knowingly-broken database without the run dying.
+  if (failures.length && process.env.ALLOW_MISMATCH === '1') {
+    console.warn(`\nALLOW_MISMATCH=1: ${failures.length} mismatch(es) recorded, not failing.`)
+    for (const f of failures.slice(0, 40)) console.warn(`  - ${f}`)
+    return
   }
 
   if (failures.length) {

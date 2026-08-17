@@ -7,10 +7,26 @@
 -- get it, and nobody could review the studio's payment arithmetic without
 -- querying a live server.
 --
--- This migration changes nothing. It is a transcription of the definition
--- already running, recovered with pg_get_viewdef() and confirmed column-for-
--- column against a read-only inspection of production: the same twenty columns
--- in the same order, and the same five derived expressions.
+-- This migration changes no data and no computed column. It is a transcription
+-- of the definition already running, recovered with pg_get_viewdef() and
+-- confirmed column-for-column against a read-only inspection of production: the
+-- same twenty columns in the same order, and the same five derived expressions.
+--
+-- It makes exactly two additions beyond that transcription, both stated openly
+-- rather than smuggled in: an explicit `security_invoker = true` (see the note
+-- above the statement -- omitting it would be actively dangerous), and a
+-- `comment on view` recording that the passed-through `balance` column is
+-- retired. Neither alters a single returned value.
+--
+-- NOTE ON VERIFICATION: this branch lineage has no baseline schema migration
+-- and no supabase/config.toml, so `supabase db reset` cannot be run here -- it
+-- would produce an empty database in which this migration could not apply for
+-- want of public.orders. The proof performed instead was: drop the view, show
+-- the verifier fails, apply this file, show pg_get_viewdef returns a definition
+-- byte-identical to the one that was running, then exercise six fixtures and
+-- cross-check against staging's untouched view. That is a substitute for the
+-- demanded clean-reset proof, not the thing itself. Restoring a baseline
+-- migration to this lineage is tracked separately.
 --
 -- Deliberately NOT changed, because capture must not move a single figure:
 --
@@ -37,7 +53,34 @@
 -- Verified by scripts/verify-order-payment-view.mjs, which recomputes every
 -- derived column in JS and refuses to use the view's own SQL to check it.
 
-create or replace view public.orders_with_payment_status as
+-- security_invoker = true is REQUIRED and is not cosmetic.
+--
+-- A Postgres view defaults to security_invoker = off, which runs it as the view
+-- OWNER and therefore bypasses row-level security on orders and payments.
+-- Demonstrated on the local database, where the view was created without this
+-- option: with the anon key, `GET /rest/v1/orders` returns [] because RLS blocks
+-- it, while `GET /rest/v1/orders_with_payment_status` returns the rows. The view
+-- was a hole straight through RLS, readable with the publishable key that ships
+-- in the browser bundle.
+--
+-- Staging returns [] on both, so the hosted view already has security_invoker on.
+-- `create or replace view` does NOT preserve unspecified reloptions -- they
+-- revert to default -- so capturing the local definition verbatim and applying
+-- it to a hosted environment would have silently turned this OFF and exposed
+-- every order and payment. Stating it explicitly is what makes this migration
+-- safe to replay anywhere.
+--
+-- The API routes read through the service-role client, which bypasses RLS by
+-- design, so enabling this changes nothing for the application.
+--
+-- VERIFY BEFORE APPLYING TO PRODUCTION: confirm production's view already has
+-- security_invoker on, with
+--   select reloptions from pg_class where oid = 'public.orders_with_payment_status'::regclass;
+-- If production somehow has it OFF, applying this migration TIGHTENS access,
+-- which is correct but is a behaviour change worth knowing about in advance.
+
+create or replace view public.orders_with_payment_status
+with (security_invoker = true) as
 select
   o.id,
   o.order_number,
