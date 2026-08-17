@@ -112,3 +112,17 @@ AGENTS.md
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+# Agent tooling runtime state. Holds a loopback daemon token, so it must never
+# be committed -- four of these files reached this public repo once already.

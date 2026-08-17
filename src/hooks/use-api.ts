@@ -1,13 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/query-client'
-import { useAuth } from '@/contexts/auth-context'
 import type { DateRange } from '@/lib/date-range'
-import type { 
-  Customer, 
-  OrderWithCustomer, 
+import { useAuth } from '@/contexts/auth-context'
+import { ledgerFiltersToSearchParams } from '@/lib/ledger-query'
+import type {
+  Customer,
+  OrderWithCustomer,
   GeneralLedgerWithRelations,
+  LedgerEntryType,
   Vendor,
-  VendorWithLedger 
+  VendorWithLedger
 } from '@/lib/supabase-client'
 import { toast } from 'sonner'
 
@@ -314,27 +316,43 @@ export function useDeleteOrder() {
 // LEDGER
 // =============================================================================
 
-interface LedgerQueryParams {
+/**
+ * The filter half of these params is defined once in @/lib/ledger-query and
+ * serialised by `ledgerFiltersToSearchParams`, so the table query and the CSV
+ * export cannot disagree about parameter names or about which rows match.
+ */
+export interface LedgerQueryParams extends Partial<LedgerFilterInput> {
   page?: number
   pageSize?: number
-  search?: string
-  startDate?: string
-  endDate?: string
+}
+
+type LedgerFilterInput = {
+  search: string
+  startDate: string
+  endDate: string
+  entryType: LedgerEntryType
+  vendorId: string
+}
+
+function ledgerFilterParams(params: LedgerQueryParams): URLSearchParams {
+  return ledgerFiltersToSearchParams({
+    search: params.search,
+    startDate: params.startDate,
+    endDate: params.endDate,
+    entryType: params.entryType,
+    vendorId: params.vendorId,
+  })
 }
 
 export function useLedgerEntries(params: LedgerQueryParams = {}) {
-  const { page = 1, pageSize = 20, search, startDate, endDate } = params
+  const { page = 1, pageSize = 20, search, startDate, endDate, entryType, vendorId } = params
   return useQuery({
-    queryKey: queryKeys.ledger.entries({ page, pageSize, search, startDate, endDate }),
+    queryKey: queryKeys.ledger.entries({ page, pageSize, search, startDate, endDate, entryType, vendorId }),
     queryFn: async () => {
-      const searchParams = new URLSearchParams({
-        page: page.toString(),
-        pageSize: pageSize.toString(),
-      })
-      if (search?.trim()) searchParams.set('search', search.trim())
-      if (startDate) searchParams.set('start_date', startDate)
-      if (endDate) searchParams.set('end_date', endDate)
-      
+      const searchParams = ledgerFilterParams({ search, startDate, endDate, entryType, vendorId })
+      searchParams.set('page', page.toString())
+      searchParams.set('pageSize', pageSize.toString())
+
       const response = await fetch(`/api/general-ledger?${searchParams}`)
       if (!response.ok) throw new Error('Failed to fetch ledger entries')
       return response.json() as Promise<{ data: GeneralLedgerWithRelations[]; pagination: { page: number; pageSize: number; total: number; pages: number } }>
@@ -342,108 +360,9 @@ export function useLedgerEntries(params: LedgerQueryParams = {}) {
   })
 }
 
-export function useLedgerStats() {
-  return useQuery({
-    queryKey: queryKeys.ledger.stats,
-    queryFn: async () => {
-      const response = await fetch('/api/general-ledger/stats')
-      if (!response.ok) throw new Error('Failed to fetch ledger stats')
-      return response.json() as Promise<{
-        totalDebit: number
-        totalCredit: number
-        currentBalance: number
-        entryCount: number
-      }>
-    },
-  })
-}
-
-export function useCreateLedgerEntry() {
-  const queryClient = useQueryClient()
-  
-  return useMutation({
-    mutationFn: async (data: any) => {
-      const response = await fetch('/api/general-ledger', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create ledger entry')
-      }
-      return response.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.ledger.all })
-      toast.success('Ledger entry created successfully')
-    },
-    onError: (error: Error) => {
-      toast.error(error.message)
-    },
-  })
-}
-
-export function useUpdateLedgerEntry() {
-  const queryClient = useQueryClient()
-  
-  return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      const response = await fetch(`/api/general-ledger/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to update ledger entry')
-      }
-      return response.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.ledger.all })
-      toast.success('Ledger entry updated successfully')
-    },
-    onError: (error: Error) => {
-      toast.error(error.message)
-    },
-  })
-}
-
-export function useDeleteLedgerEntry() {
-  const queryClient = useQueryClient()
-  
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const response = await fetch(`/api/general-ledger/${id}`, {
-        method: 'DELETE',
-      })
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to delete ledger entry')
-      }
-      return response.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.ledger.all })
-      toast.success('Ledger entry deleted successfully')
-    },
-    onError: (error: Error) => {
-      toast.error(error.message)
-    },
-  })
-}
-
-// `useSyncOrderPayments` and POST /api/general-ledger/sync-payments are gone,
-// permanently. That endpoint deleted every `order_payment` row in
-// general_ledger and rebuilt them from `orders.advance_paid` and `payments`.
-// Two things it destroyed on every run:
-//   - any hand-entered or hand-corrected order_payment entry, which exists
-//     nowhere else and cannot be reconstructed from the two source tables;
-//   - the balance chain, since the rebuilt rows re-entered the ledger with new
-//     ids and new created_at values.
-// Correcting a ledger entry means writing a reversing entry, not deleting and
-// re-deriving history.
+// useSyncOrderPayments was removed with the sync-payments route: it deleted and
+// rebuilt every order_payment ledger row, destroying hand-entered entries and any
+// payment_id backfill. It must not come back.
 
 // =============================================================================
 // VENDORS
