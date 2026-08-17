@@ -1,8 +1,9 @@
+import { withAdmin } from '@/lib/api-auth'
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 
 // GET /api/dashboard-stats - Lightweight dashboard stats using SQL aggregates
-export async function GET() {
+export const GET = withAdmin(async () => {
   try {
     const supabase = createAdminSupabaseClient()
 
@@ -105,7 +106,7 @@ export async function GET() {
       { status: 500 }
     )
   }
-}
+})
 
 // Helpers
 function getFirstDayOfMonth(): string {
