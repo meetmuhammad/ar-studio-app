@@ -21,13 +21,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Printer, FileText, Edit, Save, X } from "lucide-react"
+import { Printer, FileText, Edit, Save, X, Plus } from "lucide-react"
 import { openPrintPreview, openMeasurementPrintPreview } from "@/lib/print-utils"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
 import { Measurement } from "@/types/measurements"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { toast } from "sonner"
 import { MeasurementSelectDialog } from "@/components/dialogs/measurement-select-dialog"
+import { useAuth } from "@/contexts/auth-context"
 
 interface Payment {
   id: string
@@ -60,6 +69,21 @@ export function OrderDetailsDialog({
   const [editAmount, setEditAmount] = useState<string>("")
   const [isSaving, setIsSaving] = useState(false)
   const [measurementSelectOpen, setMeasurementSelectOpen] = useState(false)
+
+  // "Record Payment": money collected after booking. It goes through the
+  // payments flow (POST /api/payments), never through an order field edit --
+  // advance_paid is the booking-time advance and PATCH /api/orders/[id] rejects
+  // any change to it.
+  const { user } = useAuth()
+  // POST /api/payments is withAdmin. Rather than widen that guard, the action is
+  // shown only to admins; staff still see the payment history read-only and can
+  // still correct an existing payment (PATCH /api/payments/[id] is withAuth).
+  const canRecordPayment = user?.role === 'admin'
+  const [addingPayment, setAddingPayment] = useState(false)
+  const [newAmount, setNewAmount] = useState("")
+  const [newMethod, setNewMethod] = useState<'cash' | 'bank' | 'other'>('cash')
+  const [newNotes, setNewNotes] = useState("")
+  const [isRecording, setIsRecording] = useState(false)
 
   // Fetch payments and measurements when dialog opens and order changes
   useEffect(() => {
@@ -179,6 +203,55 @@ export function OrderDetailsDialog({
     }
   }
 
+  const resetNewPayment = () => {
+    setAddingPayment(false)
+    setNewAmount("")
+    setNewMethod('cash')
+    setNewNotes("")
+  }
+
+  const handleRecordPayment = async () => {
+    const amount = parseFloat(newAmount)
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Enter a payment amount greater than zero')
+      return
+    }
+
+    try {
+      setIsRecording(true)
+      // Payments flow, not an order edit. The server writes the payments row and
+      // the matching general_ledger entry; orders.advance_paid is untouched.
+      const response = await fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: order.id,
+          customer_id: order.customer_id,
+          amount,
+          payment_method: newMethod,
+          payment_date: new Date().toISOString().split('T')[0],
+          notes: newNotes || null,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to record payment')
+      }
+
+      toast.success('Payment recorded')
+      resetNewPayment()
+      fetchPayments(order.id)
+      // Ledger and dashboard figures include this payment now.
+      window.dispatchEvent(new CustomEvent('paymentAdded'))
+    } catch (error) {
+      console.error('Error recording payment:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to record payment')
+    } finally {
+      setIsRecording(false)
+    }
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent, paymentId: string) => {
     if (e.key === 'Enter') {
       handleSavePayment(paymentId)
@@ -292,8 +365,14 @@ export function OrderDetailsDialog({
           {/* Payment Information */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                💰 Payment Details
+              <CardTitle className="text-base flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2">💰 Payment Details</span>
+                {canRecordPayment && !addingPayment && (
+                  <Button size="sm" variant="outline" onClick={() => setAddingPayment(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Record Payment
+                  </Button>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -422,6 +501,80 @@ export function OrderDetailsDialog({
                   </TableRow>
                 </TableFooter>
               </Table>
+
+              {/* Record a payment collected after booking. This posts to
+                  /api/payments -- it never edits orders.advance_paid. */}
+              {addingPayment && (
+                <div className="mt-4 rounded-lg border p-4 space-y-4">
+                  <div className="text-sm font-medium">Record a payment</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="new-payment-amount">Amount (PKR)</Label>
+                      <Input
+                        id="new-payment-amount"
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        placeholder="0.00"
+                        value={newAmount}
+                        onChange={(e) => setNewAmount(e.target.value)}
+                        onWheel={(e) => e.currentTarget.blur()}
+                        disabled={isRecording}
+                        autoFocus
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="new-payment-method">Method</Label>
+                      <Select
+                        value={newMethod}
+                        onValueChange={(v) => setNewMethod(v as 'cash' | 'bank' | 'other')}
+                        disabled={isRecording}
+                      >
+                        <SelectTrigger id="new-payment-method">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cash">Cash</SelectItem>
+                          <SelectItem value="bank">Bank Transfer</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="new-payment-date">Date</Label>
+                      <Input
+                        id="new-payment-date"
+                        value={format(new Date(), 'PPP')}
+                        readOnly
+                        disabled
+                        className="bg-muted cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-payment-notes">Description (optional)</Label>
+                    <Input
+                      id="new-payment-notes"
+                      placeholder="e.g. second instalment"
+                      value={newNotes}
+                      onChange={(e) => setNewNotes(e.target.value)}
+                      disabled={isRecording}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Recorded as a payment against this order. The advance taken at booking is
+                    left as it is.
+                  </p>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={resetNewPayment} disabled={isRecording}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleRecordPayment} disabled={isRecording}>
+                      {isRecording ? 'Recording...' : 'Record Payment'}
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {/* Payment Status Messages */}
               {calculateBalance() === 0 && (

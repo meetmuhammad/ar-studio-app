@@ -166,7 +166,12 @@ export function OrderMultiStepForm({
       case 2:
         return <OrderMeasurementsStep />
       case 3:
-        return <OrderPaymentStep />
+        // `isEditing` locks the Advance field: the advance is whatever was
+        // collected when the order was booked, and money taken later belongs in
+        // the payments table. The API enforces this too (400
+        // ADVANCE_PAID_IMMUTABLE); this just stops the user typing into a field
+        // that will be rejected.
+        return <OrderPaymentStep isEditing={Boolean(order)} />
       default:
         return null
     }
