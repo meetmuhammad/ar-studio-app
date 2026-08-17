@@ -1,8 +1,9 @@
+import { withAdmin } from '@/lib/api-auth'
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 
 // POST /api/general-ledger/sync-payments - Sync existing order payments to ledger
-export async function POST() {
+export const POST = withAdmin(async () => {
   try {
     const supabase = createAdminSupabaseClient()
 
@@ -101,4 +102,4 @@ export async function POST() {
       { status: 500 }
     )
   }
-}
+})

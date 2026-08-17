@@ -1,10 +1,11 @@
+import { withAuth, withAdmin } from '@/lib/api-auth'
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 
-export async function PATCH(
+export const PATCH = withAuth<{ params: Promise<{ id: string }> }>(async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   try {
     const body = await request.json();
     const supabase = createAdminSupabaseClient();
@@ -75,12 +76,12 @@ export async function PATCH(
       { status: 500 }
     );
   }
-}
+})
 
-export async function DELETE(
+export const DELETE = withAdmin<{ params: Promise<{ id: string }> }>(async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   try {
     const supabase = createAdminSupabaseClient();
     const { id: paymentId } = await params;
@@ -121,4 +122,4 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+})

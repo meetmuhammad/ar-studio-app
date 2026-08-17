@@ -1,9 +1,10 @@
+import { withAuth } from '@/lib/api-auth'
 import { NextRequest, NextResponse } from 'next/server'
 import { getOrders, createOrder, createOrderItems } from '@/lib/database'
 import { CreateOrderSchema, OrderQuerySchema } from '@/lib/validators'
 
 // GET /api/orders - List orders with search and pagination
-export async function GET(request: NextRequest) {
+export const GET = withAuth(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url)
     const query = OrderQuerySchema.parse({
@@ -46,10 +47,10 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     )
   }
-}
+})
 
 // POST /api/orders - Create a new order
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request: NextRequest) => {
   try {
     const body = await request.json()
     
@@ -145,4 +146,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
-}
+})

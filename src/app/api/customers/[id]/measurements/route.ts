@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/api-auth'
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 
@@ -5,10 +6,10 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-export async function GET(
+export const GET = withAuth(async (
   request: NextRequest,
   { params }: RouteParams
-) {
+) => {
   try {
     const { id: customerId } = await params;
     const supabase = createAdminSupabaseClient();
@@ -41,4 +42,4 @@ export async function GET(
       { status: 500 }
     );
   }
-}
+})

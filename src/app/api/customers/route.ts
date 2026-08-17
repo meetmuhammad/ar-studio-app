@@ -1,9 +1,10 @@
+import { withAuth } from '@/lib/api-auth'
 import { NextRequest, NextResponse } from 'next/server'
 import { getCustomers, createCustomer } from '@/lib/database'
 import { CreateCustomerSchema, CustomerQuerySchema } from '@/lib/validators'
 
 // GET /api/customers - List customers with search and pagination
-export async function GET(request: NextRequest) {
+export const GET = withAuth(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url)
     const query = CustomerQuerySchema.parse({
@@ -38,10 +39,10 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     )
   }
-}
+})
 
 // POST /api/customers - Create a new customer
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request: NextRequest) => {
   try {
     const body = await request.json()
     const validatedData = CreateCustomerSchema.parse(body)
@@ -68,4 +69,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
-}
+})

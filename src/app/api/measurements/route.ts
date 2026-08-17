@@ -1,8 +1,9 @@
+import { withAuth } from '@/lib/api-auth'
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { measurementSchema } from "@/types/measurements";
 
-export async function GET(request: NextRequest) {
+export const GET = withAuth(async (request: NextRequest) => {
   try {
     const supabase = createAdminSupabaseClient();
     const { searchParams } = new URL(request.url);
@@ -69,9 +70,9 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+})
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request: NextRequest) => {
   try {
     const body = await request.json();
     const supabase = createAdminSupabaseClient();
@@ -142,4 +143,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+})

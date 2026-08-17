@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/api-auth'
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { measurementSchema } from "@/types/measurements";
@@ -6,10 +7,10 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-export async function GET(
+export const GET = withAuth(async (
   request: NextRequest,
   { params }: RouteParams
-) {
+) => {
   try {
     const { id } = await params;
     const supabase = createAdminSupabaseClient();
@@ -39,12 +40,12 @@ export async function GET(
       { status: 500 }
     );
   }
-}
+})
 
-export async function PUT(
+export const PUT = withAuth(async (
   request: NextRequest,
   { params }: RouteParams
-) {
+) => {
   try {
     const { id } = await params;
     const body = await request.json();
@@ -118,12 +119,12 @@ export async function PUT(
       { status: 500 }
     );
   }
-}
+})
 
-export async function DELETE(
+export const DELETE = withAuth(async (
   request: NextRequest,
   { params }: RouteParams
-) {
+) => {
   try {
     const { id } = await params;
     const supabase = createAdminSupabaseClient();
@@ -149,4 +150,4 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+})
