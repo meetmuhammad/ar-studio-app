@@ -28,7 +28,7 @@ import {
 import type { GeneralLedgerWithRelations, LedgerEntryType } from '@/lib/supabase-client'
 import { LEDGER_ENTRY_TYPES } from '@/lib/ledger-query'
 import { toast } from 'sonner'
-import { useLedgerEntries, useLedgerStats, useCreateLedgerEntry, useUpdateLedgerEntry, useDeleteLedgerEntry, useExportLedgerCsv, useVendors } from '@/hooks/use-api'
+import { useLedgerEntries, useLedgerStats, useCreateLedgerEntry, useUpdateLedgerEntry, useDeleteLedgerEntry, useExportLedgerCsv, useVendors , useVendorCategories } from '@/hooks/use-api'
 
 /** Select cannot hold an empty-string value, so "no filter" needs a sentinel. */
 const ALL = '__all__'
@@ -55,6 +55,7 @@ export default function LedgerPage() {
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
   const [entryType, setEntryType] = useState<LedgerEntryType | typeof ALL>(ALL)
   const [vendorId, setVendorId] = useState<string>(ALL)
+  const [vendorCategoryId, setVendorCategoryId] = useState<string>(ALL)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 20
   const debounceTimer = useRef<NodeJS.Timeout | null>(null)
@@ -67,6 +68,8 @@ export default function LedgerPage() {
     endDate: toDateParam(dateTo),
     entryType: entryType === ALL ? undefined : entryType,
     vendorId: vendorId === ALL ? undefined : vendorId,
+    // The SNAPSHOT filter: January rows keep January's classification.
+    vendorCategoryId: vendorCategoryId === ALL ? undefined : vendorCategoryId,
   }
 
   // React Query hooks
@@ -77,6 +80,7 @@ export default function LedgerPage() {
   })
   const { data: stats = { totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 } } = useLedgerStats()
   const { data: vendors = [] } = useVendors()
+  const { data: categories = [] } = useVendorCategories()
   const deleteMutation = useDeleteLedgerEntry()
   const exportMutation = useExportLedgerCsv()
 
@@ -108,7 +112,7 @@ export default function LedgerPage() {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [dateFrom, dateTo, entryType, vendorId])
+  }, [dateFrom, dateTo, entryType, vendorId, vendorCategoryId])
 
   const handleEdit = (entry: GeneralLedgerWithRelations) => {
     setEditingEntry(entry)
@@ -296,13 +300,30 @@ export default function LedgerPage() {
           </Select>
         </div>
 
-        {(entryType !== ALL || vendorId !== ALL || dateFrom || dateTo || searchQuery) && (
+        <div className="w-full sm:w-[200px]">
+          <Select value={vendorCategoryId} onValueChange={setVendorCategoryId}>
+            <SelectTrigger>
+              <SelectValue placeholder="All categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All categories</SelectItem>
+              {categories.map((category) => (
+                <SelectItem key={category.id} value={category.id}>
+                  {category.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {(entryType !== ALL || vendorId !== ALL || vendorCategoryId !== ALL || dateFrom || dateTo || searchQuery) && (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => {
               setEntryType(ALL)
               setVendorId(ALL)
+              setVendorCategoryId(ALL)
               setDateFrom(undefined)
               setDateTo(undefined)
               setSearchQuery('')

@@ -9,7 +9,8 @@ import type {
   GeneralLedgerWithRelations,
   LedgerEntryType,
   Vendor,
-  VendorWithLedger
+  VendorWithLedger,
+  VendorCategory,
 } from '@/lib/supabase-client'
 import { toast } from 'sonner'
 
@@ -332,6 +333,8 @@ type LedgerFilterInput = {
   endDate: string
   entryType: LedgerEntryType
   vendorId: string
+  /** Filters on the ledger's category SNAPSHOT, not the vendor's category now. */
+  vendorCategoryId: string
 }
 
 function ledgerFilterParams(params: LedgerQueryParams): URLSearchParams {
@@ -341,15 +344,16 @@ function ledgerFilterParams(params: LedgerQueryParams): URLSearchParams {
     endDate: params.endDate,
     entryType: params.entryType,
     vendorId: params.vendorId,
+    vendorCategoryId: params.vendorCategoryId,
   })
 }
 
 export function useLedgerEntries(params: LedgerQueryParams = {}) {
-  const { page = 1, pageSize = 20, search, startDate, endDate, entryType, vendorId } = params
+  const { page = 1, pageSize = 20, search, startDate, endDate, entryType, vendorId, vendorCategoryId } = params
   return useQuery({
-    queryKey: queryKeys.ledger.entries({ page, pageSize, search, startDate, endDate, entryType, vendorId }),
+    queryKey: queryKeys.ledger.entries({ page, pageSize, search, startDate, endDate, entryType, vendorId, vendorCategoryId }),
     queryFn: async () => {
-      const searchParams = ledgerFilterParams({ search, startDate, endDate, entryType, vendorId })
+      const searchParams = ledgerFilterParams({ search, startDate, endDate, entryType, vendorId, vendorCategoryId })
       searchParams.set('page', page.toString())
       searchParams.set('pageSize', pageSize.toString())
 
@@ -601,5 +605,85 @@ export function useDeleteVendor() {
     onError: (error: Error) => {
       toast.error(error.message)
     },
+  })
+}
+
+// =============================================================================
+// VENDOR CATEGORIES (Wave 4)
+// =============================================================================
+// The global accounting classification list. Admin-only end to end: every
+// endpoint below is withAdmin, so a staff session gets 403 regardless of UI.
+
+export function useVendorCategories(includeArchived = false) {
+  return useQuery({
+    queryKey: [...queryKeys.vendorCategories.all, includeArchived],
+    queryFn: async () => {
+      const qs = includeArchived ? '?include_archived=1' : ''
+      const response = await fetch(`/api/vendor-categories${qs}`)
+      if (!response.ok) throw new Error('Failed to fetch vendor categories')
+      return response.json() as Promise<VendorCategory[]>
+    },
+  })
+}
+
+export function useCreateVendorCategory() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (name: string) => {
+      const response = await fetch('/api/vendor-categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body?.error || 'Failed to create category')
+      return body as VendorCategory
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.vendorCategories.all })
+      toast.success('Category created')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+}
+
+export function useUpdateVendorCategory() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, name, archived }: { id: string; name?: string; archived?: boolean }) => {
+      const response = await fetch(`/api/vendor-categories/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, archived }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body?.error || 'Failed to update category')
+      return body as VendorCategory
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.vendorCategories.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.vendors.all })
+      // Deliberately does NOT invalidate the ledger: a rename never changes a
+      // historical snapshot, so ledger rows are unaffected.
+      toast.success('Category updated')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+}
+
+export function useDeleteVendorCategory() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/vendor-categories/${id}`, { method: 'DELETE' })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body?.error || 'Failed to delete category')
+      return body
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.vendorCategories.all })
+      toast.success('Category deleted')
+    },
+    onError: (e: Error) => toast.error(e.message),
   })
 }

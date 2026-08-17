@@ -28,6 +28,7 @@ export function isLedgerEntryType(value: string): value is LedgerEntryType {
 
 /** Query-string parameter names. Shared so the client cannot misspell one. */
 export const LEDGER_FILTER_PARAMS = {
+  vendorCategoryId: 'vendor_category_id',
   startDate: 'start_date',
   endDate: 'end_date',
   entryType: 'entry_type',
@@ -59,6 +60,19 @@ export interface LedgerFilters {
    * rows rather than the whole ledger.
    */
   vendorIds: string[] | null
+
+  /**
+   * Wave 4 vendor category. Filters on `general_ledger.vendor_category_id` --
+   * the value SNAPSHOTTED when the entry was written -- never by resolving the
+   * vendor's category now.
+   *
+   * That distinction is the whole feature. If a vendor was Fixed Expense in
+   * January and is Charity from March, filtering by Fixed Expense must return
+   * the January rows and not the March ones. Resolving through `vendors` would
+   * invert both answers and silently rewrite history on every reclassification.
+   * It is also why the `vendorIds` seam above is NOT used for this.
+   */
+  vendorCategoryId: string | null
 }
 
 export const EMPTY_LEDGER_FILTERS: LedgerFilters = {
@@ -68,6 +82,7 @@ export const EMPTY_LEDGER_FILTERS: LedgerFilters = {
   vendorId: null,
   search: null,
   vendorIds: null,
+  vendorCategoryId: null,
 }
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/
@@ -91,6 +106,7 @@ export function parseLedgerFilters(searchParams: URLSearchParams): LedgerFilters
   const endDate = trimmedOrNull(searchParams.get(LEDGER_FILTER_PARAMS.endDate))
   const entryType = trimmedOrNull(searchParams.get(LEDGER_FILTER_PARAMS.entryType))
   const vendorId = trimmedOrNull(searchParams.get(LEDGER_FILTER_PARAMS.vendorId))
+  const vendorCategoryId = trimmedOrNull(searchParams.get(LEDGER_FILTER_PARAMS.vendorCategoryId))
   const search = trimmedOrNull(searchParams.get(LEDGER_FILTER_PARAMS.search))
 
   return {
@@ -100,6 +116,7 @@ export function parseLedgerFilters(searchParams: URLSearchParams): LedgerFilters
     vendorId,
     search,
     vendorIds: null,
+    vendorCategoryId,
   }
 }
 
@@ -116,6 +133,7 @@ export function ledgerFiltersToSearchParams(
   if (filters.entryType) params.set(LEDGER_FILTER_PARAMS.entryType, filters.entryType)
   if (filters.vendorId) params.set(LEDGER_FILTER_PARAMS.vendorId, filters.vendorId)
   if (filters.search?.trim()) params.set(LEDGER_FILTER_PARAMS.search, filters.search.trim())
+  if (filters.vendorCategoryId) params.set(LEDGER_FILTER_PARAMS.vendorCategoryId, filters.vendorCategoryId)
   return params
 }
 
@@ -149,6 +167,7 @@ export function applyLedgerFilters<Q extends LedgerFilterable>(
   if (filters.entryType) q = q.eq('entry_type', filters.entryType)
   if (filters.vendorId) q = q.eq('vendor_id', filters.vendorId)
   if (filters.vendorIds) q = q.in('vendor_id', filters.vendorIds)
+  if (filters.vendorCategoryId) q = q.eq('vendor_category_id', filters.vendorCategoryId)
   if (filters.search) q = q.ilike('particulars', `%${escapeLikePattern(filters.search)}%`)
   return q
 }

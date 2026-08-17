@@ -113,9 +113,22 @@ export interface User {
 // Ledger types
 export type LedgerEntryType = 'opening_balance' | 'order_payment' | 'vendor_payment' | 'miscellaneous'
 
+/** A globally managed accounting classification. Distinct from VendorTag. */
+export interface VendorCategory {
+  id: string
+  name: string
+  /** Archived categories stay valid on historical entries but leave the picker. */
+  archived_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface Vendor {
   id: string
   name: string
+  /** Optional primary accounting category. Existing vendors may have none. */
+  category_id?: string | null
+  vendor_categories?: VendorCategory | null
   contact_person?: string | null
   phone?: string | null
   email?: string | null
@@ -145,6 +158,13 @@ export interface GeneralLedger {
   order_id?: string | null
   vendor_id?: string | null
   tag_id?: string | null
+  /**
+   * Category SNAPSHOT taken when the entry was written. Never resolve these
+   * from the vendor at read time -- a reclassification would rewrite history.
+   * Null on entries predating Wave 4, which display as Uncategorised.
+   */
+  vendor_category_id?: string | null
+  vendor_category_name?: string | null
   created_at: string
   updated_at: string
 }

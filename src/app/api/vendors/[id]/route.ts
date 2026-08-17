@@ -55,7 +55,7 @@ export const PUT = withAdmin<{ params: Promise<{ id: string }> }>(async (
     const { id } = await params
     const body = await request.json()
 
-    const { name, contact_person, phone, email, address, notes } = body
+    const { name, contact_person, phone, email, address, notes, category_id } = body
 
     if (!name || name.trim() === '') {
       return NextResponse.json(
@@ -73,6 +73,9 @@ export const PUT = withAdmin<{ params: Promise<{ id: string }> }>(async (
         email: email?.trim() || null,
         address: address?.trim() || null,
         notes: notes?.trim() || null,
+        // Reclassification. Existing ledger snapshots are untouched by design:
+        // history keeps the classification it was written with.
+        category_id: category_id ?? null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)

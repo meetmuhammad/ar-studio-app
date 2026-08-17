@@ -31,6 +31,7 @@ const EXPORT_HEADERS = [
   'Credit',
   'Balance',
   'Vendor',
+  'Vendor Category',
   'Order Number',
   'Notes',
 ] as const
@@ -62,6 +63,10 @@ function toCsvRowValues(entry: LedgerExportRow): CsvValue[] {
     // zero on 1 March.
     entry.balance,
     entry.vendors?.name ?? '',
+    // The SNAPSHOT taken when the entry was written, not the vendor's category
+    // now. An export of January must read the way January's books read.
+    // Entries predating the feature have no snapshot and are Uncategorised.
+    entry.vendor_category_name ?? (entry.vendor_id ? 'Uncategorised' : ''),
     entry.orders?.order_number ?? '',
     entry.notes ?? '',
   ]

@@ -18,6 +18,7 @@ import {
 import type { Vendor } from '@/lib/supabase-client'
 import { toast } from 'sonner'
 import { VendorDialog } from '@/components/dialogs/vendor-dialog'
+import { VendorCategoriesDialog } from '@/components/dialogs/vendor-categories-dialog'
 
 export default function VendorsPage() {
   const router = useRouter()
@@ -26,6 +27,7 @@ export default function VendorsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [categoriesOpen, setCategoriesOpen] = useState(false)
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null)
 
   useEffect(() => {
@@ -113,10 +115,15 @@ export default function VendorsPage() {
             Manage your vendors and supplier relationships
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Vendor
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setCategoriesOpen(true)}>
+            Manage Categories
+          </Button>
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Vendor
+          </Button>
+        </div>
       </div>
 
       {/* Search Bar */}
@@ -139,6 +146,7 @@ export default function VendorsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
+                <TableHead>Category</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -147,6 +155,9 @@ export default function VendorsPage() {
               {filteredVendors.map((vendor) => (
                 <TableRow key={vendor.id}>
                   <TableCell className="font-medium">{vendor.name}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {vendor.vendor_categories?.name ?? '-'}
+                  </TableCell>
                   <TableCell className="max-w-md">{vendor.notes || '-'}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -188,6 +199,7 @@ export default function VendorsPage() {
           )}
         </CardContent>
       </Card>
+      <VendorCategoriesDialog open={categoriesOpen} onOpenChange={setCategoriesOpen} />
 
       <VendorDialog
         open={dialogOpen}

@@ -9,7 +9,7 @@ export const GET = withAdmin(async () => {
 
     const { data: vendors, error } = await supabase
       .from('vendors')
-      .select('*')
+      .select('*, vendor_categories (id, name)')
       .order('name', { ascending: true })
 
     if (error) {
@@ -36,7 +36,7 @@ export const POST = withAdmin(async (request: Request) => {
     const supabase = createAdminSupabaseClient()
     const body = await request.json()
 
-    const { name, contact_person, phone, email, address, notes } = body
+    const { name, contact_person, phone, email, address, notes, category_id } = body
 
     if (!name || name.trim() === '') {
       return NextResponse.json(
@@ -54,6 +54,8 @@ export const POST = withAdmin(async (request: Request) => {
         email: email?.trim() || null,
         address: address?.trim() || null,
         notes: notes?.trim() || null,
+        // Optional. null clears the classification; undefined leaves it alone.
+        category_id: category_id ?? null,
       })
       .select()
       .single()

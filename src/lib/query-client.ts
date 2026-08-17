@@ -60,9 +60,12 @@ export const queryKeys = {
   },
   ledger: {
     all: ['ledger'] as const,
-    entries: (params?: { page?: number; pageSize?: number; search?: string; startDate?: string; endDate?: string; entryType?: string; vendorId?: string }) =>
+    entries: (params?: { page?: number; pageSize?: number; search?: string; startDate?: string; endDate?: string; entryType?: string; vendorId?: string; vendorCategoryId?: string }) =>
       ['ledger', 'entries', params] as const,
     stats: ['ledger', 'stats'] as const,
+  },
+  vendorCategories: {
+    all: ['vendor-categories'] as const,
   },
   vendors: {
     all: ['vendors'] as const,
