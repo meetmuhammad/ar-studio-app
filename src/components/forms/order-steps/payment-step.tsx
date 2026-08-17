@@ -14,7 +14,19 @@ import { Label } from "@/components/ui/label"
 import { Banknote, CreditCard, Wallet } from "lucide-react"
 import { CreateOrderInput } from "@/lib/validators"
 
-export function OrderPaymentStep() {
+interface OrderPaymentStepProps {
+  /**
+   * True when an existing order is being edited. The advance is the money taken
+   * at booking time and nothing else, so it is read-only here -- later money is
+   * recorded through the payments flow (Record Payment on the order details
+   * dialog -> POST /api/payments). PATCH /api/orders/[id] rejects a changed
+   * advance with 400 ADVANCE_PAID_IMMUTABLE, so an editable field would only
+   * produce a failed save.
+   */
+  isEditing?: boolean
+}
+
+export function OrderPaymentStep({ isEditing = false }: OrderPaymentStepProps) {
   const form = useFormContext<CreateOrderInput>()
 
   return (
@@ -115,7 +127,7 @@ export function OrderPaymentStep() {
           name="advancePaid"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Advance *</FormLabel>
+              <FormLabel>{isEditing ? "Advance (at booking)" : "Advance *"}</FormLabel>
               <FormControl>
                 <div className="relative">
                   <Input
@@ -125,7 +137,9 @@ export function OrderPaymentStep() {
                     placeholder="0"
                     {...field}
                     value={field.value !== undefined && field.value !== null ? field.value.toString() : ''}
+                    readOnly={isEditing}
                     onChange={(e) => {
+                      if (isEditing) return
                       const value = e.target.value
                       // Handle empty string or invalid input by defaulting to 0
                       if (value === '' || value === null || value === undefined) {
@@ -136,19 +150,26 @@ export function OrderPaymentStep() {
                       }
                     }}
                     onBlur={() => {
+                      if (isEditing) return
                       // Ensure we have a valid number on blur
                       if (field.value === undefined || field.value === null || isNaN(field.value)) {
                         field.onChange(0)
                       }
                     }}
                     onWheel={(e) => e.currentTarget.blur()}
-                    className="pr-12"
+                    className={isEditing ? "pr-12 bg-muted cursor-not-allowed" : "pr-12"}
                   />
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm font-medium">
                     PKR
                   </div>
                 </div>
               </FormControl>
+              {isEditing && (
+                <p className="text-xs text-muted-foreground">
+                  Fixed at booking. Record money collected later with{" "}
+                  <span className="font-medium">Record Payment</span> on the order details view.
+                </p>
+              )}
               <FormMessage />
             </FormItem>
           )}
@@ -188,8 +209,9 @@ export function OrderPaymentStep() {
       <div className="bg-muted/50 p-4 rounded-lg">
         <h4 className="font-medium text-sm mb-2">Step 3: Payment Details</h4>
         <p className="text-sm text-muted-foreground">
-          Set the payment method and enter payment amounts. Choose the payment method, 
-          enter the total order amount and advance payment received. The balance will be calculated automatically.
+          {isEditing
+            ? "You can still adjust the total order amount and the payment method. The advance is the money taken when the order was booked and cannot be changed here — use Record Payment on the order details view for anything collected since."
+            : "Set the payment method and enter payment amounts. Choose the payment method, enter the total order amount and advance payment received. The balance will be calculated automatically."}
         </p>
       </div>
     </div>

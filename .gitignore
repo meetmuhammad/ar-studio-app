@@ -83,3 +83,19 @@ AGENTS.md
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Agent tooling runtime state. Never commit: it holds loopback daemon tokens
+# and browse logs whose URLs contain share-bypass tokens. A token already
+# reached this public repo once via `git add -A`.
