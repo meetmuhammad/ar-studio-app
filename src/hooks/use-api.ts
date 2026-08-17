@@ -1,12 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/query-client'
 import { useAuth } from '@/contexts/auth-context'
-import type { 
-  Customer, 
-  OrderWithCustomer, 
+import { ledgerFiltersToSearchParams } from '@/lib/ledger-query'
+import type {
+  Customer,
+  OrderWithCustomer,
   GeneralLedgerWithRelations,
+  LedgerEntryType,
   Vendor,
-  VendorWithLedger 
+  VendorWithLedger
 } from '@/lib/supabase-client'
 import { toast } from 'sonner'
 
@@ -305,30 +307,91 @@ export function useDeleteOrder() {
 // LEDGER
 // =============================================================================
 
-interface LedgerQueryParams {
+/**
+ * The filter half of these params is defined once in @/lib/ledger-query and
+ * serialised by `ledgerFiltersToSearchParams`, so the table query and the CSV
+ * export cannot disagree about parameter names or about which rows match.
+ */
+export interface LedgerQueryParams extends Partial<LedgerFilterInput> {
   page?: number
   pageSize?: number
-  search?: string
-  startDate?: string
-  endDate?: string
+}
+
+type LedgerFilterInput = {
+  search: string
+  startDate: string
+  endDate: string
+  entryType: LedgerEntryType
+  vendorId: string
+}
+
+function ledgerFilterParams(params: LedgerQueryParams): URLSearchParams {
+  return ledgerFiltersToSearchParams({
+    search: params.search,
+    startDate: params.startDate,
+    endDate: params.endDate,
+    entryType: params.entryType,
+    vendorId: params.vendorId,
+  })
 }
 
 export function useLedgerEntries(params: LedgerQueryParams = {}) {
-  const { page = 1, pageSize = 20, search, startDate, endDate } = params
+  const { page = 1, pageSize = 20, search, startDate, endDate, entryType, vendorId } = params
   return useQuery({
-    queryKey: queryKeys.ledger.entries({ page, pageSize, search, startDate, endDate }),
+    queryKey: queryKeys.ledger.entries({ page, pageSize, search, startDate, endDate, entryType, vendorId }),
     queryFn: async () => {
-      const searchParams = new URLSearchParams({
-        page: page.toString(),
-        pageSize: pageSize.toString(),
-      })
-      if (search?.trim()) searchParams.set('search', search.trim())
-      if (startDate) searchParams.set('start_date', startDate)
-      if (endDate) searchParams.set('end_date', endDate)
-      
+      const searchParams = ledgerFilterParams({ search, startDate, endDate, entryType, vendorId })
+      searchParams.set('page', page.toString())
+      searchParams.set('pageSize', pageSize.toString())
+
       const response = await fetch(`/api/general-ledger?${searchParams}`)
       if (!response.ok) throw new Error('Failed to fetch ledger entries')
       return response.json() as Promise<{ data: GeneralLedgerWithRelations[]; pagination: { page: number; pageSize: number; total: number; pages: number } }>
+    },
+  })
+}
+
+/**
+ * Download every row matching the current filters as CSV.
+ *
+ * The server builds the file. The old export serialised the 20 rows React
+ * Query happened to be holding, so "Export CSV" produced the current page and
+ * called it the ledger. Fetching (rather than pointing an <a> at the route)
+ * keeps the failure visible: an expired session returns 401 and the user gets a
+ * toast instead of a downloaded file containing an error page.
+ */
+export function useExportLedgerCsv() {
+  return useMutation({
+    mutationFn: async (filters: Omit<LedgerQueryParams, 'page' | 'pageSize'> = {}) => {
+      const searchParams = ledgerFilterParams(filters)
+      const query = searchParams.toString()
+      const response = await fetch(`/api/general-ledger/export${query ? `?${query}` : ''}`)
+      if (!response.ok) throw new Error('Failed to export ledger entries')
+
+      const blob = await response.blob()
+      const total = Number(response.headers.get('X-Total-Rows') ?? '0')
+      const disposition = response.headers.get('Content-Disposition') || ''
+      const filename =
+        /filename="([^"]+)"/.exec(disposition)?.[1] ??
+        `ledger_entries_${new Date().toISOString().slice(0, 10)}.csv`
+
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      link.style.visibility = 'hidden'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      return { total, filename }
+    },
+    onSuccess: ({ total }) => {
+      toast.success(`Exported ${total} ledger ${total === 1 ? 'entry' : 'entries'} to CSV`)
+    },
+    onError: () => {
+      toast.error('Failed to export CSV')
     },
   })
 }

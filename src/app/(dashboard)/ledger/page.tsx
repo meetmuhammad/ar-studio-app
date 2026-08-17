@@ -18,9 +18,33 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import type { GeneralLedgerWithRelations } from '@/lib/supabase-client'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import type { GeneralLedgerWithRelations, LedgerEntryType } from '@/lib/supabase-client'
+import { LEDGER_ENTRY_TYPES } from '@/lib/ledger-query'
 import { toast } from 'sonner'
-import { useLedgerEntries, useLedgerStats, useCreateLedgerEntry, useUpdateLedgerEntry, useDeleteLedgerEntry, useSyncOrderPayments } from '@/hooks/use-api'
+import { useLedgerEntries, useLedgerStats, useCreateLedgerEntry, useUpdateLedgerEntry, useDeleteLedgerEntry, useSyncOrderPayments, useExportLedgerCsv, useVendors } from '@/hooks/use-api'
+
+/** Select cannot hold an empty-string value, so "no filter" needs a sentinel. */
+const ALL = '__all__'
+
+/**
+ * A `Date` from the picker is local-midnight; `toISOString()` converts to UTC
+ * first, which rolls the date back a day for anyone west of Greenwich and
+ * silently drops a day's entries out of the filter. `entry_date` is a DATE
+ * column, so format the local calendar date instead.
+ */
+function toDateParam(date: Date | undefined): string | undefined {
+  if (!date) return undefined
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
 
 export default function LedgerPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -29,23 +53,43 @@ export default function LedgerPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
+  const [entryType, setEntryType] = useState<LedgerEntryType | typeof ALL>(ALL)
+  const [vendorId, setVendorId] = useState<string>(ALL)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 20
   const debounceTimer = useRef<NodeJS.Timeout | null>(null)
 
+  // One filter object drives the table and the export, so the file a user
+  // downloads is always the query they are looking at.
+  const activeFilters = {
+    search: debouncedSearch,
+    startDate: toDateParam(dateFrom),
+    endDate: toDateParam(dateTo),
+    entryType: entryType === ALL ? undefined : entryType,
+    vendorId: vendorId === ALL ? undefined : vendorId,
+  }
+
   // React Query hooks
   const { data: entriesResult, isLoading, refetch: fetchData } = useLedgerEntries({
+    ...activeFilters,
     page: currentPage,
     pageSize: itemsPerPage,
-    search: debouncedSearch,
-    startDate: dateFrom?.toISOString().split('T')[0],
-    endDate: dateTo?.toISOString().split('T')[0],
   })
   const { data: stats = { totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 } } = useLedgerStats()
+  const { data: vendors = [] } = useVendors()
   const syncMutation = useSyncOrderPayments()
   const deleteMutation = useDeleteLedgerEntry()
-  
-  const entries = (entriesResult?.data || []).map((entry: any) => ({
+  const exportMutation = useExportLedgerCsv()
+
+  /**
+   * `calculatedBalance` is a leftover from when the client recomputed a running
+   * balance across the page it was holding. It is now just a mirror of the
+   * stored `balance` column, which the database triggers maintain across the
+   * WHOLE ledger in (entry_date, created_at) order -- so a filtered view still
+   * shows each entry's true position, not a total of the visible rows. Kept
+   * only because other code still reads the field.
+   */
+  const entries = (entriesResult?.data || []).map((entry) => ({
     ...entry,
     calculatedBalance: entry.balance,
   })) as GeneralLedgerWithRelations[]
@@ -62,10 +106,10 @@ export default function LedgerPage() {
     }, 300)
   }
 
-  // Reset page when date filters change
+  // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [dateFrom, dateTo])
+  }, [dateFrom, dateTo, entryType, vendorId])
 
   const syncOrderPayments = async () => {
     await syncMutation.mutateAsync()
@@ -89,52 +133,15 @@ export default function LedgerPage() {
     setEditingEntry(null)
   }
 
+  /**
+   * Ask the server for every row matching the active filters.
+   *
+   * This used to serialise `entries`, which is one page of 20. Exporting a
+   * 3000-row ledger produced a 20-row file with no warning, and the toast
+   * confidently reported the number it had just written.
+   */
   const exportToCSV = () => {
-    try {
-      // CSV headers
-      const headers = ['Date', 'Particulars', 'Type', 'Debit', 'Credit', 'Balance', 'Vendor', 'Order Number', 'Notes']
-      
-      // Convert entries to CSV rows
-      const rows = entries.map(entry => [
-        new Date(entry.entry_date).toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-        }),
-        `"${entry.particulars.replace(/"/g, '""')}"`, // Escape double quotes
-        entry.entry_type.replace('_', ' '),
-        entry.debit || 0,
-        entry.credit || 0,
-        entry.calculatedBalance || entry.balance,
-        entry.vendors?.name ? `"${entry.vendors.name.replace(/"/g, '""')}"` : '',
-        entry.orders?.order_number ? `"${entry.orders.order_number.replace(/"/g, '""')}"` : '',
-        entry.notes ? `"${entry.notes.replace(/"/g, '""')}"` : '',
-      ])
-      
-      // Combine headers and rows
-      const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.join(','))
-      ].join('\n')
-      
-      // Create blob and download
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const link = document.createElement('a')
-      const url = URL.createObjectURL(blob)
-      
-      link.setAttribute('href', url)
-      link.setAttribute('download', `ledger_entries_${new Date().toISOString().split('T')[0]}.csv`)
-      link.style.visibility = 'hidden'
-      
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      
-      toast.success(`Exported ${entries.length} ledger entries to CSV`)
-    } catch (error) {
-      console.error('Error exporting CSV:', error)
-      toast.error('Failed to export CSV')
-    }
+    exportMutation.mutate(activeFilters)
   }
 
   // Server handles pagination — use entries directly
@@ -191,10 +198,10 @@ export default function LedgerPage() {
           <Button
             variant="outline"
             onClick={exportToCSV}
-            disabled={entries.length === 0}
+            disabled={totalEntries === 0 || exportMutation.isPending}
           >
             <Download className="h-4 w-4 mr-2" />
-            Export CSV
+            {exportMutation.isPending ? 'Exporting…' : 'Export CSV'}
           </Button>
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
@@ -203,7 +210,8 @@ export default function LedgerPage() {
         </div>
       </div>
 
-      {/* Search and Date Range Filters */}
+      {/* Filters. Every control here is applied server-side and is included in
+          the CSV export, so the file always matches what is on screen. */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_auto_auto]">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -254,6 +262,64 @@ export default function LedgerPage() {
             </Button>
           )}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Label className="text-sm text-muted-foreground whitespace-nowrap">Type</Label>
+          <Select
+            value={entryType}
+            onValueChange={(value) => setEntryType(value as LedgerEntryType | typeof ALL)}
+          >
+            <SelectTrigger className="w-[190px]">
+              <SelectValue placeholder="All types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All types</SelectItem>
+              {LEDGER_ENTRY_TYPES.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {type.replace(/_/g, ' ')}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Label className="text-sm text-muted-foreground whitespace-nowrap">Vendor</Label>
+          <Select value={vendorId} onValueChange={setVendorId}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="All vendors" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All vendors</SelectItem>
+              {vendors.map((vendor) => (
+                <SelectItem key={vendor.id} value={vendor.id}>
+                  {vendor.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {(entryType !== ALL || vendorId !== ALL || dateFrom || dateTo || searchQuery) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setEntryType(ALL)
+              setVendorId(ALL)
+              setDateFrom(undefined)
+              setDateTo(undefined)
+              setSearchQuery('')
+              setDebouncedSearch('')
+              setCurrentPage(1)
+            }}
+          >
+            <X className="h-4 w-4 mr-1" />
+            Clear filters
+          </Button>
+        )}
       </div>
 
       {/* Stats Cards */}

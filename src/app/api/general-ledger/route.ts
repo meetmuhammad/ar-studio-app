@@ -1,47 +1,25 @@
 import { withAdmin } from '@/lib/api-auth'
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
+import { buildLedgerQuery, parseLedgerFilters } from '@/lib/ledger-query'
 
 // GET /api/general-ledger - List entries with filters and pagination
+//
+// Filters are parsed and applied by @/lib/ledger-query, which the CSV export
+// route also uses. That shared definition is the point: when the two had their
+// own copies, "export" and "what the table shows" could diverge without either
+// side looking wrong.
 export const GET = withAdmin(async (request: Request) => {
   try {
     const supabase = createAdminSupabaseClient()
     const { searchParams } = new URL(request.url)
-    
-    const startDate = searchParams.get('start_date')
-    const endDate = searchParams.get('end_date')
-    const entryType = searchParams.get('entry_type')
-    const vendorId = searchParams.get('vendor_id')
-    const search = searchParams.get('search')
+
+    const filters = parseLedgerFilters(searchParams)
     const page = parseInt(searchParams.get('page') || '0') // 0 = no pagination (legacy)
     const pageSize = parseInt(searchParams.get('pageSize') || '20')
 
-    let query = supabase
-      .from('general_ledger')
-      .select(`
-        *,
-        vendors (id, name),
-        orders (id, order_number),
-        vendor_tags (id, tag_name)
-      `, { count: 'exact' })
-      .order('entry_date', { ascending: false })
-      .order('created_at', { ascending: false })
-
-    if (startDate) {
-      query = query.gte('entry_date', startDate)
-    }
-    if (endDate) {
-      query = query.lte('entry_date', endDate)
-    }
-    if (entryType) {
-      query = query.eq('entry_type', entryType)
-    }
-    if (vendorId) {
-      query = query.eq('vendor_id', vendorId)
-    }
-    if (search) {
-      query = query.ilike('particulars', `%${search}%`)
-    }
+    // Newest-first for the on-screen table; the export goes oldest-first.
+    let query = buildLedgerQuery(supabase, filters, { direction: 'desc' })
 
     // Apply pagination if page > 0
     if (page > 0) {
