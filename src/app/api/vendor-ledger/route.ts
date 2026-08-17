@@ -85,33 +85,69 @@ export const POST = withAdmin(async (request: Request) => {
       )
     }
 
-    // `balance` is derived, never supplied. It used to be computed here from
-    // `order by entry_date desc, created_at desc limit 1`, which is not a total
-    // order and, for a back-dated entry, read the newest row rather than the
-    // row this entry actually follows. The database now owns it:
-    // trg_calculate_vendor_ledger_balance seeds the new row from its true
-    // predecessor within this vendor, and the statement-level AFTER INSERT
-    // trigger repairs every later row for that vendor. See
-    // supabase/migrations/20260817160000_vendor_ledger_balance_integrity.sql.
-    const { data: entry, error } = await supabase
-      .from('vendor_ledger')
+    // Write to the GENERAL LEDGER, not straight into vendor_ledger.
+    //
+    // This route used to insert a vendor_ledger row with
+    // `general_ledger_id: null` and a comment saying "No link to general
+    // ledger". The two ledgers then diverged: an entry added from the vendor
+    // sub-ledger screen existed only in the sub-ledger and never reached the
+    // main books.
+    //
+    // The synchronisation already exists and runs the other way. The general
+    // ledger is the source of truth: `trg_create_vendor_sub_ledger_entry` fires
+    // AFTER INSERT on general_ledger and creates the matching vendor_ledger row
+    // with `general_ledger_id` set. So the fix is to insert where the mechanism
+    // already starts and let it mirror down, rather than adding a second,
+    // opposite path.
+    //
+    // That is also why this cannot recurse. There is no vendor_ledger ->
+    // general_ledger trigger and none is being added; this route no longer
+    // touches vendor_ledger at all. One insert here yields exactly one
+    // general_ledger row and exactly one vendor_ledger row.
+    //
+    // DIRECTION. The caller speaks sub-ledger: the bill form sends
+    // `credit: amount` for "bill from vendor". The mirroring trigger inverts
+    // (general-ledger credit -> vendor debit), so the general-ledger row must be
+    // written inverted for the sub-ledger row to come back out the way the user
+    // entered it.
+    //
+    // `balance` on both rows is derived by the database triggers, and the Wave 4
+    // category snapshot is filled by trg_snapshot_vendor_category because this
+    // insert carries vendor_id.
+    const { data: ledgerEntry, error: ledgerError } = await supabase
+      .from('general_ledger')
       .insert({
-        vendor_id,
-        general_ledger_id: null, // No link to general ledger
         entry_date,
         particulars: particulars.trim(),
-        debit: debit || null,
-        credit: credit || null,
-        balance: 0, // overwritten by the BEFORE INSERT trigger
+        debit: credit || null,   // sub-ledger credit -> general-ledger debit
+        credit: debit || null,   // sub-ledger debit  -> general-ledger credit
+        entry_type: 'vendor_payment',
+        vendor_id,
         notes: notes?.trim() || null,
       })
       .select()
       .single()
 
-    if (error) {
-      console.error('Error creating vendor ledger entry:', error)
+    if (ledgerError) {
+      console.error('Error creating general ledger entry:', ledgerError)
       return NextResponse.json(
         { error: 'Failed to create vendor ledger entry' },
+        { status: 500 }
+      )
+    }
+
+    // Return the vendor_ledger row the trigger produced -- callers of this
+    // endpoint expect the sub-ledger entry, and that contract is unchanged.
+    const { data: entry, error } = await supabase
+      .from('vendor_ledger')
+      .select('*')
+      .eq('general_ledger_id', ledgerEntry.id)
+      .single()
+
+    if (error || !entry) {
+      console.error('General ledger row created but no vendor_ledger row found:', error)
+      return NextResponse.json(
+        { error: 'Vendor ledger entry was not created' },
         { status: 500 }
       )
     }
