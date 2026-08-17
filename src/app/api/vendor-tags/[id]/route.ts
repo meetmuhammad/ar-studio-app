@@ -1,11 +1,12 @@
+import { withAdmin } from '@/lib/api-auth'
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 
 // DELETE /api/vendor-tags/[id] - Delete vendor tag
-export async function DELETE(
+export const DELETE = withAdmin<{ params: Promise<{ id: string }> }>(async (
   request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   try {
     const supabase = createAdminSupabaseClient()
     const { id } = await params
@@ -31,4 +32,4 @@ export async function DELETE(
       { status: 500 }
     )
   }
-}
+})

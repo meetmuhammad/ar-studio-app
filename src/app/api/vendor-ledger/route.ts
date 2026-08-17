@@ -1,8 +1,9 @@
+import { withAdmin } from '@/lib/api-auth'
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 
 // GET /api/vendor-ledger?vendor_id={id} - Get vendor sub-ledger
-export async function GET(request: Request) {
+export const GET = withAdmin(async (request: Request) => {
   try {
     const supabase = createAdminSupabaseClient()
     const { searchParams } = new URL(request.url)
@@ -46,10 +47,10 @@ export async function GET(request: Request) {
       { status: 500 }
     )
   }
-}
+})
 
 // POST /api/vendor-ledger - Create vendor bill (sub-ledger only, no main ledger entry)
-export async function POST(request: Request) {
+export const POST = withAdmin(async (request: Request) => {
   try {
     const supabase = createAdminSupabaseClient()
     const body = await request.json()
@@ -124,4 +125,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
+})

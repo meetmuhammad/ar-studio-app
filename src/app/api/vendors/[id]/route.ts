@@ -1,11 +1,12 @@
+import { withAdmin } from '@/lib/api-auth'
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 
 // GET /api/vendors/[id] - Get vendor with ledger entries
-export async function GET(
+export const GET = withAdmin<{ params: Promise<{ id: string }> }>(async (
   request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   try {
     const supabase = createAdminSupabaseClient()
     const { id } = await params
@@ -42,13 +43,13 @@ export async function GET(
       { status: 500 }
     )
   }
-}
+})
 
 // PUT /api/vendors/[id] - Update vendor
-export async function PUT(
+export const PUT = withAdmin<{ params: Promise<{ id: string }> }>(async (
   request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   try {
     const supabase = createAdminSupabaseClient()
     const { id } = await params
@@ -100,13 +101,13 @@ export async function PUT(
       { status: 500 }
     )
   }
-}
+})
 
 // DELETE /api/vendors/[id] - Delete vendor
-export async function DELETE(
+export const DELETE = withAdmin<{ params: Promise<{ id: string }> }>(async (
   request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   try {
     const supabase = createAdminSupabaseClient()
     const { id } = await params
@@ -132,4 +133,4 @@ export async function DELETE(
       { status: 500 }
     )
   }
-}
+})
