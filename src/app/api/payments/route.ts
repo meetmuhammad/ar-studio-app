@@ -1,4 +1,4 @@
-import { withAuth } from '@/lib/api-auth'
+import { withAuth, withAdmin } from '@/lib/api-auth'
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 
@@ -57,7 +57,7 @@ export const GET = withAuth(async (request: NextRequest) => {
   }
 })
 
-export const POST = withAuth(async (request: NextRequest) => {
+export const POST = withAdmin(async (request: NextRequest) => {
   try {
     const body = await request.json();
     const supabase = createAdminSupabaseClient();
