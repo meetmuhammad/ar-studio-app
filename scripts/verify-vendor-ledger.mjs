@@ -15,11 +15,21 @@
 // Optional: ALLOW_MISMATCH=1 to report without failing.
 // Prints aggregates only, never a secret.
 
+import { resolveSupabase } from './lib/local-supabase.mjs'
+
 const REF = process.env.REF
-const URL_BASE = process.env.SUPABASE_URL || (REF ? `https://${REF}.supabase.co` : null)
-const KEY = process.env.SERVICE_KEY
+let URL_BASE = process.env.SUPABASE_URL || (REF ? `https://${REF}.supabase.co` : null)
+let KEY = process.env.SERVICE_KEY
+// Fall back to the running local stack so this needs no hosted secret locally.
 if (!URL_BASE || !KEY) {
-  console.error('SERVICE_KEY and one of REF / SUPABASE_URL are required')
+  try {
+    const c = resolveSupabase()
+    URL_BASE = URL_BASE || c.url
+    KEY = KEY || c.key
+  } catch { /* fall through to the error below */ }
+}
+if (!URL_BASE || !KEY) {
+  console.error('SERVICE_KEY and one of REF / SUPABASE_URL are required (or start the local stack)')
   process.exit(1)
 }
 const BASE = `${URL_BASE}/rest/v1/vendor_ledger`

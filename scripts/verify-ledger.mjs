@@ -6,15 +6,32 @@
 // from debit and credit. If the database's own recalculation were wrong in the
 // same way twice, a SQL-side check would agree with it; this will not.
 //
-// Env: REF, SERVICE_KEY. Prints aggregates only.
+// Env: none required against a running local stack -- credentials are read from
+// `supabase status`. For a hosted project pass REF (or SUPABASE_URL) plus
+// SERVICE_KEY. Prints aggregates only.
+//
+// Requiring a hosted service key used to mean only people holding
+// production-adjacent secrets could verify the ledger at all. Local discovery
+// makes `supabase db reset && npm run seed && node scripts/verify-ledger.mjs`
+// work for anyone.
 
-const REF = process.env.REF
-const KEY = process.env.SERVICE_KEY
-if (!REF || !KEY) {
-  console.error('REF and SERVICE_KEY are required')
-  process.exit(1)
+import { resolveSupabase } from './lib/local-supabase.mjs'
+
+let URL_BASE, KEY
+if (process.env.SERVICE_KEY && (process.env.REF || process.env.SUPABASE_URL)) {
+  URL_BASE = process.env.SUPABASE_URL || `https://${process.env.REF}.supabase.co`
+  KEY = process.env.SERVICE_KEY
+} else {
+  try {
+    const c = resolveSupabase()
+    URL_BASE = c.url
+    KEY = c.key
+  } catch (err) {
+    console.error(err.message)
+    process.exit(1)
+  }
 }
-const BASE = `https://${REF}.supabase.co/rest/v1/general_ledger`
+const BASE = `${URL_BASE}/rest/v1/general_ledger`
 
 const rows = []
 const PAGE = 1000

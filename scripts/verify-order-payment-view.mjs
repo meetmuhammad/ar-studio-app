@@ -34,44 +34,21 @@
  * Read-only. Never writes. Safe to point at a production connection.
  */
 
-import { readFileSync, existsSync } from 'node:fs'
-import { resolve, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const VIEW = 'orders_with_payment_status'
 
-/** .env.local is the local-development fallback; explicit env always wins. */
-function loadEnvFallback() {
-  const file = resolve(ROOT, '.env.local')
-  if (!existsSync(file)) return {}
-  const out = {}
-  for (const line of readFileSync(file, 'utf8').split('\n')) {
-    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/)
-    if (m) out[m[1]] = m[2].replace(/^["']|["']$/g, '')
-  }
-  return out
-}
+import { resolveSupabase } from './lib/local-supabase.mjs'
 
-const fallback = loadEnvFallback()
-const URL_ =
-  process.env.SUPABASE_URL ||
-  (process.env.REF ? `https://${process.env.REF}.supabase.co` : undefined) ||
-  fallback.NEXT_PUBLIC_SUPABASE_URL
-const KEY =
-  process.env.SUPABASE_KEY ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  fallback.SUPABASE_SERVICE_ROLE_KEY ||
-  fallback.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-if (!URL_ || !KEY) {
-  console.error('FATAL: set SUPABASE_URL (or REF) and SUPABASE_KEY, or provide .env.local')
+let URL_, KEY, APIKEY
+try {
+  // Resolves explicit env first, then the running local stack, then .env.local.
+  const c = resolveSupabase()
+  URL_ = c.url
+  KEY = c.key
+  APIKEY = process.env.SUPABASE_APIKEY || c.apiKey || c.key
+} catch (err) {
+  console.error(err.message)
   process.exit(1)
 }
-
-/** apikey must be the project's publishable key; KEY may be a user JWT. */
-const APIKEY =
-  process.env.SUPABASE_APIKEY || fallback.NEXT_PUBLIC_SUPABASE_ANON_KEY || KEY
 
 const headers = { apikey: APIKEY, Authorization: `Bearer ${KEY}` }
 
