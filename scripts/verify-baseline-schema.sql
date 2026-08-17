@@ -105,9 +105,14 @@ begin
 
   -- ---- financial functions must not be executable by anon/authenticated ----
   select string_agg(f, ', ') into v_missing
-    from unnest(array['rebuild_general_ledger_balances','rebuild_vendor_ledger_balances']) f
-   where has_function_privilege('anon', 'public.' || f || '()', 'EXECUTE')
-      or has_function_privilege('authenticated', 'public.' || f || '()', 'EXECUTE');
+    from unnest(array[
+      'rebuild_general_ledger_balances','rebuild_vendor_ledger_balances',
+      -- legacy whole-ledger rewriters: must be gone, or at minimum unreachable
+      'recalculate_general_ledger_balances','recalculate_all_balances'
+    ]) f
+   where to_regprocedure('public.' || f || '()') is not null
+     and (has_function_privilege('anon', 'public.' || f || '()', 'EXECUTE')
+       or has_function_privilege('authenticated', 'public.' || f || '()', 'EXECUTE'));
   if v_missing is not null then
     raise exception 'anon/authenticated hold EXECUTE on: %', v_missing;
   end if;

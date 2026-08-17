@@ -88,6 +88,13 @@ for (const r of rows) {
 
 const trueNet = rows.reduce((s, r) => s + cents(r.debit) - cents(r.credit), 0)
 
+// A verifier that passes on an empty table is worse than no verifier: it
+// reports success having checked nothing. Seed first.
+if (rows.length === 0) {
+  console.error('FAIL: no rows found — nothing was verified. Run `npm run seed` first.')
+  process.exit(1)
+}
+
 console.log(JSON.stringify({
   source: 'independent JS recomputation over PostgREST',
   rows: rows.length,

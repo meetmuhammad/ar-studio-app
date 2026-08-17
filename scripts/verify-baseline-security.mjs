@@ -60,6 +60,12 @@ const FINANCIAL_RPCS = [
     p_id: '00000000-0000-0000-0000-000000000000',
   }],
   ['dashboard_stats', { p_start: '2000-01-01', p_end: '2000-01-02' }],
+  // Legacy whole-ledger rewriters from the captured baseline. These were
+  // executable by any signed-in user and rewrote every balance; dropped by
+  // 20260817200000. Listed so a future baseline recapture that reintroduces
+  // them fails this check instead of sailing through.
+  ['recalculate_general_ledger_balances', {}],
+  ['recalculate_all_balances', {}],
 ]
 
 const results = []
@@ -89,6 +95,23 @@ const rpc = async (fn, key, bearer = key, args = {}) => {
 }
 
 const rows = (r) => (Array.isArray(r.body) ? r.body.length : null)
+
+const skipped = []
+/**
+ * An absent function is NOT a passed boundary. Reporting it as PASS lets a
+ * migration set that never created the function look identically as safe as one
+ * that created it and locked it down -- and it hid a real hole here once.
+ */
+const reportRpc = (role, fn, r) => {
+  const absent = r.status === 404 || r.body?.code === 'PGRST202'
+  const denied = r.body?.code === '42501' || r.status === 401 || r.status === 403
+  if (absent) {
+    skipped.push(`${role}: ${fn}() — not present in this migration set`)
+    console.log(`  SKIP  ${role} cannot execute ${fn}()  — function not present`)
+    return
+  }
+  check(`${role} cannot execute ${fn}()`, denied, `status ${r.status} ${r.body?.code ?? ''}`)
+}
 
 /** Refused = no data came back, whether by 4xx or by an RLS-filtered empty set. */
 const refused = (r) => r.status >= 400 || rows(r) === 0
@@ -142,13 +165,7 @@ async function main() {
     const r = await rpc(fn, ANON_KEY, ANON_KEY, args)
     // 404/PGRST202 means the function is absent from this migration set, which
     // is not a security failure. 42501 is the refusal we want. A 200 is a leak.
-    const absent = r.status === 404 || r.body?.code === 'PGRST202'
-    const denied = r.body?.code === '42501' || r.status === 401 || r.status === 403
-    check(
-      `cannot execute ${fn}()`,
-      absent || denied,
-      absent ? 'not in this migration set' : `status ${r.status} ${r.body?.code ?? ''}`
-    )
+    reportRpc('anon', fn, r)
   }
 
   // ---------------- authenticated, non-admin ----------------
@@ -165,13 +182,7 @@ async function main() {
 
     for (const [fn, args] of FINANCIAL_RPCS) {
       const r = await rpc(fn, ANON_KEY, user.token, args)
-      const absent = r.status === 404 || r.body?.code === 'PGRST202'
-      const denied = r.body?.code === '42501' || r.status === 401 || r.status === 403
-      check(
-        `cannot execute ${fn}()`,
-        absent || denied,
-        absent ? 'not in this migration set' : `status ${r.status} ${r.body?.code ?? ''}`
-      )
+      reportRpc('authenticated', fn, r)
     }
   }
 
@@ -183,7 +194,8 @@ async function main() {
   }
 
   const failed = results.filter((r) => !r.ok)
-  console.log(`\n${results.length - failed.length}/${results.length} passed`)
+  console.log(`\n${results.length - failed.length}/${results.length} passed, ${skipped.length} skipped`)
+  for (const s of skipped) console.log(`  skipped — ${s}`)
   if (failed.length) {
     console.error('\nFAILURES:')
     for (const f of failed) console.error(`  - ${f.name} (${f.detail})`)
