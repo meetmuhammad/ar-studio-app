@@ -371,7 +371,7 @@ q "with fns(sig) as (values
        or has_function_privilege('anon', sig, 'execute')
        or has_function_privilege('authenticated', sig, 'execute');"
 
-hr "12a. live refusal as the `authenticated` role - expect SQLSTATE 42501"
+hr '12a. live refusal as the authenticated role - expect SQLSTATE 42501'
 # PostgREST switches to the Postgres role named in the JWT `role` claim, which
 # for any signed-in user of this app is `authenticated`. `set role` reproduces
 # exactly that, with the function's REAL signature, and without putting a
