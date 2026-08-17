@@ -20,7 +20,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import type { GeneralLedgerWithRelations } from '@/lib/supabase-client'
 import { toast } from 'sonner'
-import { useLedgerEntries, useLedgerStats, useCreateLedgerEntry, useUpdateLedgerEntry, useDeleteLedgerEntry, useSyncOrderPayments } from '@/hooks/use-api'
+import { useLedgerEntries, useLedgerStats, useCreateLedgerEntry, useUpdateLedgerEntry, useDeleteLedgerEntry } from '@/hooks/use-api'
 
 export default function LedgerPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -42,7 +42,6 @@ export default function LedgerPage() {
     endDate: dateTo?.toISOString().split('T')[0],
   })
   const { data: stats = { totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 } } = useLedgerStats()
-  const syncMutation = useSyncOrderPayments()
   const deleteMutation = useDeleteLedgerEntry()
   
   const entries = (entriesResult?.data || []).map((entry: any) => ({
@@ -66,11 +65,6 @@ export default function LedgerPage() {
   useEffect(() => {
     setCurrentPage(1)
   }, [dateFrom, dateTo])
-
-  const syncOrderPayments = async () => {
-    await syncMutation.mutateAsync()
-  }
-  const isSyncing = syncMutation.isPending
 
   const handleEdit = (entry: GeneralLedgerWithRelations) => {
     setEditingEntry(entry)

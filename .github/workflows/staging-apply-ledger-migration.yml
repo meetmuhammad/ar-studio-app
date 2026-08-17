@@ -1,0 +1,87 @@
+name: staging - apply ledger balance integrity migration
+
+# One-shot, staging-only job.
+#
+# Why a workflow and not `supabase db push`: a concurrent branch already applied
+# 20260817120000_dashboard_stats_fn.sql to staging, so staging's migration
+# history contains a version this branch does not have locally. `db push`
+# reconciles history and would balk. This job applies exactly one file, through
+# the Supabase Management API, and then records that one version.
+#
+# Why `push:` and not `workflow_dispatch:`: workflow_dispatch only offers
+# workflows that exist on the default branch, and the default branch here
+# deploys straight to production. So the trigger is a push to a dedicated
+# one-shot branch instead.
+#
+# Idempotent and re-runnable: every DDL statement is CREATE OR REPLACE / DROP IF
+# EXISTS / CREATE IF NOT EXISTS, and the backfill recomputes balances from the
+# debit and credit already stored. It never inserts or deletes ledger rows.
+#
+# The repository is PUBLIC and Actions logs are world-readable. Every secret is
+# passed through ::add-mask:: before first use and nothing echoes a value.
+
+on:
+  push:
+    branches:
+      - ops/apply-ledger-migration
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-ledger-migration
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: apply + verify on staging
+    runs-on: ubuntu-latest
+    environment: staging
+
+    env:
+      MIGRATION_FILE: supabase/migrations/20260817140000_ledger_balance_integrity.sql
+      MIGRATION_VERSION: "20260817140000"
+      MIGRATION_NAME: ledger_balance_integrity
+      EXPECTED_REF: ohgqgkraybpvnfdbgmvl
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mask every secret before anything can echo one
+        env:
+          STAGING_PROJECT_REF: ${{ secrets.STAGING_PROJECT_REF }}
+          STAGING_DB_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+          STAGING_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SERVICE_ROLE_KEY }}
+          STAGING_ANON_KEY: ${{ secrets.STAGING_ANON_KEY }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          for v in STAGING_DB_PASSWORD STAGING_SERVICE_ROLE_KEY STAGING_ANON_KEY SUPABASE_ACCESS_TOKEN; do
+            printf '::add-mask::%s\n' "${!v}"
+          done
+          # The project ref is not a credential (it is in every public URL) and
+          # is left unmasked so the guard below can be seen to have run.
+          echo "STAGING_PROJECT_REF is set: $([ -n "$STAGING_PROJECT_REF" ] && echo yes || echo NO)"
+
+      - name: HARD GUARD - refuse to run against anything but staging
+        env:
+          STAGING_PROJECT_REF: ${{ secrets.STAGING_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          echo "TARGET DATABASE: STAGING - ${EXPECTED_REF}"
+          if [ "${STAGING_PROJECT_REF}" != "${EXPECTED_REF}" ]; then
+            echo "::error::STAGING_PROJECT_REF is not ${EXPECTED_REF}. Refusing to run."
+            exit 1
+          fi
+          if [ "${STAGING_PROJECT_REF}" = "drdnqsjjxmqiklwfadmk" ]; then
+            echo "::error::That is PRODUCTION. Refusing."
+            exit 1
+          fi
+          echo "Guard passed: target is staging (${STAGING_PROJECT_REF})."
+
+      - name: Apply and verify
+        env:
+          REF: ${{ secrets.STAGING_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          ANON_KEY: ${{ secrets.STAGING_ANON_KEY }}
+          SERVICE_KEY: ${{ secrets.STAGING_SERVICE_ROLE_KEY }}
+        run: bash .github/scripts/apply-ledger-migration.sh

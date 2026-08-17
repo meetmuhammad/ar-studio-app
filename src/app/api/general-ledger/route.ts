@@ -24,8 +24,14 @@ export const GET = withAdmin(async (request: Request) => {
         orders (id, order_number),
         vendor_tags (id, tag_name)
       `, { count: 'exact' })
+      // (entry_date, created_at, id) is the ledger's canonical order and the
+      // order the running balance is computed in
+      // (recalculate_ledger_balances_from). `id` is not decoration: two entries
+      // can tie on both date and created_at, and without the tiebreak the rows
+      // would be listed in an order the stored balances do not follow.
       .order('entry_date', { ascending: false })
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
 
     if (startDate) {
       query = query.gte('entry_date', startDate)

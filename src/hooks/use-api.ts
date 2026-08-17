@@ -425,26 +425,16 @@ export function useDeleteLedgerEntry() {
   })
 }
 
-export function useSyncOrderPayments() {
-  const queryClient = useQueryClient()
-  
-  return useMutation({
-    mutationFn: async () => {
-      const response = await fetch('/api/general-ledger/sync-payments', {
-        method: 'POST',
-      })
-      if (!response.ok) throw new Error('Failed to sync payments')
-      return response.json()
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.ledger.all })
-      toast.success(`Synced ${data.synced} order payments to ledger`)
-    },
-    onError: (error: Error) => {
-      toast.error(error.message)
-    },
-  })
-}
+// `useSyncOrderPayments` and POST /api/general-ledger/sync-payments are gone,
+// permanently. That endpoint deleted every `order_payment` row in
+// general_ledger and rebuilt them from `orders.advance_paid` and `payments`.
+// Two things it destroyed on every run:
+//   - any hand-entered or hand-corrected order_payment entry, which exists
+//     nowhere else and cannot be reconstructed from the two source tables;
+//   - the balance chain, since the rebuilt rows re-entered the ledger with new
+//     ids and new created_at values.
+// Correcting a ledger entry means writing a reversing entry, not deleting and
+// re-deriving history.
 
 // =============================================================================
 // VENDORS
