@@ -153,17 +153,42 @@ q "$REPORT_SQL"
 node .github/scripts/verify-ledger.mjs
 
 hr "8. anon must NOT be able to call the new functions over PostgREST"
-for fn in rebuild_general_ledger_balances recalculate_ledger_balances_from \
-          calculate_general_ledger_balance recalc_ledger_balances_after_insert \
-          recalc_ledger_balances_after_update recalc_ledger_balances_after_delete; do
+# The argument list matters: PostgREST answers 404/PGRST202 when no overload
+# matches the body, which would hide a permission hole behind a routing miss.
+# recalculate_ledger_balances_from is therefore probed with its real signature.
+probe_anon () {
+  local fn="$1" body="$2" code
   code=$(curl -sS -o /tmp/anon.out -w '%{http_code}' -X POST "${REST}/rest/v1/rpc/${fn}" \
     -H "apikey: ${ANON_KEY}" -H "Authorization: Bearer ${ANON_KEY}" \
-    -H "Content-Type: application/json" -d '{}')
-  echo "anon POST /rest/v1/rpc/${fn} -> HTTP ${code} : $(head -c 160 /tmp/anon.out)"
+    -H "Content-Type: application/json" -d "$body")
+  echo "anon POST /rest/v1/rpc/${fn} -> HTTP ${code} : $(head -c 200 /tmp/anon.out)"
   if [ "$code" = "200" ] || [ "$code" = "204" ]; then
     echo "::error::anon can call ${fn}"; exit 1
   fi
+}
+probe_anon rebuild_general_ledger_balances '{}'
+probe_anon recalculate_ledger_balances_from \
+  '{"p_entry_date":"2000-01-01","p_created_at":"2000-01-01T00:00:00Z","p_id":"00000000-0000-0000-0000-000000000000"}'
+for fn in calculate_general_ledger_balance recalc_ledger_balances_after_insert \
+          recalc_ledger_balances_after_update recalc_ledger_balances_after_delete; do
+  probe_anon "$fn" '{}'
 done
+
+hr "8b. a non-owner role (service_role, via PostgREST) can still insert, and the triggers still fire"
+# The Management API runs as `postgres`, the owner of every function here, so
+# steps 6 and 7 do not prove that EXECUTE having been revoked leaves the
+# triggers working for other roles. This does: it writes through PostgREST as
+# service_role, back-dated, and checks the tail repaired itself.
+back=$(curl -sS -X POST "${REST}/rest/v1/general_ledger" \
+  -H "apikey: ${SERVICE_KEY}" -H "Authorization: Bearer ${SERVICE_KEY}" \
+  -H "Content-Type: application/json" -H "Prefer: return=representation" \
+  -d '{"entry_date":"2000-01-03","particulars":"CI FIXTURE service_role back-dated","debit":333,"entry_type":"miscellaneous","notes":"ci-svc"}')
+echo "insert as service_role -> $(jq -c '.[0] | {id, entry_date, debit, balance}' <<<"$back")"
+q "$REPORT_SQL"
+node .github/scripts/verify-ledger.mjs
+q "delete from public.general_ledger where notes = 'ci-svc' returning id;"
+q "$REPORT_SQL"
+node .github/scripts/verify-ledger.mjs
 
 hr "9. FINAL ASSERTION"
 final=$(q "select count(*) as mismatches from (
