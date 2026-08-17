@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/query-client'
 import { useAuth } from '@/contexts/auth-context'
+import type { DateRange } from '@/lib/date-range'
 import type { 
   Customer, 
   OrderWithCustomer, 
@@ -29,6 +30,8 @@ export interface DashboardStatsResponse {
     customers: { name: string; phone: string }
   }>
   chartData: Array<{ month: string; revenue: number }>
+  /** The range the server actually used, after validation. */
+  range: DateRange
 }
 
 /**
@@ -48,14 +51,20 @@ export interface DashboardStatsResponse {
  * disabled on first render and nothing re-enables it -- so an admin would get
  * an empty dashboard. Parking it until auth resolves keeps admin behaviour as
  * it was.
+ *
+ * `range` selects the booking-date window. It is part of the query key, so each
+ * range is cached separately and switching back to a previously viewed range is
+ * instant. The role gate above is unchanged -- the range is folded into it, not
+ * substituted for it.
  */
-export function useDashboardStats() {
+export function useDashboardStats(range: DateRange) {
   const { user, loading } = useAuth()
 
   return useQuery({
-    queryKey: queryKeys.dashboard.stats,
+    queryKey: [...queryKeys.dashboard.stats, range.start, range.end],
     queryFn: async () => {
-      const response = await fetch('/api/dashboard-stats')
+      const params = new URLSearchParams({ start: range.start, end: range.end })
+      const response = await fetch(`/api/dashboard-stats?${params.toString()}`)
       if (!response.ok) throw new Error('Failed to fetch dashboard stats')
       return response.json() as Promise<DashboardStatsResponse>
     },

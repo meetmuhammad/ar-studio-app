@@ -1,5 +1,6 @@
 "use client"
 
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import {
@@ -32,6 +33,7 @@ import { StatSparkline } from '@/components/dashboard/stat-sparkline'
 import { EmptyState } from '@/components/dashboard/empty-state'
 import { ErrorState } from '@/components/dashboard/error-state'
 import { DeliveryRow, type UpcomingOrder } from '@/components/dashboard/delivery-row'
+import { DateRangeFilter } from '@/components/dashboard/date-range-filter'
 import {
   SectionCard,
   SectionCardAction,
@@ -44,6 +46,14 @@ import { useDashboardActions } from '@/contexts/dashboard-actions'
 import { useDashboardStats } from '@/hooks/use-api'
 import { useReducedMotion } from '@/hooks/use-reduced-motion'
 import {
+  DEFAULT_DATE_RANGE_PRESET,
+  formatRangeLabel,
+  normalizeRange,
+  resolvePreset,
+  type DateRange,
+  type DateRangePreset,
+} from '@/lib/date-range'
+import {
   formatCompactNumber,
   formatCompactPKR,
   formatPKR,
@@ -52,6 +62,24 @@ import {
 } from '@/lib/format'
 
 export default function DashboardPage() {
+  const [preset, setPreset] = useState<DateRangePreset>(DEFAULT_DATE_RANGE_PRESET)
+  // Seeded from the default preset so switching to "Custom Range" opens on the
+  // window already on screen rather than on empty inputs.
+  const [customRange, setCustomRange] = useState<DateRange>(() =>
+    resolvePreset(DEFAULT_DATE_RANGE_PRESET)
+  )
+
+  // Presets are resolved in Asia/Karachi (see @/lib/date-range) so "This Month"
+  // means the studio's month, not UTC's. normalizeRange mirrors the server's own
+  // validation, so a half-typed custom date never reaches the API.
+  const range = useMemo(
+    () =>
+      preset === 'custom'
+        ? normalizeRange(customRange.start, customRange.end)
+        : resolvePreset(preset),
+    [preset, customRange]
+  )
+
   const {
     data: stats,
     isPending,
@@ -59,10 +87,11 @@ export default function DashboardPage() {
     error,
     refetch,
     dataUpdatedAt,
-  } = useDashboardStats()
+  } = useDashboardStats(range)
 
   const actions = useDashboardActions()
 
+  const rangeLabel = formatRangeLabel(range)
   const chartData = stats?.chartData ?? []
   const upcomingOrders = (stats?.upcomingOrders ?? []) as UpcomingOrder[]
 
@@ -97,6 +126,14 @@ export default function DashboardPage() {
               </>
             ) : null
           }
+        />
+
+        <DateRangeFilter
+          preset={preset}
+          onPresetChange={setPreset}
+          customRange={customRange}
+          onCustomRangeChange={setCustomRange}
+          resolvedRange={range}
         />
 
         {isError ? (
@@ -161,6 +198,7 @@ export default function DashboardPage() {
                 total={windowTotal}
                 hasRevenue={hasRevenue}
                 isLoading={isPending}
+                rangeLabel={rangeLabel}
               />
               <UpcomingDeliveries orders={upcomingOrders} isLoading={isPending} />
             </div>
@@ -176,11 +214,13 @@ function RevenueOverview({
   total,
   hasRevenue,
   isLoading,
+  rangeLabel,
 }: {
   data: Array<{ month: string; revenue: number }>
   total: number
   hasRevenue: boolean
   isLoading: boolean
+  rangeLabel: string
 }) {
   const reducedMotion = useReducedMotion()
 
@@ -188,12 +228,15 @@ function RevenueOverview({
     <SectionCard className="lg:col-span-8">
       <SectionCardHeader>
         <SectionCardTitle className="text-base">Revenue Overview</SectionCardTitle>
+        {/* "Booked", not "received": this is SUM(orders.total_amount) by booking
+            month. The previous chart plotted general_ledger debits, which are
+            collections, under a label that said revenue. */}
         <SectionCardDescription className="text-xs">
-          Monthly revenue for the last 6 months, in PKR
+          Monthly booked revenue, {rangeLabel}, in PKR
         </SectionCardDescription>
         {!isLoading && hasRevenue ? (
           <SectionCardAction className="font-mono text-xs tabular-nums text-muted-foreground">
-            6-mo: {formatCompactPKR(total)}
+            Total: {formatCompactPKR(total)}
           </SectionCardAction>
         ) : null}
       </SectionCardHeader>
@@ -204,7 +247,7 @@ function RevenueOverview({
         ) : !hasRevenue ? (
           <EmptyState
             icon={TrendingUp}
-            message="No revenue recorded in the last 6 months"
+            message={`No revenue booked ${rangeLabel}`}
             action={
               <Link href="/ledger" className="text-xs no-underline">
                 <Button variant="outline" size="sm">
@@ -222,7 +265,7 @@ function RevenueOverview({
             }}
             className="h-[240px] w-full sm:h-[280px] lg:h-[300px]"
             role="img"
-            aria-label={`Monthly revenue for the last 6 months, in PKR: ${data
+            aria-label={`Monthly booked revenue, ${rangeLabel}, in PKR: ${data
               .map((point) => `${point.month} ${formatCompactNumber(point.revenue)}`)
               .join(', ')}. Total ${formatCompactPKR(total)}.`}
           >

@@ -1,43 +1,92 @@
 import { withAdmin } from '@/lib/api-auth'
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
+import {
+  endOfMonth,
+  formatMonthLabel,
+  normalizeRange,
+  startOfMonth,
+  todayInTimeZone,
+} from '@/lib/date-range'
 
-// GET /api/dashboard-stats - Lightweight dashboard stats using SQL aggregates
-export const GET = withAdmin(async () => {
+/**
+ * GET /api/dashboard-stats?start=YYYY-MM-DD&end=YYYY-MM-DD
+ *
+ * WHAT CHANGED AND WHY
+ *
+ * The previous version fetched rows and summed them in JavaScript:
+ *
+ *     .from('orders').select('id, total_amount')          -> reduce()
+ *     .from('general_ledger').select('id, debit, credit') -> reduce()
+ *
+ * Two independent defects.
+ *
+ * 1. WRONG PAST 1000 ROWS. PostgREST returns at most 1000 rows and says so only
+ *    in a header nobody read, so the totals silently under-reported once the
+ *    studio passed a thousand orders. Verified locally: 1500 orders of PKR 1000
+ *    summed to 1,000,000 instead of 1,500,000 -- a third of the revenue simply
+ *    absent, with a 200 response and no warning. This is a correctness bug that
+ *    grows with the business.
+ *
+ * 2. WRONG DEFINITION. "Revenue" was read off `general_ledger` debits where
+ *    entry_type = 'order_payment'. Those are *collections*. Booked revenue is
+ *    SUM(orders.total_amount) over the booking month; the two diverge the moment
+ *    an order is part-paid, which is every order. And `outstandingBalance` was
+ *    whole-business revenue minus the whole-business ledger balance, which mixed
+ *    vendor payments and miscellaneous entries into a customer-receivable
+ *    figure.
+ *
+ * Both are now one `dashboard_stats(p_start, p_end)` call. PostgREST's own
+ * aggregates are disabled on this project (PGRST123), so a database function is
+ * the only way to aggregate server-side. See
+ * supabase/migrations/20260817120000_dashboard_stats_fn.sql -- in particular the
+ * privilege block: the function is service_role-only, because anything callable
+ * with the anon key is callable by the entire internet.
+ *
+ * The remaining queries stay on PostgREST because neither can truncate: two are
+ * `count: 'exact', head: true` (a count, not rows) and the third is LIMIT 5.
+ */
+export const GET = withAdmin(async (request) => {
   try {
     const supabase = createAdminSupabaseClient()
 
-    // Run all lightweight queries in parallel
+    const { searchParams } = new URL(request.url)
+    // "Today" is the studio's today, not the server's. Vercel runs in UTC, so
+    // for the first five hours of every Karachi day the two disagree.
+    const today = todayInTimeZone()
+    const range = normalizeRange(searchParams.get('start'), searchParams.get('end'), today)
+
+    // Deliberately NOT range-scoped: this is the "+N this month" footnote under
+    // the Orders card, and it stays anchored to the current calendar month so it
+    // still means something when the user selects "This Year". It moved from
+    // `created_at` to `booking_date` and gained the Cancelled exclusion so it
+    // counts the same population as the KPI above it.
+    const monthStart = startOfMonth(today)
+    const monthEnd = endOfMonth(today)
+
     const [
       customerCountResult,
-      orderStatsResult,
+      rangeStatsResult,
       recentOrdersResult,
-      ledgerStatsResult,
       upcomingDeliveriesResult,
-      chartDataResult,
     ] = await Promise.all([
-      // 1. Customer count (head-only, no data transferred)
-      supabase
-        .from('customers')
-        .select('*', { count: 'exact', head: true }),
+      // Whole-book customer count. head:true transfers no rows, and `count`
+      // is exact regardless of the 1000-row response cap.
+      supabase.from('customers').select('*', { count: 'exact', head: true }),
 
-      // 2. Order count + total revenue
-      supabase
-        .from('orders')
-        .select('id, total_amount'),
+      // Every money figure and the chart, aggregated in Postgres.
+      supabase.rpc('dashboard_stats', { p_start: range.start, p_end: range.end }),
 
-      // 3. Recent orders count (this month)
       supabase
         .from('orders')
         .select('*', { count: 'exact', head: true })
-        .gte('created_at', getFirstDayOfMonth()),
+        .gte('booking_date', monthStart)
+        .lte('booking_date', monthEnd)
+        .neq('status', 'Cancelled'),
 
-      // 4. Ledger totals (only debit/credit columns, no joins)
-      supabase
-        .from('general_ledger')
-        .select('id, debit, credit'),
-
-      // 5. Upcoming deliveries (LIMIT 5, minimal join)
+      // Next five deliveries, business-wide rather than range-scoped: the point
+      // of the panel is what is due next, which has nothing to do with when the
+      // orders were booked.
       supabase
         .from('orders')
         .select(`
@@ -50,50 +99,48 @@ export const GET = withAdmin(async () => {
             phone
           )
         `)
-        .gte('delivery_date', new Date().toISOString().split('T')[0])
+        .gte('delivery_date', today)
         .neq('status', 'Cancelled')
         .order('delivery_date', { ascending: true })
         .limit(5),
-
-      // 6. Chart data: ledger payments grouped by month (last 6 months, only order_payment)
-      supabase
-        .from('general_ledger')
-        .select('id, entry_date, debit')
-        .eq('entry_type', 'order_payment')
-        .gte('entry_date', getSixMonthsAgo()),
     ])
 
-    // Process results (all lightweight - just counting/summing small result sets)
-    const totalCustomers = customerCountResult.count || 0
+    // A failed aggregate must not be papered over with zeros: a dashboard
+    // confidently reading "PKR 0 outstanding" is worse than an error state.
+    if (rangeStatsResult.error) {
+      console.error('GET /api/dashboard-stats rpc error:', rangeStatsResult.error)
+      return NextResponse.json(
+        { error: 'Failed to fetch dashboard stats' },
+        { status: 500 }
+      )
+    }
 
-    const orders = (orderStatsResult.data || []) as Array<{ id: string; total_amount: number | null }>
-    const totalOrders = orders.length
-    const totalRevenue = orders.reduce((sum, o) => sum + (o.total_amount || 0), 0)
+    const agg = (rangeStatsResult.data ?? {}) as DashboardStatsRpc
+    const chartPoints = agg.chart ?? []
 
-    const recentOrdersCount = recentOrdersResult.count || 0
+    // Postgres NUMERIC arrives as a string once it exceeds JS-safe precision,
+    // so coerce rather than trusting the wire type.
+    const num = (value: number | string | null | undefined): number => Number(value ?? 0)
 
-    // Ledger stats from minimal columns
-    const ledgerEntries = (ledgerStatsResult.data || []) as Array<{ id: string; debit: number | null; credit: number | null }>
-    const totalReceived = ledgerEntries.reduce((sum, e) => sum + (e.debit || 0), 0)
-    const totalCredit = ledgerEntries.reduce((sum, e) => sum + (e.credit || 0), 0)
-    const currentBalance = totalReceived - totalCredit
-    const outstandingBalance = totalRevenue - currentBalance
-
-    // Upcoming deliveries
-    const upcomingOrders = upcomingDeliveriesResult.data || []
-
-    // Chart data: group by month
-    const chartData = buildChartData((chartDataResult.data || []) as Array<{ id: string; entry_date: string; debit: number | null }>)
+    const chartYears = new Set(chartPoints.map((point) => point.month_start.slice(0, 4)))
+    const chartData = chartPoints.map((point) => ({
+      month: formatMonthLabel(point.month_start, chartYears.size > 1),
+      revenue: num(point.revenue),
+    }))
 
     return NextResponse.json({
-      totalCustomers,
-      totalOrders,
-      totalRevenue,
-      totalReceived: currentBalance,
-      outstandingBalance,
-      recentOrdersCount,
-      upcomingOrders,
+      totalCustomers: customerCountResult.count ?? 0,
+      totalOrders: num(agg.total_orders),
+      totalRevenue: num(agg.total_revenue),
+      // Kept under its original name so nothing downstream breaks, but the
+      // meaning is now exact: money collected against the orders booked in this
+      // range (advance + subsequent payments), not a ledger-wide net balance.
+      totalReceived: num(agg.collected),
+      outstandingBalance: num(agg.outstanding),
+      recentOrdersCount: recentOrdersResult.count ?? 0,
+      upcomingOrders: upcomingDeliveriesResult.data ?? [],
       chartData,
+      range,
     }, {
       headers: {
         // Was `public, s-maxage=60, stale-while-revalidate=120`, which handed
@@ -120,39 +167,13 @@ export const GET = withAdmin(async () => {
   }
 })
 
-// Helpers
-function getFirstDayOfMonth(): string {
-  const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-}
-
-function getSixMonthsAgo(): string {
-  const date = new Date()
-  date.setMonth(date.getMonth() - 6)
-  date.setDate(1)
-  return date.toISOString().split('T')[0]
-}
-
-function buildChartData(entries: Array<{ entry_date: string; debit: number | null }>) {
-  const now = new Date()
-  const chartData: Array<{ month: string; revenue: number }> = []
-
-  for (let i = 5; i >= 0; i--) {
-    const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const monthName = date.toLocaleDateString('en-US', { month: 'short' })
-    const targetMonth = date.getMonth()
-    const targetYear = date.getFullYear()
-
-    const monthRevenue = entries
-      .filter(entry => {
-        const entryDate = new Date(entry.entry_date)
-        return entryDate.getMonth() === targetMonth &&
-               entryDate.getFullYear() === targetYear
-      })
-      .reduce((sum, entry) => sum + (entry.debit || 0), 0)
-
-    chartData.push({ month: monthName, revenue: monthRevenue })
-  }
-
-  return chartData
+/** Shape of the jsonb returned by public.dashboard_stats(date, date). */
+interface DashboardStatsRpc {
+  range_start: string
+  range_end: string
+  total_orders: number
+  total_revenue: number | string
+  collected: number | string
+  outstanding: number | string
+  chart: Array<{ month_start: string; revenue: number | string }>
 }
