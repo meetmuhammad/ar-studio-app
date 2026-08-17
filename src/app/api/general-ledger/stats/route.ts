@@ -1,8 +1,9 @@
+import { withAdmin } from '@/lib/api-auth'
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 
 // GET /api/general-ledger/stats - Get ledger statistics using lightweight queries
-export async function GET() {
+export const GET = withAdmin(async () => {
   try {
     const supabase = createAdminSupabaseClient()
 
@@ -48,4 +49,4 @@ export async function GET() {
       { status: 500 }
     )
   }
-}
+})
