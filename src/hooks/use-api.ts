@@ -360,9 +360,146 @@ export function useLedgerEntries(params: LedgerQueryParams = {}) {
   })
 }
 
+/**
+ * Download every row matching the current filters as CSV.
+ *
+ * The server builds the file. The old export serialised the 20 rows React
+ * Query happened to be holding, so "Export CSV" produced the current page and
+ * called it the ledger. Fetching (rather than pointing an <a> at the route)
+ * keeps the failure visible: an expired session returns 401 and the user gets a
+ * toast instead of a downloaded file containing an error page.
+ */
+export function useExportLedgerCsv() {
+  return useMutation({
+    mutationFn: async (filters: Omit<LedgerQueryParams, 'page' | 'pageSize'> = {}) => {
+      const searchParams = ledgerFilterParams(filters)
+      const query = searchParams.toString()
+      const response = await fetch(`/api/general-ledger/export${query ? `?${query}` : ''}`)
+      if (!response.ok) throw new Error('Failed to export ledger entries')
+
+      const blob = await response.blob()
+      const total = Number(response.headers.get('X-Total-Rows') ?? '0')
+      const disposition = response.headers.get('Content-Disposition') || ''
+      const filename =
+        /filename="([^"]+)"/.exec(disposition)?.[1] ??
+        `ledger_entries_${new Date().toISOString().slice(0, 10)}.csv`
+
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      link.style.visibility = 'hidden'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      return { total, filename }
+    },
+    onSuccess: ({ total }) => {
+      toast.success(`Exported ${total} ledger ${total === 1 ? 'entry' : 'entries'} to CSV`)
+    },
+    onError: () => {
+      toast.error('Failed to export CSV')
+    },
+  })
+}
+
+export function useLedgerStats() {
+  return useQuery({
+    queryKey: queryKeys.ledger.stats,
+    queryFn: async () => {
+      const response = await fetch('/api/general-ledger/stats')
+      if (!response.ok) throw new Error('Failed to fetch ledger stats')
+      return response.json() as Promise<{
+        totalDebit: number
+        totalCredit: number
+        currentBalance: number
+        entryCount: number
+      }>
+    },
+  })
+}
+
+export function useCreateLedgerEntry() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (data: any) => {
+      const response = await fetch('/api/general-ledger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to create ledger entry')
+      }
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.ledger.all })
+      toast.success('Ledger entry created successfully')
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
+export function useUpdateLedgerEntry() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const response = await fetch(`/api/general-ledger/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to update ledger entry')
+      }
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.ledger.all })
+      toast.success('Ledger entry updated successfully')
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
+export function useDeleteLedgerEntry() {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/general-ledger/${id}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to delete ledger entry')
+      }
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.ledger.all })
+      toast.success('Ledger entry deleted successfully')
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
 // useSyncOrderPayments was removed with the sync-payments route: it deleted and
-// rebuilt every order_payment ledger row, destroying hand-entered entries and any
-// payment_id backfill. It must not come back.
+// rebuilt every order_payment ledger row, destroying hand-entered entries. The
+// route is gone; this must not come back.
 
 // =============================================================================
 // VENDORS
