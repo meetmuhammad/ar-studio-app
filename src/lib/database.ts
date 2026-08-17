@@ -210,8 +210,32 @@ export async function getOrders({
   const supabase = createAdminSupabaseClient()
   const offset = (page - 1) * pageSize
 
+  // Read from `orders_with_payment_status`, not `orders`.
+  //
+  // The view is `orders` plus the payment roll-up, and it is the only place the
+  // outstanding figure can be read honestly:
+  //
+  //   total_paid      = COALESCE(advance_paid,0) + COALESCE(SUM(payments.amount),0)
+  //   current_balance = total_amount - total_paid
+  //
+  // derived on every read, so it cannot go stale. `orders.balance` is the
+  // retired denormalised column -- nothing has ever kept it current (POST
+  // /api/orders never wrote it, PATCH /api/orders/[id] discards it, recording a
+  // payment does not touch it), and on staging it disagrees with the truth on
+  // 58 of 65 orders. It is still selected below only because the column still
+  // exists and dropping it from the payload would be a separate breaking
+  // change; every caller must read `current_balance`.
+  //
+  // Note the view also carries a column literally named `balance`. That is the
+  // SAME stale value, not a replacement.
+  //
+  // The view is a drop-in for the base table here: it exposes every column this
+  // query already selected, PostgREST resolves the `customers` and `order_items`
+  // embeds through it, `count: 'exact'` returns the same 65, every `sortBy` the
+  // UI can send resolves, and its RLS exposure is identical (anon gets [],
+  // authenticated reads) -- all verified against staging.
   let query = supabase
-    .from('orders')
+    .from('orders_with_payment_status')
     .select(`
       id,
       order_number,
@@ -223,6 +247,9 @@ export async function getOrders({
       total_amount,
       advance_paid,
       balance,
+      total_paid,
+      current_balance,
+      payment_count,
       payment_method,
       measurement_id,
       fitting_preferences,

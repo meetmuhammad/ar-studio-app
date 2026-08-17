@@ -11,6 +11,10 @@ export const GET = withAuth(async (request: NextRequest) => {
 
     let query = supabase
       .from("payments")
+      // `balance` deliberately not projected: it is the retired denormalised
+      // `orders.balance`, wrong on 58 of 65 staging orders, and no client reads
+      // it off this embed. The honest outstanding figure is
+      // `orders_with_payment_status.current_balance`.
       .select(`
         *,
         order:orders(
@@ -18,7 +22,6 @@ export const GET = withAuth(async (request: NextRequest) => {
           order_number,
           total_amount,
           advance_paid,
-          balance,
           booking_date,
           customer:customers(id, name, phone)
         )
@@ -75,7 +78,9 @@ export const POST = withAdmin(async (request: NextRequest) => {
     // Validate that the order exists and belongs to the customer
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, customer_id, booking_date, total_amount, advance_paid, balance")
+      // Existence/ownership check only. `balance` dropped: retired column,
+      // and nothing below reads it.
+      .select("id, customer_id, booking_date, total_amount, advance_paid")
       .eq("id", order_id)
       .eq("customer_id", customer_id)
       .single();
@@ -105,6 +110,7 @@ export const POST = withAdmin(async (request: NextRequest) => {
     const { data: payment, error: paymentError } = await supabase
       .from("payments")
       .insert([paymentData])
+      // `balance` deliberately not projected -- see the note on the GET query.
       .select(`
         *,
         order:orders(
@@ -112,7 +118,6 @@ export const POST = withAdmin(async (request: NextRequest) => {
           order_number,
           total_amount,
           advance_paid,
-          balance,
           customer:customers(id, name, phone)
         )
       `)

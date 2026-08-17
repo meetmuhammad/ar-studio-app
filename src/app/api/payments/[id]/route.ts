@@ -44,6 +44,9 @@ export const PATCH = withAuth<{ params: Promise<{ id: string }> }>(async (
       .from("payments")
       .update(updateData)
       .eq("id", paymentId)
+      // `balance` deliberately not projected: it is the retired denormalised
+      // `orders.balance`, wrong on 58 of 65 staging orders, and no client reads
+      // it off this embed. Shipping it invites someone to.
       .select(`
         *,
         order:orders(
@@ -51,7 +54,6 @@ export const PATCH = withAuth<{ params: Promise<{ id: string }> }>(async (
           order_number,
           total_amount,
           advance_paid,
-          balance,
           customer:customers(id, name, phone)
         )
       `)

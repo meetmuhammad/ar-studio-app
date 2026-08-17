@@ -54,7 +54,15 @@ export function OrderMultiStepForm({
       // Payment fields
       totalAmount: order?.total_amount || 0,
       advancePaid: order?.advance_paid || 0,
-      balance: order?.balance || 0,
+      // Form-local scratch field only. It is NOT `current_balance`: this step
+      // shows total - advance at booking time, the effect below recomputes it on
+      // every keystroke, and the server never persists it (POST /api/orders
+      // omits the column, PATCH /api/orders/[id] discards it).
+      //
+      // Seeded from the same expression the effect uses rather than from
+      // `order.balance`, so the field never flashes the retired column's stale
+      // value before the effect overwrites it.
+      balance: Math.max((order?.total_amount || 0) - (order?.advance_paid || 0), 0),
       paymentMethod: order?.payment_method || "other",
       // Reference to measurements table
       measurementId: order?.measurement_id || undefined,
