@@ -67,3 +67,7 @@ AGENTS.md
 .mcp.json
 **/SKILL.md
 **/skills/
+
+# Agent tooling runtime state. Never commit: loopback daemon tokens and browse
+# logs whose URLs contain share-bypass tokens.
+.gstack/
