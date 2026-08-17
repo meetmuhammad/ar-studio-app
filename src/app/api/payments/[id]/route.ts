@@ -44,6 +44,10 @@ export const PATCH = withAuth<{ params: Promise<{ id: string }> }>(async (
       .from("payments")
       .update(updateData)
       .eq("id", paymentId)
+      // `balance` deliberately not projected: it is the retired denormalised
+      // `orders.balance` -- on staging it misrepresents money owed on 50 of 65
+      // orders (42 wrong values + 8 NULLs hiding a real outstanding balance).
+      // No client reads it off this embed; shipping it invites someone to.
       .select(`
         *,
         order:orders(
@@ -51,7 +55,6 @@ export const PATCH = withAuth<{ params: Promise<{ id: string }> }>(async (
           order_number,
           total_amount,
           advance_paid,
-          balance,
           customer:customers(id, name, phone)
         )
       `)

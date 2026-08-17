@@ -15,6 +15,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import type { Customer } from "@/lib/supabase-client"
 
+/**
+ * The shape this dialog needs out of GET /api/orders.
+ *
+ * `balance` is deliberately absent. That column is the retired denormalised
+ * `orders.balance`: nothing keeps it current, and on staging it misrepresents
+ * money owed on 50 of 65 orders (42 stored values that disagree with the truth,
+ * plus 8 NULLs on orders that genuinely owe something). AR-00047 stored
+ * 1,050,000 against a real outstanding of 50,000; AR-00063 stores NULL against
+ * a real 1,000,000. This dialog used to render that verbatim as
+ * "PKR ... pending". Leaving the field off the type is what stops it being read
+ * again by accident.
+ *
+ * `current_balance` and `total_paid` come from the `orders_with_payment_status`
+ * view, which GET /api/orders now reads (see getOrders in src/lib/database.ts).
+ */
 interface CustomerOrder {
   id: string
   order_number: string
@@ -22,7 +37,10 @@ interface CustomerOrder {
   delivery_date: string
   total_amount?: number | null
   advance_paid?: number | null
-  balance?: number | null
+  /** COALESCE(advance_paid,0) + SUM(payments.amount) -- advance already included. */
+  total_paid?: number | null
+  /** total_amount - total_paid. The authoritative outstanding figure. */
+  current_balance?: number | null
   payment_method?: string | null
   comments?: string | null
   created_at: string
@@ -73,8 +91,14 @@ export function CustomerDetailDialog({
   if (!customer) return null
 
   const totalRevenue = orders.reduce((sum, order) => sum + (order.total_amount || 0), 0)
-  const totalAdvance = orders.reduce((sum, order) => sum + (order.advance_paid || 0), 0)
-  const totalBalance = orders.reduce((sum, order) => sum + (order.balance || 0), 0)
+  // "Total Paid" must be `total_paid`, not `advance_paid`. `advance_paid` is
+  // only the deposit taken at booking; every payment recorded afterwards lives
+  // in `payments` and is already folded into `total_paid`. Summing the advance
+  // alone under-reports what the customer has handed over, and would leave this
+  // row incoherent now that the balance below is the real one
+  // (revenue - paid must equal balance).
+  const totalPaid = orders.reduce((sum, order) => sum + (order.total_paid || 0), 0)
+  const totalBalance = orders.reduce((sum, order) => sum + (order.current_balance || 0), 0)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -146,7 +170,7 @@ export function CustomerDetailDialog({
                   <DollarSign className="h-4 w-4 text-green-600" />
                   <div>
                     <p className="text-sm font-medium">Total Paid</p>
-                    <p className="text-2xl font-bold text-green-600">PKR {totalAdvance.toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-green-600">PKR {totalPaid.toLocaleString()}</p>
                   </div>
                 </div>
               </CardContent>
@@ -186,16 +210,18 @@ export function CustomerDetailDialog({
                         </div>
                         <div className="text-right">
                           <p className="font-semibold">PKR {(order.total_amount || 0).toLocaleString()}</p>
-                          {order.balance && order.balance > 0 && (
+                          {(order.current_balance ?? 0) > 0 && (
                             <Badge variant="secondary" className="text-orange-600">
-                              PKR {order.balance.toLocaleString()} pending
+                              PKR {(order.current_balance ?? 0).toLocaleString()} pending
                             </Badge>
                           )}
                         </div>
                       </div>
                       
                       <div className="flex justify-between text-sm">
-                        <span>Paid: PKR {(order.advance_paid || 0).toLocaleString()}</span>
+                        {/* `total_paid`, not `advance_paid` -- the advance is only
+                            the first instalment, and it is already inside total_paid. */}
+                        <span>Paid: PKR {(order.total_paid || 0).toLocaleString()}</span>
                         {order.payment_method && (
                           <Badge variant="outline">{order.payment_method}</Badge>
                         )}

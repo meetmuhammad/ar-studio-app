@@ -53,6 +53,19 @@ export interface Order {
   // Payment fields
   total_amount?: number | null
   advance_paid?: number | null
+  /**
+   * @deprecated RETIRED -- do not read this to show what a customer owes.
+   *
+   * `orders.balance` is a denormalised column that nothing keeps current: POST
+   * /api/orders never wrote it, PATCH /api/orders/[id] discards it, and
+   * recording a payment does not touch it. On staging it misrepresents money
+   * owed on 50 of 65 orders: 42 stored values that disagree with
+   * `total_amount - total_paid`, plus 8 NULLs on orders that genuinely owe
+   * something. It is still typed here only
+   * because the column still exists and GET /api/orders still returns it.
+   *
+   * Read `current_balance` instead.
+   */
   balance?: number | null
   payment_method?: 'cash' | 'bank' | 'other' | null
   // Reference to measurements table
@@ -61,6 +74,19 @@ export interface Order {
   fitting_preferences?: string | null
   created_at: string
   updated_at: string
+
+  // ---- Derived payment roll-up, from the `orders_with_payment_status` view.
+  // Present on every order returned by GET /api/orders. Optional because the
+  // routes that still read the bare `orders` table (GET /api/orders/[id],
+  // GET /api/orders/all) do not project them.
+
+  /** COALESCE(advance_paid,0) + SUM(payments.amount). The advance is ALREADY
+   *  included -- never add `advance_paid` to this again. */
+  total_paid?: number | null
+  /** total_amount - total_paid. The authoritative outstanding figure. */
+  current_balance?: number | null
+  /** Number of rows in `payments` for this order (excludes the advance). */
+  payment_count?: number | null
 }
 
 export interface OrderWithCustomer extends Order {
