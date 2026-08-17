@@ -162,14 +162,28 @@ export const LEDGER_SELECT = `
 `
 
 /**
- * Sort order.
+ * Sort order. It must be TOTAL -- that is the whole point of the `id` column
+ * being here.
  *
  * `balance` is a stored column maintained by the database triggers
  * `trg_calculate_general_ledger_balance` / `recalculate_balances_after_date`,
  * which walk the ledger in `(entry_date, created_at)` ascending order. Any read
- * that shows `balance` must therefore order by the same two columns or the
- * running balance appears to jump around. `created_at` is the tiebreaker
- * because several entries commonly share one `entry_date`.
+ * that shows `balance` must therefore order by those columns first, or the
+ * running balance appears to jump around.
+ *
+ * `id` is appended as a final tiebreaker because `(entry_date, created_at)` is
+ * NOT unique -- entries created in the same transaction, or backfilled with a
+ * shared timestamp, tie on both. SQL leaves the order of tied rows undefined,
+ * and PostgreSQL is free to resolve a tie differently per query. Every
+ * "fetch everything" path here is a sequence of INDEPENDENT `.range()`
+ * requests, so a tie that resolves one way for rows 0-999 and the other way for
+ * rows 1000-1999 does not merely reorder the output: a tied row can be returned
+ * by both pages, or by neither. On a 79-row staging export this showed up as
+ * two swapped lines, which is the harmless face of a bug that silently drops
+ * rows once the ties straddle a page boundary.
+ *
+ * Ordering by the primary key last makes ties impossible, so every page of a
+ * paginated read is a slice of one fixed sequence.
  */
 export function applyLedgerOrder<Q extends { order(column: string, opts: { ascending: boolean }): Q }>(
   query: Q,
@@ -179,6 +193,7 @@ export function applyLedgerOrder<Q extends { order(column: string, opts: { ascen
   return query
     .order('entry_date', { ascending })
     .order('created_at', { ascending })
+    .order('id', { ascending })
 }
 
 /**

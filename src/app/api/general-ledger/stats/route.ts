@@ -24,11 +24,16 @@ export const GET = withAdmin(async () => {
         .from('general_ledger')
         .select('*', { count: 'exact', head: true }),
       // Only select debit/credit columns (no joins, no extra columns)
+      // Ordered by the primary key, which is unique, so the sort is total.
+      // These totals are assembled from independent .range() requests, and a
+      // non-total sort lets PostgreSQL resolve a tie differently per request --
+      // which would double-count or drop a row and quietly skew the totals.
+      // Display order is irrelevant here; only stability across pages matters.
       fetchAllRows<LedgerAmounts>((from, to) =>
         supabase
           .from('general_ledger')
           .select('debit, credit')
-          .order('created_at', { ascending: true })
+          .order('id', { ascending: true })
           .range(from, to)
           .returns<LedgerAmounts[]>()
       ),
