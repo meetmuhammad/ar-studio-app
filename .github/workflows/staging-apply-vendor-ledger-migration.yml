@@ -1,0 +1,98 @@
+name: staging - apply vendor ledger balance integrity migration
+
+# One-shot, staging-only job. TEMPORARY EXECUTION SCAFFOLDING: this workflow and
+# .github/scripts/apply-vendor-ledger-migration.sh are deleted before merge. The
+# migration file and .github/scripts/verify-vendor-ledger.mjs are the durable
+# artefacts.
+#
+# Why a workflow and not `supabase db push`: staging's migration history already
+# contains 20260817120000 and 20260817140000, versions this branch does not
+# fully mirror, so `db push` would try to reconcile history and balk. This job
+# applies exactly one file through the Supabase Management API and then records
+# that one version.
+#
+# Why `push:` and not `workflow_dispatch:`: workflow_dispatch only offers
+# workflows that exist on the default branch, and the default branch here
+# deploys straight to production. So the trigger is a push to a dedicated
+# one-shot branch instead, which is deleted after the run.
+#
+# Idempotent and re-runnable: every DDL statement is CREATE OR REPLACE / DROP IF
+# EXISTS / CREATE INDEX IF NOT EXISTS, and the backfill recomputes balances from
+# the debit and credit already stored. It never inserts or deletes ledger rows
+# outside its own clearly-named CI fixtures, each of which it removes again.
+#
+# No new secrets. It uses only the five that already exist in the `staging`
+# environment. The repository is PUBLIC and Actions logs are world-readable:
+# every secret is passed through ::add-mask:: before first use, nothing echoes a
+# value, and no login password appears anywhere in this repository.
+
+on:
+  push:
+    branches:
+      - ops/apply-vendor-ledger-migration
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-ledger-migration
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: apply + verify on staging
+    runs-on: ubuntu-latest
+    environment: staging
+
+    env:
+      MIGRATION_FILE: supabase/migrations/20260817160000_vendor_ledger_balance_integrity.sql
+      MIGRATION_VERSION: "20260817160000"
+      MIGRATION_NAME: vendor_ledger_balance_integrity
+      EXPECTED_REF: ohgqgkraybpvnfdbgmvl
+      FORBIDDEN_REF: drdnqsjjxmqiklwfadmk
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mask every secret before anything can echo one
+        env:
+          STAGING_PROJECT_REF: ${{ secrets.STAGING_PROJECT_REF }}
+          STAGING_DB_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+          STAGING_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SERVICE_ROLE_KEY }}
+          STAGING_ANON_KEY: ${{ secrets.STAGING_ANON_KEY }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          for v in STAGING_DB_PASSWORD STAGING_SERVICE_ROLE_KEY STAGING_ANON_KEY SUPABASE_ACCESS_TOKEN; do
+            printf '::add-mask::%s\n' "${!v}"
+          done
+          # The project ref is not a credential (it is in every public URL) and
+          # is left unmasked so the guard below can be seen to have run.
+          echo "STAGING_PROJECT_REF is set: $([ -n "$STAGING_PROJECT_REF" ] && echo yes || echo NO)"
+
+      - name: HARD GUARD - refuse to run against anything but staging
+        env:
+          STAGING_PROJECT_REF: ${{ secrets.STAGING_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          echo "TARGET DATABASE: STAGING - ${EXPECTED_REF}"
+          if [ -z "${STAGING_PROJECT_REF}" ]; then
+            echo "::error::STAGING_PROJECT_REF is empty. Refusing to run."
+            exit 1
+          fi
+          if [ "${STAGING_PROJECT_REF}" = "${FORBIDDEN_REF}" ]; then
+            echo "::error::That is PRODUCTION (${FORBIDDEN_REF}). Refusing."
+            exit 1
+          fi
+          if [ "${STAGING_PROJECT_REF}" != "${EXPECTED_REF}" ]; then
+            echo "::error::STAGING_PROJECT_REF is not ${EXPECTED_REF}. Refusing to run."
+            exit 1
+          fi
+          echo "Guard passed: target is staging (${STAGING_PROJECT_REF})."
+
+      - name: Apply and verify
+        env:
+          REF: ${{ secrets.STAGING_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          ANON_KEY: ${{ secrets.STAGING_ANON_KEY }}
+          SERVICE_KEY: ${{ secrets.STAGING_SERVICE_ROLE_KEY }}
+        run: bash .github/scripts/apply-vendor-ledger-migration.sh
