@@ -1,8 +1,20 @@
 import { renderToString } from "react-dom/server"
+import { toast } from "sonner"
+
 import { PrintReceipt } from "@/components/print-receipt"
 import { PrintMeasurement } from "@/components/print-measurement"
+import { openPrintWindow } from "@/lib/print-document"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
 import { Measurement } from "@/types/measurements"
+
+/**
+ * Entry points for the two printable documents.
+ *
+ * Each used to carry its own copy of a ~120-line stylesheet — four copies that
+ * had already drifted apart (the receipt printed `size: letter`, its own preview
+ * `size: A4`). The sheet now lives once in `print-document.ts`; these four
+ * functions differ only in what they render and whether they auto-print.
+ */
 
 interface Payment {
   id: string
@@ -20,472 +32,54 @@ interface PrintReceiptOptions {
   payments: Payment[]
 }
 
-export function printReceipt({ order, payments }: PrintReceiptOptions) {
-  // Create a new window
-  const printWindow = window.open('', '_blank', 'width=800,height=600')
-  
-  if (!printWindow) {
-    alert('Please allow popups to print the receipt')
-    return
-  }
-
-  // Generate the HTML content
-  const receiptHTML = renderToString(
-    PrintReceipt({ order, payments })
-  )
-
-  // Write the complete HTML document
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Receipt - ${order.order_number}</title>
-      <script src="https://cdn.tailwindcss.com"></script>
-      <style>
-        @media print {
-          .print-receipt {
-            max-width: none !important;
-            margin: 0 !important;
-            padding: 20px !important;
-            box-shadow: none !important;
-            background: white !important;
-          }
-          
-          body {
-            font-size: 12pt !important;
-            line-height: 1.3 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          
-          h1 {
-            font-size: 18pt !important;
-          }
-          
-          h2, h3 {
-            font-size: 14pt !important;
-          }
-          
-          h4 {
-            font-size: 12pt !important;
-          }
-          
-          table {
-            font-size: 10pt !important;
-          }
-          
-          .bg-gray-50 {
-            background-color: #f9f9f9 !important;
-            -webkit-print-color-adjust: exact;
-            color-adjust: exact;
-          }
-          
-          .bg-gray-100 {
-            background-color: #f5f5f5 !important;
-            -webkit-print-color-adjust: exact;
-            color-adjust: exact;
-          }
-
-          .border-gray-300 {
-            border-color: #d1d5db !important;
-          }
-
-          .border-gray-800 {
-            border-color: #1f2937 !important;
-          }
-
-          .text-red-600 {
-            color: #dc2626 !important;
-          }
-
-          .text-green-600 {
-            color: #16a34a !important;
-          }
-
-          .text-orange-600 {
-            color: #ea580c !important;
-          }
-
-          .text-gray-600 {
-            color: #4b5563 !important;
-          }
-
-          .text-gray-700 {
-            color: #374151 !important;
-          }
-
-          .text-gray-800 {
-            color: #1f2937 !important;
-          }
-          
-          @page {
-            margin: 0.5in;
-            size: A4;
-          }
-        }
-        
-        @media screen {
-          body {
-            background-color: #f5f5f5;
-            padding: 20px;
-          }
-        }
-      </style>
-    </head>
-    <body>
-      ${receiptHTML}
-      <script>
-        // Auto-print when page loads
-        window.onload = function() {
-          window.print();
-          
-          // Close window after printing (optional)
-          window.onafterprint = function() {
-            window.close();
-          };
-        };
-      </script>
-    </body>
-    </html>
-  `)
-
-  printWindow.document.close()
-}
-
-// Alternative function that creates a print-friendly page without auto-print
-export function openPrintPreview({ order, payments }: PrintReceiptOptions) {
-  const printWindow = window.open('', '_blank', 'width=800,height=600')
-  
-  if (!printWindow) {
-    alert('Please allow popups to view the receipt')
-    return
-  }
-
-  const receiptHTML = renderToString(
-    PrintReceipt({ order, payments })
-  )
-
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Receipt Preview - ${order.order_number}</title>
-      <script src="https://cdn.tailwindcss.com"></script>
-      <style>
-        @media print {
-          .print-receipt {
-            max-width: none !important;
-            margin: 0 !important;
-            padding: 20px !important;
-            box-shadow: none !important;
-            background: white !important;
-          }
-          
-          body {
-            font-size: 12pt !important;
-            line-height: 1.3 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          
-          .print-controls {
-            display: none !important;
-          }
-          
-          h1 {
-            font-size: 18pt !important;
-          }
-          
-          h2, h3 {
-            font-size: 14pt !important;
-          }
-          
-          h4 {
-            font-size: 12pt !important;
-          }
-          
-          table {
-            font-size: 10pt !important;
-          }
-          
-          .bg-gray-50 {
-            background-color: #f9f9f9 !important;
-            -webkit-print-color-adjust: exact;
-            color-adjust: exact;
-          }
-          
-          .bg-gray-100 {
-            background-color: #f5f5f5 !important;
-            -webkit-print-color-adjust: exact;
-            color-adjust: exact;
-          }
-
-          @page {
-            margin: 0.5in;
-            size: A4;
-          }
-        }
-        
-        @media screen {
-          body {
-            background-color: #f5f5f5;
-            padding: 20px;
-          }
-          
-          .print-controls {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-          }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="print-controls">
-        <button onclick="window.print()" class="bg-blue-600 text-white px-4 py-2 rounded-lg mr-2 hover:bg-blue-700">
-          🖨️ Print
-        </button>
-        <button onclick="window.close()" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700">
-          ✕ Close
-        </button>
-      </div>
-      ${receiptHTML}
-    </body>
-    </html>
-  `)
-
-  printWindow.document.close()
-}
-
-// Print measurement functions
 interface PrintMeasurementOptions {
   order: OrderWithCustomer
   measurement: Measurement
 }
 
-export function printMeasurement({ order, measurement }: PrintMeasurementOptions) {
-  // Create a new window
-  const printWindow = window.open('', '_blank', 'width=800,height=600')
-  
-  if (!printWindow) {
-    alert('Please allow popups to print the measurement')
-    return
+function open(title: string, body: string, mode: "preview" | "print") {
+  const opened = openPrintWindow({ title, body, mode })
+
+  if (!opened) {
+    // A toast, not the native alert() this used to raise: alert() blocks the
+    // whole tab behind a dialog that doesn't say which setting to change.
+    toast.error("Your browser blocked the print window", {
+      description: "Allow pop-ups for this site, then try again.",
+    })
   }
-
-  // Generate the HTML content
-  const measurementHTML = renderToString(
-    PrintMeasurement({ order, measurement })
-  )
-
-  // Write the complete HTML document
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Measurement - ${order.order_number}</title>
-      <script src="https://cdn.tailwindcss.com"></script>
-      <style>
-        @media print {
-          .print-measurement {
-            max-width: none !important;
-            margin: 0 !important;
-            padding: 20px !important;
-            box-shadow: none !important;
-            background: white !important;
-          }
-          
-          body {
-            font-size: 12pt !important;
-            line-height: 1.3 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          
-          h1 {
-            font-size: 18pt !important;
-          }
-          
-          h2, h3 {
-            font-size: 14pt !important;
-          }
-          
-          h4 {
-            font-size: 12pt !important;
-          }
-          
-          table {
-            font-size: 10pt !important;
-            border-collapse: collapse !important;
-          }
-          
-          table, th, td {
-            border: 2px solid #374151 !important;
-          }
-          
-          th {
-            background-color: #f9fafb !important;
-            -webkit-print-color-adjust: exact;
-            color-adjust: exact;
-            font-weight: bold !important;
-          }
-          
-          .bg-gray-50 {
-            background-color: #f9f9f9 !important;
-            -webkit-print-color-adjust: exact;
-            color-adjust: exact;
-          }
-          
-          @page {
-            margin: 0.5in;
-            size: A4;
-          }
-        }
-        
-        @media screen {
-          body {
-            background-color: #f5f5f5;
-            padding: 20px;
-          }
-        }
-      </style>
-    </head>
-    <body>
-      ${measurementHTML}
-      <script>
-        // Auto-print when page loads
-        window.onload = function() {
-          window.print();
-          
-          // Close window after printing (optional)
-          window.onafterprint = function() {
-            window.close();
-          };
-        };
-      </script>
-    </body>
-    </html>
-  `)
-
-  printWindow.document.close()
 }
 
-// Alternative function that creates a print-friendly page without auto-print
-export function openMeasurementPrintPreview({ order, measurement }: PrintMeasurementOptions) {
-  const printWindow = window.open('', '_blank', 'width=800,height=600')
-  
-  if (!printWindow) {
-    alert('Please allow popups to view the measurement')
-    return
-  }
-
-  const measurementHTML = renderToString(
-    PrintMeasurement({ order, measurement })
+export function printReceipt({ order, payments }: PrintReceiptOptions) {
+  open(
+    `Receipt ${order.order_number}`,
+    renderToString(<PrintReceipt order={order} payments={payments} />),
+    "print"
   )
+}
 
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Measurement Preview - ${order.order_number}</title>
-      <script src="https://cdn.tailwindcss.com"></script>
-      <style>
-        @media print {
-          .print-measurement {
-            max-width: none !important;
-            margin: 0 !important;
-            padding: 20px !important;
-            box-shadow: none !important;
-            background: white !important;
-          }
-          
-          body {
-            font-size: 12pt !important;
-            line-height: 1.3 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          
-          .print-controls {
-            display: none !important;
-          }
-          
-          h1 {
-            font-size: 18pt !important;
-          }
-          
-          h2, h3 {
-            font-size: 14pt !important;
-          }
-          
-          h4 {
-            font-size: 12pt !important;
-          }
-          
-          table {
-            font-size: 10pt !important;
-            border-collapse: collapse !important;
-          }
-          
-          table, th, td {
-            border: 2px solid #374151 !important;
-          }
-          
-          th {
-            background-color: #f9fafb !important;
-            -webkit-print-color-adjust: exact;
-            color-adjust: exact;
-            font-weight: bold !important;
-          }
-          
-          .bg-gray-50 {
-            background-color: #f9f9f9 !important;
-            -webkit-print-color-adjust: exact;
-            color-adjust: exact;
-          }
+export function openPrintPreview({ order, payments }: PrintReceiptOptions) {
+  open(
+    `Receipt ${order.order_number}`,
+    renderToString(<PrintReceipt order={order} payments={payments} />),
+    "preview"
+  )
+}
 
-          @page {
-            margin: 0.5in;
-            size: A4;
-          }
-        }
-        
-        @media screen {
-          body {
-            background-color: #f5f5f5;
-            padding: 20px;
-          }
-          
-          .print-controls {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-          }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="print-controls">
-        <button onclick="window.print()" class="bg-blue-600 text-white px-4 py-2 rounded-lg mr-2 hover:bg-blue-700">
-          🖨️ Print
-        </button>
-        <button onclick="window.close()" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700">
-          ✕ Close
-        </button>
-      </div>
-      ${measurementHTML}
-    </body>
-    </html>
-  `)
+export function printMeasurement({ order, measurement }: PrintMeasurementOptions) {
+  open(
+    `Measurements ${order.order_number}`,
+    renderToString(<PrintMeasurement order={order} measurement={measurement} />),
+    "print"
+  )
+}
 
-  printWindow.document.close()
+export function openMeasurementPrintPreview({
+  order,
+  measurement,
+}: PrintMeasurementOptions) {
+  open(
+    `Measurements ${order.order_number}`,
+    renderToString(<PrintMeasurement order={order} measurement={measurement} />),
+    "preview"
+  )
 }
