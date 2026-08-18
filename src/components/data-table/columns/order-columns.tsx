@@ -51,9 +51,9 @@ function OrderActions({ order, onView, onEdit, onDelete }: OrderActionsProps) {
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => onDelete(order)}
-          className="text-red-600"
+          className="text-destructive-text focus:text-destructive-text"
         >
-          <Trash className="mr-2 h-4 w-4" />
+          <Trash className="mr-2 size-4" aria-hidden="true" />
           Delete order
         </DropdownMenuItem>
       </DropdownMenuContent>

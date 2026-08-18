@@ -21,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Printer, FileText, Edit, Save, X } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Edit, FileText, Printer, Save, X } from "lucide-react"
 import { openPrintPreview, openMeasurementPrintPreview } from "@/lib/print-utils"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
 import { Measurement } from "@/types/measurements"
@@ -314,8 +314,8 @@ export function OrderDetailsDialog({
                       <TableCell className="font-mono text-sm">
                         {format(new Date(order.booking_date), 'MMM d, yyyy')}
                       </TableCell>
-                      <TableCell className="font-medium text-green-700">Advance Payment</TableCell>
-                      <TableCell className="text-right font-mono text-green-700">
+                      <TableCell className="font-medium">Advance Payment</TableCell>
+                      <TableCell className="text-right font-mono tabular-nums text-success-text">
                         -{(order.advance_paid || 0).toFixed(2)}
                       </TableCell>
                     </TableRow>
@@ -333,10 +333,10 @@ export function OrderDetailsDialog({
                         <TableCell className="font-mono text-sm">
                           {format(new Date(payment.payment_date), 'MMM d, yyyy')}
                         </TableCell>
-                        <TableCell className="font-medium text-green-700">
+                        <TableCell className="font-medium">
                           {payment.notes || `Payment via ${payment.payment_method}`}
                         </TableCell>
-                        <TableCell className="text-right font-mono text-green-700">
+                        <TableCell className="text-right font-mono tabular-nums text-success-text">
                           {editingPaymentId === payment.id ? (
                             <Input
                               type="number"
@@ -362,18 +362,20 @@ export function OrderDetailsDialog({
                                   size="sm"
                                   onClick={() => handleSavePayment(payment.id)}
                                   disabled={isSaving}
-                                  className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                  aria-label="Save payment amount"
+                                  className="text-success-text hover:bg-success-surface hover:text-success-text"
                                 >
-                                  <Save className="h-4 w-4" />
+                                  <Save className="size-4" aria-hidden="true" />
                                 </Button>
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   onClick={handleCancelEdit}
                                   disabled={isSaving}
-                                  className="text-gray-600 hover:text-gray-700"
+                                  aria-label="Cancel editing payment"
+                                  className="text-muted-foreground hover:text-foreground"
                                 >
-                                  <X className="h-4 w-4" />
+                                  <X className="size-4" aria-hidden="true" />
                                 </Button>
                               </>
                             ) : (
@@ -413,9 +415,9 @@ export function OrderDetailsDialog({
                   <TableRow>
                     <TableCell></TableCell>
                     <TableCell className="font-bold">Balance Due</TableCell>
-                    <TableCell className={`text-right font-mono font-bold ${
-                      calculateBalance() > 0 ? 'text-orange-600' : 
-                      calculateBalance() < 0 ? 'text-red-600' : 'text-green-600'
+                    <TableCell className={`text-right font-mono font-bold tabular-nums ${
+                      calculateBalance() > 0 ? 'text-warning-text' :
+                      calculateBalance() < 0 ? 'text-destructive-text' : 'text-success-text'
                     }`}>
                       {calculateBalance().toFixed(2)}
                     </TableCell>
@@ -425,20 +427,26 @@ export function OrderDetailsDialog({
 
               {/* Payment Status Messages */}
               {calculateBalance() === 0 && (
-                <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                <div className="mt-4 rounded-lg border border-success-border bg-success-surface p-3">
                   <div className="flex items-center gap-2">
-                    <Badge variant="default" className="bg-green-600">✓ Paid in Full</Badge>
-                    <span className="text-sm text-green-700 dark:text-green-400">
+                    <Badge variant="success">
+                      <CheckCircle2 className="size-3" aria-hidden="true" />
+                      Paid in Full
+                    </Badge>
+                    <span className="text-sm text-success-text">
                       This order has been completely paid.
                     </span>
                   </div>
                 </div>
               )}
               {calculateBalance() < 0 && (
-                <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <div className="mt-4 rounded-lg border border-destructive-border bg-destructive-surface p-3">
                   <div className="flex items-center gap-2">
-                    <Badge variant="destructive">Overpaid</Badge>
-                    <span className="text-sm text-red-700 dark:text-red-400">
+                    <Badge variant="destructive">
+                      <AlertTriangle className="size-3" aria-hidden="true" />
+                      Overpaid
+                    </Badge>
+                    <span className="text-sm text-destructive-text">
                       Customer has paid PKR {Math.abs(calculateBalance()).toFixed(2)} more than the order amount.
                     </span>
                   </div>
@@ -556,8 +564,11 @@ export function OrderDetailsDialog({
                       </div>
                     </div>
                   ) : (
-                    <div className="text-center py-6 text-orange-600">
-                      <div className="text-sm mb-2">⚠️ Measurement linked but could not be loaded</div>
+                    <div className="py-6 text-center text-warning-text">
+                      <div className="mb-2 flex items-center justify-center gap-2 text-sm">
+                        <AlertTriangle className="size-4" aria-hidden="true" />
+                        Measurement linked but could not be loaded
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         Measurement ID: <span className="font-mono">{order.measurement_id}</span>
                       </div>

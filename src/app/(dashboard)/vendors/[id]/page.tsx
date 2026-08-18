@@ -1,14 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
-import { ArrowLeft, Building2, Plus, Search, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { ArrowLeft, Building2, Plus, Receipt } from 'lucide-react'
+import { toast } from 'sonner'
+
 import { RoleGuard } from '@/components/auth/role-guard'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { DatePicker } from '@/components/ui/date-picker'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import {
   Table,
   TableBody,
@@ -17,10 +16,40 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
-import type { Vendor, GeneralLedgerWithRelations } from '@/lib/supabase-client'
-import { toast } from 'sonner'
 import { VendorBillDialog } from '@/components/dialogs/vendor-bill-dialog'
+import { PageHeader } from '@/components/dashboard/page-header'
+import { MetricCard } from '@/components/dashboard/metric-card'
+import { SearchInput } from '@/components/dashboard/search-input'
+import { DateRangeFilter } from '@/components/dashboard/date-range-filter'
+import { TableSkeleton, StatRowSkeleton } from '@/components/dashboard/table-skeleton'
+import { EmptyState } from '@/components/dashboard/empty-state'
+import { ErrorState } from '@/components/dashboard/error-state'
+import {
+  SectionCard,
+  SectionCardContent,
+  SectionCardHeader,
+  SectionCardTitle,
+} from '@/components/dashboard/section-card'
+import type { Vendor } from '@/lib/supabase-client'
+import { formatDate, formatPKR } from '@/lib/format'
+
+interface VendorLedgerEntry {
+  id: string
+  entry_date: string
+  particulars: string
+  notes?: string | null
+  debit?: number | null
+  credit?: number | null
+  general_ledger_id?: string | null
+  general_ledger?: { entry_type?: string } | null
+}
+
+const ENTRY_TYPE_LABEL: Record<string, string> = {
+  opening_balance: 'Opening balance',
+  order_payment: 'Order payment',
+  vendor_payment: 'Vendor payment',
+  miscellaneous: 'Miscellaneous',
+}
 
 export default function VendorLedgerPage() {
   const router = useRouter()
@@ -28,327 +57,332 @@ export default function VendorLedgerPage() {
   const vendorId = params.id as string
 
   const [vendor, setVendor] = useState<Vendor | null>(null)
-  const [entries, setEntries] = useState<any[]>([])
-  const [filteredEntries, setFilteredEntries] = useState<any[]>([])
+  const [entries, setEntries] = useState<VendorLedgerEntry[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [billDialogOpen, setBillDialogOpen] = useState(false)
 
   useEffect(() => {
     fetchData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId])
 
-  useEffect(() => {
-    // Filter entries based on search query and date range
-    let filtered = entries
-
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(entry => 
-        entry.particulars.toLowerCase().includes(query) ||
-        (entry.notes && entry.notes.toLowerCase().includes(query)) ||
-        formatDate(entry.entry_date).toLowerCase().includes(query)
-      )
-    }
-
-    // Apply date range filter
-    if (dateFrom || dateTo) {
-      filtered = filtered.filter(entry => {
-        const entryDate = new Date(entry.entry_date)
-        entryDate.setHours(0, 0, 0, 0)
-        
-        if (dateFrom) {
-          const fromDate = new Date(dateFrom)
-          fromDate.setHours(0, 0, 0, 0)
-          if (entryDate < fromDate) return false
-        }
-        
-        if (dateTo) {
-          const toDate = new Date(dateTo)
-          toDate.setHours(23, 59, 59, 999)
-          if (entryDate > toDate) return false
-        }
-        
-        return true
-      })
-    }
-
-    setFilteredEntries(filtered)
-  }, [searchQuery, dateFrom, dateTo, entries])
-
   const fetchData = async () => {
+    setIsLoading(true)
+    setLoadError(null)
     try {
       const [vendorRes, entriesRes] = await Promise.all([
         fetch(`/api/vendors/${vendorId}`),
         fetch(`/api/vendor-ledger?vendor_id=${vendorId}`),
       ])
 
-      if (!vendorRes.ok || !entriesRes.ok) throw new Error('Failed to fetch data')
+      if (!vendorRes.ok || !entriesRes.ok) throw new Error('Failed to fetch vendor ledger')
 
-      const vendorData = await vendorRes.json()
-      const entriesData = await entriesRes.json()
-
-      setVendor(vendorData)
-      setEntries(entriesData)
+      setVendor(await vendorRes.json())
+      setEntries(await entriesRes.json())
     } catch (error) {
       console.error('Error fetching vendor ledger:', error)
-      toast.error('Failed to load vendor ledger')
+      setLoadError(error instanceof Error ? error.message : 'Failed to load vendor ledger')
     } finally {
       setIsLoading(false)
     }
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PK', {
-      style: 'currency',
-      currency: 'PKR',
-    }).format(amount)
-  }
+  /**
+   * Running balance per entry: the cumulative net from this row through the end
+   * of the list, which is what the running total means when rows arrive newest
+   * first. Computed once as a suffix scan — the previous version re-scanned the
+   * whole array inside the render loop, so a 500-row vendor did 125,000
+   * reductions on every keystroke in the search field.
+   */
+  const balanceByEntryId = useMemo(() => {
+    const balances = new Map<string, number>()
+    let running = 0
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    })
-  }
-
-  const getEntryTypeBadge = (type: string) => {
-    const variants: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
-      opening_balance: 'default',
-      order_payment: 'secondary',
-      vendor_payment: 'outline',
-      miscellaneous: 'destructive',
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const entry = entries[index]
+      running += (entry.debit || 0) - (entry.credit || 0)
+      balances.set(entry.id, running)
     }
-    return <Badge variant={variants[type] || 'default'}>{type.replace('_', ' ')}</Badge>
-  }
 
-  // Calculate totals for vendor ledger (from ALL entries, not filtered)
-  // In vendor ledger: Debit = money they receive from us (we pay them)
-  //                   Credit = money they return/owe us (shouldn't happen often)
+    return balances
+  }, [entries])
+
+  const filteredEntries = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+
+    return entries.filter((entry) => {
+      if (query) {
+        const haystack = [entry.particulars, entry.notes, formatDate(entry.entry_date)]
+        if (!haystack.some((field) => field?.toLowerCase().includes(query))) return false
+      }
+
+      if (dateFrom || dateTo) {
+        const entryDate = new Date(entry.entry_date)
+        entryDate.setHours(0, 0, 0, 0)
+
+        if (dateFrom) {
+          const from = new Date(dateFrom)
+          from.setHours(0, 0, 0, 0)
+          if (entryDate < from) return false
+        }
+
+        if (dateTo) {
+          const to = new Date(dateTo)
+          to.setHours(23, 59, 59, 999)
+          if (entryDate > to) return false
+        }
+      }
+
+      return true
+    })
+  }, [entries, searchQuery, dateFrom, dateTo])
+
+  // Totals come from every entry, not the filtered view: a vendor's balance is
+  // a fact about the relationship, not about the current search.
   const totalDebit = entries.reduce((sum, entry) => sum + (entry.debit || 0), 0)
   const totalCredit = entries.reduce((sum, entry) => sum + (entry.credit || 0), 0)
-  const balance = totalDebit - totalCredit  // Positive = we owe vendor, Negative = vendor owes us
+  const balance = totalDebit - totalCredit
+  const weOweVendor = balance >= 0
+  const isFiltered = Boolean(searchQuery || dateFrom || dateTo)
 
-  if (isLoading) {
+  const backButton = (
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="Back to vendors"
+      onClick={() => router.push('/vendors')}
+      className="shrink-0"
+    >
+      <ArrowLeft className="size-4" aria-hidden="true" />
+    </Button>
+  )
+
+  if (loadError) {
     return (
       <RoleGuard allowedRoles={['admin']}>
-      <div className="space-y-6">
-        <div className="text-center py-12">Loading vendor ledger...</div>
-      </div>
+        <div className="mx-auto max-w-[1600px] space-y-6">
+          <div className="flex items-center gap-2">
+            {backButton}
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Vendor Ledger</h1>
+          </div>
+          <ErrorState
+            title="Couldn't load this vendor's ledger"
+            detail={loadError}
+            onRetry={fetchData}
+          />
+        </div>
       </RoleGuard>
     )
   }
 
-  if (!vendor) {
+  if (!isLoading && !vendor) {
     return (
       <RoleGuard allowedRoles={['admin']}>
-      <div className="space-y-6">
-        <div className="text-center py-12">
-          <p className="text-muted-foreground mb-4">Vendor not found</p>
-          <Button onClick={() => router.push('/vendors')}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Vendors
-          </Button>
+        <div className="mx-auto max-w-[1600px] space-y-6">
+          <div className="flex items-center gap-2">
+            {backButton}
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Vendor Ledger</h1>
+          </div>
+          <SectionCard>
+            <SectionCardContent>
+              <EmptyState
+                icon={Building2}
+                message="This vendor no longer exists"
+                action={
+                  <Button variant="outline" size="sm" onClick={() => router.push('/vendors')}>
+                    <ArrowLeft className="size-4" aria-hidden="true" />
+                    Back to vendors
+                  </Button>
+                }
+              />
+            </SectionCardContent>
+          </SectionCard>
         </div>
-      </div>
       </RoleGuard>
     )
   }
 
   return (
     <RoleGuard allowedRoles={['admin']}>
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push('/vendors')}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <div className="flex items-center gap-2">
-              <Building2 className="h-6 w-6 text-muted-foreground" />
-              <h1 className="text-3xl font-bold">{vendor.name}</h1>
-            </div>
-            <p className="text-muted-foreground mt-1">Vendor Ledger</p>
-          </div>
+      <div className="mx-auto max-w-[1600px] space-y-6">
+        <div className="flex items-start gap-2">
+          {backButton}
+          <PageHeader
+            className="flex-1"
+            title={vendor?.name ?? 'Vendor'}
+            description="Vendor ledger"
+            actions={
+              <Button size="sm" onClick={() => setBillDialogOpen(true)}>
+                <Plus className="size-4" aria-hidden="true" />
+                <span className="hidden sm:inline">Create Bill</span>
+                <span className="sm:hidden">Bill</span>
+              </Button>
+            }
+          />
         </div>
-        <Button onClick={() => setBillDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Create Bill
-        </Button>
-      </div>
 
-      {/* Search and Date Range Filters */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_auto_auto]">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by particulars, notes, or date..."
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,34rem)]">
+          <SearchInput
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            onValueChange={setSearchQuery}
+            label="Search this vendor's transactions"
+            placeholder="Search by particulars, notes, or date…"
+          />
+          <DateRangeFilter
+            from={dateFrom}
+            to={dateTo}
+            onFromChange={setDateFrom}
+            onToChange={setDateTo}
           />
         </div>
-        <div className="flex items-center gap-2">
-          <Label className="text-sm text-muted-foreground whitespace-nowrap">From Date</Label>
-          <DatePicker
-            date={dateFrom}
-            onDateChange={setDateFrom}
-            placeholder="From date"
-            className="w-[160px]"
-            maxDate={dateTo || undefined}
-          />
-          {dateFrom && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setDateFrom(undefined)}
-              className="h-10 w-10 flex-shrink-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Label className="text-sm text-muted-foreground whitespace-nowrap">To Date</Label>
-          <DatePicker
-            date={dateTo}
-            onDateChange={setDateTo}
-            placeholder="To date"
-            className="w-[160px]"
-            minDate={dateFrom || undefined}
-          />
-          {dateTo && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setDateTo(undefined)}
-              className="h-10 w-10 flex-shrink-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-      </div>
 
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Debit</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatCurrency(totalDebit)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Money received (from us)</p>
-          </CardContent>
-        </Card>
+        {isLoading ? (
+          <StatRowSkeleton count={3} />
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <MetricCard
+              label="Total Debit"
+              value={formatPKR(totalDebit)}
+              caption="Paid to this vendor"
+              tone="positive"
+              isZero={totalDebit === 0}
+            />
+            <MetricCard
+              label="Total Credit"
+              value={formatPKR(totalCredit)}
+              caption="Returned by this vendor"
+              tone="negative"
+              isZero={totalCredit === 0}
+            />
+            <MetricCard
+              label="Net Balance"
+              value={formatPKR(Math.abs(balance))}
+              caption={
+                balance === 0
+                  ? 'Settled'
+                  : weOweVendor
+                    ? 'We owe this vendor'
+                    : 'This vendor owes us'
+              }
+              tone={weOweVendor ? 'warning' : 'positive'}
+              isZero={balance === 0}
+            />
+          </div>
+        )}
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Credit</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{formatCurrency(totalCredit)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Money returned</p>
-          </CardContent>
-        </Card>
+        {isLoading ? (
+          <TableSkeleton columns={6} />
+        ) : (
+          <SectionCard>
+            <SectionCardHeader>
+              <SectionCardTitle className="text-base">
+                Ledger Entries{' '}
+                <span className="font-mono text-sm font-normal tabular-nums text-muted-foreground">
+                  ({filteredEntries.length})
+                </span>
+              </SectionCardTitle>
+            </SectionCardHeader>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Net Balance</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${balance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-              {formatCurrency(Math.abs(balance))}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {balance >= 0 ? 'We owe vendor' : 'Vendor owes us'}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Ledger Entries */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Ledger Entries ({filteredEntries.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Particulars</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="text-right">Debit</TableHead>
-                <TableHead className="text-right">Credit</TableHead>
-                <TableHead className="text-right">Balance</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredEntries.map((entry) => (
-                <TableRow key={entry.id}>
-                  <TableCell className="font-medium">
-                    {formatDate(entry.entry_date)}
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{entry.particulars}</div>
-                      {entry.notes && (
-                        <div className="text-xs text-muted-foreground">{entry.notes}</div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {entry.general_ledger_id ? (
-                      getEntryTypeBadge(entry.general_ledger?.entry_type || 'vendor_payment')
+            <SectionCardContent>
+              {filteredEntries.length === 0 ? (
+                <EmptyState
+                  icon={Receipt}
+                  message={
+                    isFiltered
+                      ? 'No transactions match these filters'
+                      : 'No transactions with this vendor yet'
+                  }
+                  action={
+                    isFiltered ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSearchQuery('')
+                          setDateFrom(undefined)
+                          setDateTo(undefined)
+                        }}
+                      >
+                        Clear filters
+                      </Button>
                     ) : (
-                      <Badge variant="outline">Vendor Bill</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right text-green-600">
-                    {entry.debit ? formatCurrency(entry.debit) : '-'}
-                  </TableCell>
-                  <TableCell className="text-right text-red-600">
-                    {entry.credit ? formatCurrency(entry.credit) : '-'}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {/* Calculate running balance */}
-                    {formatCurrency(
-                      entries
-                        .slice(entries.findIndex(e => e.id === entry.id))
-                        .reduce((sum, e) => sum + (e.debit || 0) - (e.credit || 0), 0)
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                      <Button variant="outline" size="sm" onClick={() => setBillDialogOpen(true)}>
+                        <Plus className="size-4" aria-hidden="true" />
+                        Create the first bill
+                      </Button>
+                    )
+                  }
+                />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Particulars</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead className="text-right">Debit</TableHead>
+                      <TableHead className="text-right">Credit</TableHead>
+                      <TableHead className="text-right">Balance</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredEntries.map((entry) => {
+                      const type = entry.general_ledger_id
+                        ? entry.general_ledger?.entry_type || 'vendor_payment'
+                        : null
 
-          {filteredEntries.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
-              {searchQuery ? 'No transactions match your search' : 'No transactions found for this vendor'}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                      return (
+                        <TableRow key={entry.id}>
+                          <TableCell className="whitespace-nowrap font-mono text-xs tabular-nums">
+                            {formatDate(entry.entry_date)}
+                          </TableCell>
+                          <TableCell className="min-w-[14rem]">
+                            <div className="font-medium">{entry.particulars}</div>
+                            {entry.notes ? (
+                              <div className="text-xs text-muted-foreground">{entry.notes}</div>
+                            ) : null}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="whitespace-nowrap">
+                              {type
+                                ? ENTRY_TYPE_LABEL[type] ?? type.replace(/_/g, ' ')
+                                : 'Vendor bill'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-success-text">
+                            {entry.debit ? formatPKR(entry.debit) : '—'}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-destructive-text">
+                            {entry.credit ? formatPKR(entry.credit) : '—'}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-right font-mono font-medium tabular-nums">
+                            {formatPKR(balanceByEntryId.get(entry.id) ?? 0)}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </SectionCardContent>
+          </SectionCard>
+        )}
 
-      {/* Create Bill Dialog */}
-      <VendorBillDialog
-        open={billDialogOpen}
-        onOpenChange={setBillDialogOpen}
-        vendorId={vendorId}
-        vendorName={vendor.name}
-        onSuccess={() => {
-          toast.success('Bill created successfully')
-          fetchData()
-        }}
-      />
-    </div>
+        <VendorBillDialog
+          open={billDialogOpen}
+          onOpenChange={setBillDialogOpen}
+          vendorId={vendorId}
+          vendorName={vendor?.name ?? ''}
+          onSuccess={() => {
+            toast.success('Bill created')
+            fetchData()
+          }}
+        />
+      </div>
     </RoleGuard>
   )
 }

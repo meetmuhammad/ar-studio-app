@@ -107,9 +107,10 @@ export function OrderItemsRepeater({ control, disabled }: OrderItemsRepeaterProp
                       size="sm"
                       onClick={() => removeOrderItem(index)}
                       disabled={disabled}
-                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      aria-label={`Remove item ${index + 1}`}
+                      className="size-8 p-0 text-muted-foreground hover:bg-destructive-surface hover:text-destructive-text"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="size-4" aria-hidden="true" />
                     </Button>
                   </div>
 
@@ -199,8 +200,8 @@ export function OrderItemsRepeater({ control, disabled }: OrderItemsRepeaterProp
         )}
 
         {fields.length >= 4 && (
-          <div className="text-center p-3 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded-lg">
-            <p className="text-sm text-orange-800 dark:text-orange-200">
+          <div className="rounded-lg border border-warning-border bg-warning-surface p-3 text-center">
+            <p className="text-sm text-warning-text">
               Maximum of 4 order items reached
             </p>
           </div>

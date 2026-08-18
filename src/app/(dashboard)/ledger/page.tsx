@@ -1,14 +1,22 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
-import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, RefreshCw, Edit, Search, Download, Trash2, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useDebounce } from 'use-debounce'
+import {
+  BookOpen,
+  Download,
+  Edit,
+  Plus,
+  Scale,
+  Trash2,
+  TrendingDown,
+  TrendingUp,
+} from 'lucide-react'
+import { toast } from 'sonner'
+
 import { RoleGuard } from '@/components/auth/role-guard'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { DatePicker } from '@/components/ui/date-picker'
-import { Label } from '@/components/ui/label'
-import { LedgerEntryDialog } from '@/components/dialogs/ledger-entry-dialog'
+import { Badge } from '@/components/ui/badge'
 import {
   Table,
   TableBody,
@@ -17,71 +25,101 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
+import { LedgerEntryDialog } from '@/components/dialogs/ledger-entry-dialog'
+import { DeleteConfirmationDialog } from '@/components/dialogs/delete-confirmation-dialog'
+import { PageHeader } from '@/components/dashboard/page-header'
+import { MetricCard } from '@/components/dashboard/metric-card'
+import { SearchInput } from '@/components/dashboard/search-input'
+import { DateRangeFilter } from '@/components/dashboard/date-range-filter'
+import { Pagination } from '@/components/dashboard/pagination'
+import { TableSkeleton, StatRowSkeleton } from '@/components/dashboard/table-skeleton'
+import { EmptyState } from '@/components/dashboard/empty-state'
+import { ErrorState } from '@/components/dashboard/error-state'
+import {
+  SectionCard,
+  SectionCardContent,
+  SectionCardHeader,
+  SectionCardTitle,
+} from '@/components/dashboard/section-card'
 import type { GeneralLedgerWithRelations } from '@/lib/supabase-client'
-import { toast } from 'sonner'
-import { useLedgerEntries, useLedgerStats, useCreateLedgerEntry, useUpdateLedgerEntry, useDeleteLedgerEntry, useSyncOrderPayments } from '@/hooks/use-api'
+import { formatDate, formatPKR } from '@/lib/format'
+import {
+  useDeleteLedgerEntry,
+  useLedgerEntries,
+  useLedgerStats,
+} from '@/hooks/use-api'
+
+const ITEMS_PER_PAGE = 20
+
+/**
+ * Entry types are categories, not statuses.
+ *
+ * The previous mapping painted `miscellaneous` with the destructive variant, so
+ * every routine uncategorised entry showed up red and read as a problem. These
+ * are all neutral now; the label carries the distinction.
+ */
+const ENTRY_TYPE_LABEL: Record<string, string> = {
+  opening_balance: 'Opening balance',
+  order_payment: 'Order payment',
+  vendor_payment: 'Vendor payment',
+  miscellaneous: 'Miscellaneous',
+}
+
+function entryTypeLabel(type: string): string {
+  return ENTRY_TYPE_LABEL[type] ?? type.replace(/_/g, ' ')
+}
 
 export default function LedgerPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingEntry, setEditingEntry] = useState<GeneralLedgerWithRelations | null>(null)
+  const [deletingEntry, setDeletingEntry] = useState<GeneralLedgerWithRelations | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [debouncedSearch] = useDebounce(searchQuery, 300)
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
   const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 20
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null)
 
-  // React Query hooks
-  const { data: entriesResult, isLoading, refetch: fetchData } = useLedgerEntries({
+  const {
+    data: entriesResult,
+    isLoading,
+    isError,
+    error,
+    refetch: fetchData,
+  } = useLedgerEntries({
     page: currentPage,
-    pageSize: itemsPerPage,
+    pageSize: ITEMS_PER_PAGE,
     search: debouncedSearch,
     startDate: dateFrom?.toISOString().split('T')[0],
     endDate: dateTo?.toISOString().split('T')[0],
   })
-  const { data: stats = { totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 } } = useLedgerStats()
-  const syncMutation = useSyncOrderPayments()
+
+  const { data: stats = { totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 } } =
+    useLedgerStats()
   const deleteMutation = useDeleteLedgerEntry()
-  
-  const entries = (entriesResult?.data || []).map((entry: any) => ({
-    ...entry,
-    calculatedBalance: entry.balance,
-  })) as GeneralLedgerWithRelations[]
-  const totalEntries = entriesResult?.pagination?.total || 0
-  const totalPages = entriesResult?.pagination?.pages || 1
 
-  // Debounce search
-  const handleSearchChange = (value: string) => {
-    setSearchQuery(value)
-    if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    debounceTimer.current = setTimeout(() => {
-      setDebouncedSearch(value)
-      setCurrentPage(1)
-    }, 300)
-  }
+  const entries = (entriesResult?.data ?? []).map(
+    (entry: GeneralLedgerWithRelations) => ({
+      ...entry,
+      calculatedBalance: entry.balance,
+    })
+  ) as GeneralLedgerWithRelations[]
+  const totalEntries = entriesResult?.pagination?.total ?? 0
+  const totalPages = entriesResult?.pagination?.pages ?? 1
 
-  // Reset page when date filters change
+  // Any change to what is being filtered invalidates the current page number.
   useEffect(() => {
     setCurrentPage(1)
-  }, [dateFrom, dateTo])
-
-  const syncOrderPayments = async () => {
-    await syncMutation.mutateAsync()
-  }
-  const isSyncing = syncMutation.isPending
+  }, [dateFrom, dateTo, debouncedSearch])
 
   const handleEdit = (entry: GeneralLedgerWithRelations) => {
     setEditingEntry(entry)
     setDialogOpen(true)
   }
 
-  const handleDelete = async (entry: GeneralLedgerWithRelations) => {
-    if (!confirm(`Are you sure you want to delete this ledger entry? This will also delete the corresponding vendor ledger entry if any.`)) {
-      return
-    }
-    await deleteMutation.mutateAsync(entry.id)
+  const handleDelete = async () => {
+    if (!deletingEntry) return
+    await deleteMutation.mutateAsync(deletingEntry.id)
+    setDeletingEntry(null)
   }
 
   const handleCloseDialog = () => {
@@ -91,362 +129,299 @@ export default function LedgerPage() {
 
   const exportToCSV = () => {
     try {
-      // CSV headers
-      const headers = ['Date', 'Particulars', 'Type', 'Debit', 'Credit', 'Balance', 'Vendor', 'Order Number', 'Notes']
-      
-      // Convert entries to CSV rows
-      const rows = entries.map(entry => [
-        new Date(entry.entry_date).toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-        }),
-        `"${entry.particulars.replace(/"/g, '""')}"`, // Escape double quotes
-        entry.entry_type.replace('_', ' '),
+      const headers = [
+        'Date',
+        'Particulars',
+        'Type',
+        'Debit',
+        'Credit',
+        'Balance',
+        'Vendor',
+        'Order Number',
+        'Notes',
+      ]
+
+      const quote = (value: string) => `"${value.replace(/"/g, '""')}"`
+
+      const rows = entries.map((entry) => [
+        formatDate(entry.entry_date),
+        quote(entry.particulars),
+        entryTypeLabel(entry.entry_type),
         entry.debit || 0,
         entry.credit || 0,
         entry.calculatedBalance || entry.balance,
-        entry.vendors?.name ? `"${entry.vendors.name.replace(/"/g, '""')}"` : '',
-        entry.orders?.order_number ? `"${entry.orders.order_number.replace(/"/g, '""')}"` : '',
-        entry.notes ? `"${entry.notes.replace(/"/g, '""')}"` : '',
+        entry.vendors?.name ? quote(entry.vendors.name) : '',
+        entry.orders?.order_number ? quote(entry.orders.order_number) : '',
+        entry.notes ? quote(entry.notes) : '',
       ])
-      
-      // Combine headers and rows
-      const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.join(','))
-      ].join('\n')
-      
-      // Create blob and download
+
+      const csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n')
+
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
       const link = document.createElement('a')
       const url = URL.createObjectURL(blob)
-      
+
       link.setAttribute('href', url)
       link.setAttribute('download', `ledger_entries_${new Date().toISOString().split('T')[0]}.csv`)
       link.style.visibility = 'hidden'
-      
+
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      
+      // Revoking releases the blob; without it the export leaked one object URL
+      // per download for the life of the tab.
+      URL.revokeObjectURL(url)
+
       toast.success(`Exported ${entries.length} ledger entries to CSV`)
-    } catch (error) {
-      console.error('Error exporting CSV:', error)
+    } catch (err) {
+      console.error('Error exporting CSV:', err)
       toast.error('Failed to export CSV')
     }
   }
 
-  // Server handles pagination — use entries directly
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = Math.min(startIndex + entries.length, startIndex + itemsPerPage)
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PK', {
-      style: 'currency',
-      currency: 'PKR',
-    }).format(amount)
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    })
-  }
-
-  const getEntryTypeBadge = (type: string) => {
-    const variants: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
-      opening_balance: 'default',
-      order_payment: 'secondary',
-      vendor_payment: 'outline',
-      miscellaneous: 'destructive',
-    }
-    return <Badge variant={variants[type] || 'default'}>{type.replace('_', ' ')}</Badge>
-  }
-
-  if (isLoading) {
-    return (
-      <RoleGuard allowedRoles={['admin']}>
-      <div className="space-y-6">
-        <h1 className="text-3xl font-bold">General Ledger</h1>
-        <div className="text-center py-12">Loading ledger...</div>
-      </div>
-      </RoleGuard>
-    )
-  }
+  const isFiltered = Boolean(debouncedSearch || dateFrom || dateTo)
 
   return (
     <RoleGuard allowedRoles={['admin']}>
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">General Ledger</h1>
-          <p className="text-muted-foreground mt-1">
-            Track all financial transactions and balances
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={exportToCSV}
-            disabled={entries.length === 0}
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Entry
-          </Button>
-        </div>
-      </div>
+      <div className="mx-auto max-w-[1600px] space-y-6">
+        <PageHeader
+          title="General Ledger"
+          description="Every financial transaction and running balance"
+          actions={
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportToCSV}
+                disabled={entries.length === 0}
+              >
+                <Download className="size-4" aria-hidden="true" />
+                <span className="hidden sm:inline">Export CSV</span>
+                <span className="sm:hidden">Export</span>
+              </Button>
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Plus className="size-4" aria-hidden="true" />
+                <span className="hidden sm:inline">Add Entry</span>
+                <span className="sm:hidden">Add</span>
+              </Button>
+            </>
+          }
+        />
 
-      {/* Search and Date Range Filters */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_auto_auto]">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-          placeholder="Search by particulars..."
-          value={searchQuery}
-          onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-10"
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,34rem)]">
+          <SearchInput
+            value={searchQuery}
+            onValueChange={setSearchQuery}
+            label="Search ledger entries"
+            placeholder="Search by particulars…"
+          />
+          <DateRangeFilter
+            from={dateFrom}
+            to={dateTo}
+            onFromChange={setDateFrom}
+            onToChange={setDateTo}
           />
         </div>
-        <div className="flex items-center gap-2">
-          <Label className="text-sm text-muted-foreground whitespace-nowrap">From Date</Label>
-          <DatePicker
-            date={dateFrom}
-            onDateChange={setDateFrom}
-            placeholder="From date"
-            className="w-[160px]"
-            maxDate={dateTo || undefined}
+
+        {isLoading ? (
+          <StatRowSkeleton />
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricCard
+              label="Total Debit"
+              value={formatPKR(stats.totalDebit)}
+              caption="Money in"
+              icon={TrendingUp}
+              tone="positive"
+              isZero={stats.totalDebit === 0}
+            />
+            <MetricCard
+              label="Total Credit"
+              value={formatPKR(stats.totalCredit)}
+              caption="Money out"
+              icon={TrendingDown}
+              tone="negative"
+              isZero={stats.totalCredit === 0}
+            />
+            <MetricCard
+              label="Current Balance"
+              value={formatPKR(stats.currentBalance)}
+              caption="Net position"
+              icon={Scale}
+            />
+            <MetricCard
+              label="Total Entries"
+              value={String(stats.entryCount)}
+              caption="All transactions"
+              icon={BookOpen}
+            />
+          </div>
+        )}
+
+        {isError ? (
+          <ErrorState
+            title="Couldn't load ledger entries"
+            detail={error instanceof Error ? error.message : undefined}
+            onRetry={() => fetchData()}
           />
-          {dateFrom && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setDateFrom(undefined)}
-              className="h-10 w-10 flex-shrink-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Label className="text-sm text-muted-foreground whitespace-nowrap">To Date</Label>
-          <DatePicker
-            date={dateTo}
-            onDateChange={setDateTo}
-            placeholder="To date"
-            className="w-[160px]"
-            minDate={dateFrom || undefined}
-          />
-          {dateTo && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setDateTo(undefined)}
-              className="h-10 w-10 flex-shrink-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-      </div>
+        ) : isLoading ? (
+          <TableSkeleton columns={7} />
+        ) : (
+          <SectionCard>
+            <SectionCardHeader>
+              <SectionCardTitle className="text-base">
+                Ledger Entries{' '}
+                <span className="font-mono text-sm font-normal tabular-nums text-muted-foreground">
+                  ({totalEntries})
+                </span>
+              </SectionCardTitle>
+            </SectionCardHeader>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Debit</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalDebit)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Money in</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Credit</CardTitle>
-            <TrendingDown className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalCredit)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Money out</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Current Balance</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.currentBalance)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Net position</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Entries</CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.entryCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">All transactions</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Entries Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Ledger Entries</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Particulars</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="text-right">Debit</TableHead>
-                <TableHead className="text-right">Credit</TableHead>
-                <TableHead className="text-right">Balance</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {entries.map((entry) => (
-                <TableRow key={entry.id}>
-                  <TableCell className="font-medium">
-                    {formatDate(entry.entry_date)}
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{entry.particulars}</div>
-                      {entry.vendors && (
-                        <div className="text-xs text-muted-foreground">
-                          Vendor: {entry.vendors.name}
-                        </div>
-                      )}
-                      {entry.orders && (
-                        <div className="text-xs text-muted-foreground">
-                          Order: {entry.orders.order_number}
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>{getEntryTypeBadge(entry.entry_type)}</TableCell>
-                  <TableCell className="text-right text-green-600">
-                    {entry.debit ? formatCurrency(entry.debit) : '-'}
-                  </TableCell>
-                  <TableCell className="text-right text-red-600">
-                    {entry.credit ? formatCurrency(entry.credit) : '-'}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatCurrency(entry.calculatedBalance || entry.balance)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {entry.entry_type !== 'order_payment' && (
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEdit(entry)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(entry)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-
-          {entries.length === 0 && !isLoading && (
-            <div className="text-center py-12 text-muted-foreground">
-              {debouncedSearch ? 'No entries match your search' : 'No ledger entries found'}
-            </div>
-          )}
-
-          {/* Pagination */}
-          {totalEntries > 0 && (
-            <div className="flex items-center justify-between pt-4">
-              <div className="text-sm text-muted-foreground">
-                Showing {startIndex + 1} to {Math.min(endIndex, totalEntries)} of {totalEntries} entries
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                >
-                  Previous
-                </Button>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter(page => {
-                      // Show first page, last page, current page, and pages around current
-                      return page === 1 || 
-                             page === totalPages || 
-                             (page >= currentPage - 1 && page <= currentPage + 1)
-                    })
-                    .map((page, index, array) => (
-                      <div key={page} className="flex items-center">
-                        {index > 0 && array[index - 1] !== page - 1 && (
-                          <span className="px-2 text-muted-foreground">...</span>
-                        )}
-                        <Button
-                          variant={currentPage === page ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setCurrentPage(page)}
-                        >
-                          {page}
-                        </Button>
-                      </div>
-                    ))
+            <SectionCardContent>
+              {entries.length === 0 ? (
+                <EmptyState
+                  icon={BookOpen}
+                  message={
+                    isFiltered
+                      ? 'No entries match these filters'
+                      : 'No ledger entries yet'
                   }
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  action={
+                    isFiltered ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSearchQuery('')
+                          setDateFrom(undefined)
+                          setDateTo(undefined)
+                        }}
+                      >
+                        Clear filters
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+                        <Plus className="size-4" aria-hidden="true" />
+                        Add the first entry
+                      </Button>
+                    )
+                  }
+                />
+              ) : (
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Particulars</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead className="text-right">Debit</TableHead>
+                        <TableHead className="text-right">Credit</TableHead>
+                        <TableHead className="text-right">Balance</TableHead>
+                        <TableHead className="text-right">
+                          <span className="sr-only">Actions</span>
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {entries.map((entry) => (
+                        <TableRow key={entry.id}>
+                          <TableCell className="whitespace-nowrap font-mono text-xs tabular-nums">
+                            {formatDate(entry.entry_date)}
+                          </TableCell>
+                          <TableCell className="min-w-[14rem]">
+                            <div className="font-medium">{entry.particulars}</div>
+                            {entry.vendors ? (
+                              <div className="text-xs text-muted-foreground">
+                                Vendor: {entry.vendors.name}
+                              </div>
+                            ) : null}
+                            {entry.orders ? (
+                              <div className="font-mono text-xs text-muted-foreground">
+                                Order: {entry.orders.order_number}
+                              </div>
+                            ) : null}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="whitespace-nowrap">
+                              {entryTypeLabel(entry.entry_type)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-success-text">
+                            {entry.debit ? formatPKR(entry.debit) : '—'}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-right font-mono tabular-nums text-destructive-text">
+                            {entry.credit ? formatPKR(entry.credit) : '—'}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-right font-mono font-medium tabular-nums">
+                            {formatPKR(entry.calculatedBalance || entry.balance)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {/* Order payments are written by the orders flow; editing
+                                one here would drift it from its source record. */}
+                            {entry.entry_type !== 'order_payment' ? (
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label={`Edit entry: ${entry.particulars}`}
+                                  onClick={() => handleEdit(entry)}
+                                >
+                                  <Edit className="size-4" aria-hidden="true" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label={`Delete entry: ${entry.particulars}`}
+                                  onClick={() => setDeletingEntry(entry)}
+                                  className="text-muted-foreground hover:text-destructive-text"
+                                >
+                                  <Trash2 className="size-4" aria-hidden="true" />
+                                </Button>
+                              </div>
+                            ) : null}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
 
-      <LedgerEntryDialog
-        open={dialogOpen}
-        onOpenChange={handleCloseDialog}
-        entry={editingEntry}
-        onSuccess={() => {
-          toast.success(editingEntry ? 'Ledger entry updated successfully' : 'Ledger entry created successfully')
-          handleCloseDialog()
-          fetchData()
-        }}
-      />
-    </div>
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalItems={totalEntries}
+                    pageItemCount={entries.length}
+                    pageSize={ITEMS_PER_PAGE}
+                    itemLabel="entries"
+                    onPageChange={setCurrentPage}
+                  />
+                </>
+              )}
+            </SectionCardContent>
+          </SectionCard>
+        )}
+
+        <LedgerEntryDialog
+          open={dialogOpen}
+          onOpenChange={handleCloseDialog}
+          entry={editingEntry}
+          onSuccess={() => {
+            toast.success(editingEntry ? 'Ledger entry updated' : 'Ledger entry created')
+            handleCloseDialog()
+            fetchData()
+          }}
+        />
+
+        <DeleteConfirmationDialog
+          open={Boolean(deletingEntry)}
+          onOpenChange={(open) => {
+            if (!open) setDeletingEntry(null)
+          }}
+          title="Delete ledger entry"
+          description={`Delete "${deletingEntry?.particulars ?? ''}"? The matching vendor ledger entry, if there is one, is deleted with it. This cannot be undone.`}
+          onConfirm={handleDelete}
+        />
+      </div>
     </RoleGuard>
   )
 }

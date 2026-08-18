@@ -143,10 +143,10 @@ export function CustomerDetailDialog({
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-green-600" />
+                  <DollarSign className="size-4 text-success-text" aria-hidden="true" />
                   <div>
                     <p className="text-sm font-medium">Total Paid</p>
-                    <p className="text-2xl font-bold text-green-600">PKR {totalAdvance.toLocaleString()}</p>
+                    <p className="font-mono text-2xl font-semibold tabular-nums text-success-text">PKR {totalAdvance.toLocaleString()}</p>
                   </div>
                 </div>
               </CardContent>
@@ -154,10 +154,10 @@ export function CustomerDetailDialog({
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-orange-600" />
+                  <DollarSign className="size-4 text-warning-text" aria-hidden="true" />
                   <div>
                     <p className="text-sm font-medium">Total Balance</p>
-                    <p className="text-2xl font-bold text-orange-600">PKR {totalBalance.toLocaleString()}</p>
+                    <p className="font-mono text-2xl font-semibold tabular-nums text-warning-text">PKR {totalBalance.toLocaleString()}</p>
                   </div>
                 </div>
               </CardContent>
@@ -187,7 +187,7 @@ export function CustomerDetailDialog({
                         <div className="text-right">
                           <p className="font-semibold">PKR {(order.total_amount || 0).toLocaleString()}</p>
                           {order.balance && order.balance > 0 && (
-                            <Badge variant="secondary" className="text-orange-600">
+                            <Badge variant="secondary" className="text-warning-text">
                               PKR {order.balance.toLocaleString()} pending
                             </Badge>
                           )}
