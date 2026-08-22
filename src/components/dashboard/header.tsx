@@ -1,22 +1,29 @@
 'use client'
 
-import { Menu } from 'lucide-react'
+import { DollarSign, Menu, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { useDashboardActions } from '@/contexts/dashboard-actions'
 
 interface HeaderProps {
   onMenuClick?: () => void
 }
 
 /**
- * Global chrome: mobile navigation trigger and theme toggle.
+ * Global chrome: mobile navigation trigger, global Create Order / Add Payment
+ * actions, and theme toggle.
  *
- * "Create New Order" / "Add New Payment" used to live here and therefore rendered
- * on every route regardless of relevance, occupying the primary slot ahead of any
- * page identity. They are now page-level actions rendered by PageHeader; the
- * dialogs themselves are still owned by the dashboard layout.
+ * Restored globally by request: "Create New Order" / "Add New Payment" used to
+ * render on every route from here. A 2026-08-16 redesign moved them to be
+ * page-level actions on the Dashboard only; they're brought back here so they're
+ * reachable from any page again. Header renders inside DashboardActionsProvider
+ * (see the dashboard layout), so the openers are read straight from context
+ * instead of being prop-drilled. The dialogs themselves are still owned by the
+ * dashboard layout, unchanged.
  */
 export function Header({ onMenuClick }: HeaderProps) {
+  const actions = useDashboardActions()
+
   return (
     // Solid, not translucent-blurred: a frosted bar is the one glassmorphic
     // note left in the chrome, and it fights a flat, data-first surface.
@@ -32,8 +39,22 @@ export function Header({ onMenuClick }: HeaderProps) {
           <Menu className="h-5 w-5" aria-hidden="true" />
         </Button>
 
-        {/* Spacer keeps the theme toggle right-aligned once the menu button is hidden */}
-        <div className="flex-1" />
+        {actions ? (
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={actions.openOrderDialog}>
+              <Plus className="size-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Create New Order</span>
+              <span className="sm:hidden">Order</span>
+            </Button>
+            <Button size="sm" variant="outline" onClick={actions.openPaymentDialog}>
+              <DollarSign className="size-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Add New Payment</span>
+              <span className="sm:hidden">Payment</span>
+            </Button>
+          </div>
+        ) : (
+          <div className="flex-1" />
+        )}
 
         <div className="flex items-center">
           <ThemeToggle />

@@ -14,9 +14,7 @@ import {
   ArrowUpRight,
   Calendar,
   CreditCard,
-  DollarSign,
   PackageCheck,
-  Plus,
   ShoppingCart,
   TrendingUp,
   Users,
@@ -40,7 +38,6 @@ import {
   SectionCardHeader,
   SectionCardTitle,
 } from '@/components/dashboard/section-card'
-import { useDashboardActions } from '@/contexts/dashboard-actions'
 import { useDashboardStats } from '@/hooks/use-api'
 import { useReducedMotion } from '@/hooks/use-reduced-motion'
 import {
@@ -61,8 +58,6 @@ export default function DashboardPage() {
     dataUpdatedAt,
   } = useDashboardStats()
 
-  const actions = useDashboardActions()
-
   const chartData = stats?.chartData ?? []
   const upcomingOrders = (stats?.upcomingOrders ?? []) as UpcomingOrder[]
 
@@ -80,22 +75,6 @@ export default function DashboardPage() {
             isPending || !dataUpdatedAt
               ? undefined
               : `Last updated ${format(new Date(dataUpdatedAt), 'HH:mm')}`
-          }
-          actions={
-            actions ? (
-              <>
-                <Button size="sm" onClick={actions.openOrderDialog}>
-                  <Plus className="size-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">New Order</span>
-                  <span className="sm:hidden">Order</span>
-                </Button>
-                <Button size="sm" variant="outline" onClick={actions.openPaymentDialog}>
-                  <DollarSign className="size-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">Add Payment</span>
-                  <span className="sm:hidden">Payment</span>
-                </Button>
-              </>
-            ) : null
           }
         />
 
