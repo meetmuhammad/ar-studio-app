@@ -1,81 +1,89 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { DataTable } from "@/components/data-table/data-table";
-import { MeasurementForm } from "@/components/forms/measurement-form";
-import { createMeasurementColumns } from "@/components/tables/measurement-columns";
-import { Measurement, MeasurementFormValues } from "@/types/measurements";
-import { Customer } from "@/lib/supabase-client";
+import { useCallback, useEffect, useState } from "react";
 import { Plus, Ruler } from "lucide-react";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DataTable } from "@/components/data-table/data-table";
+import { MeasurementForm } from "@/components/forms/measurement-form";
+import { createMeasurementColumns } from "@/components/tables/measurement-columns";
+import { DeleteConfirmationDialog } from "@/components/dialogs/delete-confirmation-dialog";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { TableSkeleton } from "@/components/dashboard/table-skeleton";
+import { EmptyState } from "@/components/dashboard/empty-state";
+import { ErrorState } from "@/components/dashboard/error-state";
+import {
+  SectionCard,
+  SectionCardContent,
+  SectionCardDescription,
+  SectionCardHeader,
+  SectionCardTitle,
+} from "@/components/dashboard/section-card";
+import { Measurement, MeasurementFormValues } from "@/types/measurements";
+import { Customer } from "@/lib/supabase-client";
+
+/**
+ * The measurement form is a wide, multi-column sheet, so its dialog is sized in
+ * viewport units rather than by the default max-width. Every step is a class,
+ * not an inline style: the previous `style={{ width: '70vw' }}` outranked the
+ * responsive classes beside it, so a 375px phone rendered the whole form into a
+ * 262px column.
+ */
+const MEASUREMENT_DIALOG_CLASS =
+  "w-[95vw] max-w-none sm:w-[90vw] md:w-[85vw] lg:w-[75vw] xl:w-[70vw] 2xl:w-[60vw] max-h-[92vh] overflow-y-auto";
 
 export default function MeasurementsPage() {
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  
-  // Modal states
+
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedMeasurement, setSelectedMeasurement] = useState<Measurement | null>(null);
 
-  // Fetch measurements with server-side pagination
-  const fetchMeasurements = async () => {
+  const fetchMeasurements = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
-      setLoading(true);
-      const params = new URLSearchParams({
-        page: '1',
-        limit: '100', // Measurements are lightweight, 100 per page is fine
-      });
+      const params = new URLSearchParams({ page: "1", limit: "100" });
       const response = await fetch(`/api/measurements?${params}`);
       if (!response.ok) throw new Error("Failed to fetch measurements");
-      
+
       const data = await response.json();
       setMeasurements(data.measurements || []);
     } catch (error) {
       console.error("Error fetching measurements:", error);
-      toast.error("Failed to load measurements");
+      // Kept in state, not only toasted: an empty table behind a vanished toast
+      // is indistinguishable from a studio that has taken no measurements.
+      setLoadError(error instanceof Error ? error.message : "Failed to load measurements");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Fetch customers for the form (only id, name, phone needed)
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     try {
       const response = await fetch("/api/customers?pageSize=1000");
       if (!response.ok) throw new Error("Failed to fetch customers");
-      
+
       const data = await response.json();
       setCustomers(data.data || []);
     } catch (error) {
       console.error("Error fetching customers:", error);
-      toast.error("Failed to load customers");
+      toast.error("Failed to load the customer list");
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchMeasurements();
     fetchCustomers();
-  }, []);
+  }, [fetchMeasurements, fetchCustomers]);
 
-  // Create measurement
   const handleCreateMeasurement = async (data: MeasurementFormValues) => {
     try {
       setSubmitting(true);
@@ -91,6 +99,7 @@ export default function MeasurementsPage() {
       }
 
       setShowAddDialog(false);
+      toast.success("Measurement saved");
       fetchMeasurements();
     } catch (error) {
       console.error("Error creating measurement:", error);
@@ -100,7 +109,6 @@ export default function MeasurementsPage() {
     }
   };
 
-  // Update measurement
   const handleUpdateMeasurement = async (data: MeasurementFormValues) => {
     if (!selectedMeasurement) return;
 
@@ -119,6 +127,7 @@ export default function MeasurementsPage() {
 
       setShowEditDialog(false);
       setSelectedMeasurement(null);
+      toast.success("Measurement updated");
       fetchMeasurements();
     } catch (error) {
       console.error("Error updating measurement:", error);
@@ -128,31 +137,23 @@ export default function MeasurementsPage() {
     }
   };
 
-  // Delete measurement
   const handleDeleteMeasurement = async () => {
     if (!selectedMeasurement) return;
 
-    try {
-      setSubmitting(true);
-      const response = await fetch(`/api/measurements/${selectedMeasurement.id}`, {
-        method: "DELETE",
-      });
+    const response = await fetch(`/api/measurements/${selectedMeasurement.id}`, {
+      method: "DELETE",
+    });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to delete measurement");
-      }
-
-      setShowDeleteDialog(false);
-      setSelectedMeasurement(null);
-      fetchMeasurements();
-      toast.success("Measurement deleted successfully");
-    } catch (error) {
-      console.error("Error deleting measurement:", error);
-      toast.error("Failed to delete measurement");
-    } finally {
-      setSubmitting(false);
+    if (!response.ok) {
+      const error = await response.json();
+      toast.error(error.error || "Failed to delete measurement");
+      throw new Error(error.error || "Failed to delete measurement");
     }
+
+    setShowDeleteDialog(false);
+    setSelectedMeasurement(null);
+    toast.success("Measurement deleted");
+    fetchMeasurements();
   };
 
   const columns = createMeasurementColumns({
@@ -167,50 +168,77 @@ export default function MeasurementsPage() {
   });
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Header */}
-      <div className="flex flex-col space-y-2 sm:space-y-3">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center space-x-2">
-            <Ruler className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
-            <h1 className="text-xl sm:text-2xl font-bold">Measurements</h1>
-          </div>
-          <Button onClick={() => setShowAddDialog(true)} size="sm" className="w-full sm:w-auto">
-            <Plus className="h-4 w-4 mr-2" />
-            New Measurement
+    <div className="mx-auto max-w-[1600px] space-y-6">
+      <PageHeader
+        title="Measurements"
+        description="Body measurements on file, by customer"
+        actions={
+          <Button size="sm" onClick={() => setShowAddDialog(true)}>
+            <Plus className="size-4" aria-hidden="true" />
+            <span className="hidden sm:inline">New Measurement</span>
+            <span className="sm:hidden">New</span>
           </Button>
-        </div>
-        <p className="text-sm sm:text-base text-muted-foreground">
-          Manage customer body measurements for accurate tailoring
-        </p>
-      </div>
+        }
+      />
 
-      {/* Measurements Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>All Measurements</CardTitle>
-          <CardDescription>
-            View and manage customer body measurements
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <DataTable
-            columns={columns}
-            data={measurements}
-            searchPlaceholder="Search measurements by customer name or measurement set name..."
-          />
-        </CardContent>
-      </Card>
+      {loadError ? (
+        <ErrorState
+          title="Couldn't load measurements"
+          detail={loadError}
+          onRetry={fetchMeasurements}
+        />
+      ) : loading ? (
+        <TableSkeleton columns={5} />
+      ) : (
+        <SectionCard>
+          <SectionCardHeader>
+            <SectionCardTitle className="text-base">
+              All Measurements{" "}
+              <span className="font-mono text-sm font-normal tabular-nums text-muted-foreground">
+                ({measurements.length})
+              </span>
+            </SectionCardTitle>
+            <SectionCardDescription className="text-xs">
+              Search by customer or measurement set name
+            </SectionCardDescription>
+          </SectionCardHeader>
 
-      {/* Add Measurement Dialog */}
+          <SectionCardContent>
+            {measurements.length === 0 ? (
+              <EmptyState
+                icon={Ruler}
+                message="No measurements recorded yet"
+                action={
+                  <Button variant="outline" size="sm" onClick={() => setShowAddDialog(true)}>
+                    <Plus className="size-4" aria-hidden="true" />
+                    Record the first measurement
+                  </Button>
+                }
+              />
+            ) : (
+              // Toolbar and footer stay on here: this route fetches the full set
+              // in one request, so the table's own search and paging act on
+              // everything there is.
+              <DataTable
+                columns={columns}
+                data={measurements}
+                searchPlaceholder="Search measurements…"
+                emptyState={
+                  <EmptyState icon={Ruler} message="No measurements match your search" />
+                }
+              />
+            )}
+          </SectionCardContent>
+        </SectionCard>
+      )}
+
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent 
-          className="w-[95vw] max-w-none sm:w-[90vw] md:w-[80vw] lg:w-[70vw] xl:w-[70vw] 2xl:w-[60vw] max-h-[95vh] overflow-y-auto"
-          style={{ width: '70vw', maxWidth: 'none' }}
-          onInteractOutside={(e) => e.preventDefault()}
+        <DialogContent
+          className={MEASUREMENT_DIALOG_CLASS}
+          onInteractOutside={(event) => event.preventDefault()}
         >
           <DialogHeader>
-            <DialogTitle>Add New Measurement</DialogTitle>
+            <DialogTitle>Add measurement</DialogTitle>
           </DialogHeader>
           <MeasurementForm
             customers={customers}
@@ -221,17 +249,15 @@ export default function MeasurementsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Measurement Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent 
-          className="w-[95vw] max-w-none sm:w-[90vw] md:w-[80vw] lg:w-[70vw] xl:w-[70vw] 2xl:w-[60vw] max-h-[95vh] overflow-y-auto"
-          style={{ width: '70vw', maxWidth: 'none' }}
-          onInteractOutside={(e) => e.preventDefault()}
+        <DialogContent
+          className={MEASUREMENT_DIALOG_CLASS}
+          onInteractOutside={(event) => event.preventDefault()}
         >
           <DialogHeader>
-            <DialogTitle>Edit Measurement</DialogTitle>
+            <DialogTitle>Edit measurement</DialogTitle>
           </DialogHeader>
-          {selectedMeasurement && (
+          {selectedMeasurement ? (
             <MeasurementForm
               measurement={selectedMeasurement}
               customers={customers}
@@ -242,32 +268,22 @@ export default function MeasurementsPage() {
               }}
               isLoading={submitting}
             />
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Measurement</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete &ldquo;{selectedMeasurement?.name}&rdquo; for {selectedMeasurement?.customer?.name}?
-              This action cannot be undone and may affect related orders.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteMeasurement}
-              disabled={submitting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {submitting ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmationDialog
+        open={showDeleteDialog}
+        onOpenChange={(open) => {
+          setShowDeleteDialog(open);
+          if (!open) setSelectedMeasurement(null);
+        }}
+        title="Delete measurement"
+        description={`Delete “${selectedMeasurement?.name ?? ""}” for ${
+          selectedMeasurement?.customer?.name ?? "this customer"
+        }? Orders that reference it may be affected. This cannot be undone.`}
+        onConfirm={handleDeleteMeasurement}
+      />
     </div>
   );
 }

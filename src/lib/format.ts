@@ -83,3 +83,17 @@ export function monthOverMonth(
     previousLabel: previous.month,
   }
 }
+
+/**
+ * `Aug 18, 2026` — the studio's one date format.
+ *
+ * Four routes each carried an identical `toLocaleDateString` helper. Centralised
+ * so a change of format is one edit, not five.
+ */
+export function formatDate(date: string | Date): string {
+  return new Date(date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}

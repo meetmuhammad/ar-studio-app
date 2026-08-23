@@ -1,8 +1,9 @@
+import { withAdmin } from '@/lib/api-auth'
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 
 // GET /api/general-ledger - List entries with filters and pagination
-export async function GET(request: Request) {
+export const GET = withAdmin(async (request: Request) => {
   try {
     const supabase = createAdminSupabaseClient()
     const { searchParams } = new URL(request.url)
@@ -80,10 +81,10 @@ export async function GET(request: Request) {
       { status: 500 }
     )
   }
-}
+})
 
 // POST /api/general-ledger - Create new entry
-export async function POST(request: Request) {
+export const POST = withAdmin(async (request: Request) => {
   try {
     const supabase = createAdminSupabaseClient()
     const body = await request.json()
@@ -156,4 +157,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
+})

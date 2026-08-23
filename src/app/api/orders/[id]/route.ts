@@ -1,12 +1,13 @@
+import { withAuth } from '@/lib/api-auth'
 import { NextRequest, NextResponse } from 'next/server'
 import { getOrder, updateOrder, deleteOrder, updateOrderItems } from '@/lib/database'
 import { UpdateOrderSchema } from '@/lib/validators'
 
 // GET /api/orders/[id] - Get order by ID
-export async function GET(
+export const GET = withAuth<{ params: Promise<{ id: string }> }>(async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   try {
     const { id } = await params
     const order = await getOrder(id)
@@ -26,13 +27,13 @@ export async function GET(
       { status: 500 }
     )
   }
-}
+})
 
 // PATCH /api/orders/[id] - Update order
-export async function PATCH(
+export const PATCH = withAuth<{ params: Promise<{ id: string }> }>(async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   try {
     const { id } = await params
     const body = await request.json()
@@ -102,13 +103,13 @@ export async function PATCH(
       { status: 500 }
     )
   }
-}
+})
 
 // DELETE /api/orders/[id] - Delete order
-export async function DELETE(
+export const DELETE = withAuth<{ params: Promise<{ id: string }> }>(async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   try {
     const { id } = await params
     await deleteOrder(id)
@@ -120,4 +121,4 @@ export async function DELETE(
       { status: 500 }
     )
   }
-}
+})

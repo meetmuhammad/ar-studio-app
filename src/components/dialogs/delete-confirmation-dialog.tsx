@@ -12,6 +12,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Loader2 } from "lucide-react"
+import { buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 interface DeleteConfirmationDialogProps {
   open: boolean
@@ -35,8 +37,9 @@ export function DeleteConfirmationDialog({
     try {
       await onConfirm()
       onOpenChange(false)
-    } catch (error) {
-      // Error handling is done in parent component
+    } catch {
+      // The caller owns error reporting; the dialog stays open so the row the
+      // user was acting on is still in front of them.
     } finally {
       setIsDeleting(false)
     }
@@ -54,10 +57,14 @@ export function DeleteConfirmationDialog({
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={isDeleting}
-            className="bg-red-600 hover:bg-red-700"
+            // Was bg-red-600/700 — a raw palette pair that ignored the theme and
+            // sat outside the token system in both light and dark.
+            className={cn(buttonVariants({ variant: "destructive" }))}
           >
-            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Delete
+            {isDeleting ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : null}
+            {isDeleting ? "Deleting…" : "Delete"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

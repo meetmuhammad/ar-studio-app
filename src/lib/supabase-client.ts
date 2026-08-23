@@ -1,17 +1,23 @@
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-// Client-side Supabase client (for browser usage)
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-    flowType: 'pkce'
-  }
-})
+// The one browser Supabase client. Do not add another.
+//
+// This MUST be createBrowserClient from @supabase/ssr, not createClient from
+// @supabase/supabase-js. createClient stores the session in localStorage, which
+// the server cannot read: createServerSupabaseClient() in ./supabase.ts reads
+// the session from cookies via next/headers. With createClient, a user signs in
+// successfully in the browser while every server-side check sees an anonymous
+// request -- so any future route guard would reject legitimately signed-in
+// users, and the client-side RouteGuard would keep the UI up, making it present
+// as a data outage rather than an auth failure.
+//
+// createBrowserClient writes the session to cookies that the server reads, and
+// already defaults to autoRefreshToken, persistSession, detectSessionInUrl and
+// the PKCE flow -- the options block this replaces was restating those defaults.
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey)
 
 // Database types
 export interface Customer {

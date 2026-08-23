@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Plus, Eye, Edit, Trash2, Search } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Building2, Edit, Plus, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
+
 import { RoleGuard } from '@/components/auth/role-guard'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import {
   Table,
   TableBody,
@@ -15,74 +15,77 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import type { Vendor } from '@/lib/supabase-client'
-import { toast } from 'sonner'
 import { VendorDialog } from '@/components/dialogs/vendor-dialog'
+import { DeleteConfirmationDialog } from '@/components/dialogs/delete-confirmation-dialog'
+import { PageHeader } from '@/components/dashboard/page-header'
+import { SearchInput } from '@/components/dashboard/search-input'
+import { TableSkeleton } from '@/components/dashboard/table-skeleton'
+import { EmptyState } from '@/components/dashboard/empty-state'
+import { ErrorState } from '@/components/dashboard/error-state'
+import {
+  SectionCard,
+  SectionCardContent,
+  SectionCardHeader,
+  SectionCardTitle,
+} from '@/components/dashboard/section-card'
+import type { Vendor } from '@/lib/supabase-client'
 
 export default function VendorsPage() {
   const router = useRouter()
   const [vendors, setVendors] = useState<Vendor[]>([])
-  const [filteredVendors, setFilteredVendors] = useState<Vendor[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null)
+  const [deletingVendor, setDeletingVendor] = useState<Vendor | null>(null)
 
   useEffect(() => {
     fetchVendors()
   }, [])
 
-  useEffect(() => {
-    // Filter vendors based on search query
-    if (!searchQuery.trim()) {
-      setFilteredVendors(vendors)
-    } else {
-      const query = searchQuery.toLowerCase()
-      const filtered = vendors.filter(vendor => 
-        vendor.name.toLowerCase().includes(query) ||
-        (vendor.notes && vendor.notes.toLowerCase().includes(query)) ||
-        (vendor.contact_person && vendor.contact_person.toLowerCase().includes(query)) ||
-        (vendor.phone && vendor.phone.toLowerCase().includes(query))
+  // Derived, not mirrored into state: the previous copy in a second useState
+  // rendered one frame behind the query on every keystroke.
+  const filteredVendors = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return vendors
+
+    return vendors.filter((vendor) =>
+      [vendor.name, vendor.notes, vendor.contact_person, vendor.phone].some((field) =>
+        field?.toLowerCase().includes(query)
       )
-      setFilteredVendors(filtered)
-    }
+    )
   }, [searchQuery, vendors])
 
   const fetchVendors = async () => {
+    setIsLoading(true)
+    setLoadError(null)
     try {
       const response = await fetch('/api/vendors')
       if (!response.ok) throw new Error('Failed to fetch vendors')
-      const data = await response.json()
-      setVendors(data)
+      setVendors(await response.json())
     } catch (error) {
       console.error('Error fetching vendors:', error)
-      toast.error('Failed to load vendors')
+      // Held in state as well as toasted: a toast is gone in seconds and the
+      // page behind it used to look like a studio with no vendors.
+      setLoadError(error instanceof Error ? error.message : 'Failed to load vendors')
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleEdit = (vendor: Vendor) => {
-    setEditingVendor(vendor)
-    setDialogOpen(true)
-  }
+  const handleDelete = async () => {
+    if (!deletingVendor) return
 
-  const handleDelete = async (vendor: Vendor) => {
-    if (!confirm(`Are you sure you want to delete ${vendor.name}?`)) return
-
-    try {
-      const response = await fetch(`/api/vendors/${vendor.id}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) throw new Error('Failed to delete vendor')
-
-      toast.success('Vendor deleted successfully')
-      fetchVendors()
-    } catch (error) {
-      console.error('Error deleting vendor:', error)
+    const response = await fetch(`/api/vendors/${deletingVendor.id}`, { method: 'DELETE' })
+    if (!response.ok) {
       toast.error('Failed to delete vendor')
+      throw new Error('Failed to delete vendor')
     }
+
+    toast.success(`Deleted ${deletingVendor.name}`)
+    setDeletingVendor(null)
+    fetchVendors()
   }
 
   const handleCloseDialog = () => {
@@ -90,116 +93,164 @@ export default function VendorsPage() {
     setEditingVendor(null)
   }
 
-  if (isLoading) {
-    return (
-      <RoleGuard allowedRoles={['admin']}>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Vendors</h1>
-        </div>
-        <div className="text-center py-12">Loading vendors...</div>
-      </div>
-      </RoleGuard>
-    )
-  }
-
   return (
     <RoleGuard allowedRoles={['admin']}>
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Vendors</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your vendors and supplier relationships
-          </p>
-        </div>
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Vendor
-        </Button>
-      </div>
-
-      {/* Search Bar */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search vendors by name, notes, contact, or phone..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
+      <div className="mx-auto max-w-[1600px] space-y-6">
+        <PageHeader
+          title="Vendors"
+          description="Suppliers you buy from and the ledger you keep with each"
+          actions={
+            <Button size="sm" onClick={() => setDialogOpen(true)}>
+              <Plus className="size-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Add Vendor</span>
+              <span className="sm:hidden">Add</span>
+            </Button>
+          }
         />
-      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>All Vendors ({filteredVendors.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredVendors.map((vendor) => (
-                <TableRow key={vendor.id}>
-                  <TableCell className="font-medium">{vendor.name}</TableCell>
-                  <TableCell className="max-w-md">{vendor.notes || '-'}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
+        <SearchInput
+          value={searchQuery}
+          onValueChange={setSearchQuery}
+          label="Search vendors"
+          placeholder="Search by name, contact, phone, or notes…"
+        />
+
+        {loadError ? (
+          <ErrorState
+            title="Couldn't load vendors"
+            detail={loadError}
+            onRetry={fetchVendors}
+          />
+        ) : isLoading ? (
+          <TableSkeleton columns={3} rows={6} />
+        ) : (
+          <SectionCard>
+            <SectionCardHeader>
+              <SectionCardTitle className="text-base">
+                All Vendors{' '}
+                <span className="font-mono text-sm font-normal tabular-nums text-muted-foreground">
+                  ({filteredVendors.length})
+                </span>
+              </SectionCardTitle>
+            </SectionCardHeader>
+
+            <SectionCardContent>
+              {filteredVendors.length === 0 ? (
+                <EmptyState
+                  icon={Building2}
+                  message={
+                    searchQuery ? 'No vendors match your search' : 'No vendors yet'
+                  }
+                  action={
+                    searchQuery ? (
+                      <Button variant="outline" size="sm" onClick={() => setSearchQuery('')}>
+                        Clear search
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+                        <Plus className="size-4" aria-hidden="true" />
+                        Add the first vendor
+                      </Button>
+                    )
+                  }
+                />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Contact</TableHead>
+                      <TableHead>Notes</TableHead>
+                      <TableHead className="text-right">
+                        <span className="sr-only">Actions</span>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredVendors.map((vendor) => (
+                      <TableRow
+                        key={vendor.id}
+                        className="cursor-pointer"
                         onClick={() => router.push(`/vendors/${vendor.id}`)}
                       >
-                        <Eye className="h-4 w-4 mr-2" />
-                        View Ledger
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(vendor)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(vendor)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                        <TableCell className="font-medium">{vendor.name}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {vendor.contact_person ? (
+                            <div className="text-sm">{vendor.contact_person}</div>
+                          ) : null}
+                          {vendor.phone ? (
+                            <div className="font-mono text-xs tabular-nums">{vendor.phone}</div>
+                          ) : null}
+                          {!vendor.contact_person && !vendor.phone ? '—' : null}
+                        </TableCell>
+                        <TableCell className="max-w-md text-muted-foreground">
+                          {vendor.notes || '—'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div
+                            className="flex justify-end gap-1"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => router.push(`/vendors/${vendor.id}`)}
+                            >
+                              <span className="hidden sm:inline">View ledger</span>
+                              <span className="sm:hidden">Ledger</span>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Edit ${vendor.name}`}
+                              onClick={() => {
+                                setEditingVendor(vendor)
+                                setDialogOpen(true)
+                              }}
+                            >
+                              <Edit className="size-4" aria-hidden="true" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Delete ${vendor.name}`}
+                              onClick={() => setDeletingVendor(vendor)}
+                              className="text-muted-foreground hover:text-destructive-text"
+                            >
+                              <Trash2 className="size-4" aria-hidden="true" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </SectionCardContent>
+          </SectionCard>
+        )}
 
-          {filteredVendors.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">
-                {searchQuery ? 'No vendors match your search' : 'No vendors found'}
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        <VendorDialog
+          open={dialogOpen}
+          onOpenChange={handleCloseDialog}
+          vendor={editingVendor}
+          onSuccess={() => {
+            toast.success(editingVendor ? 'Vendor updated' : 'Vendor created')
+            handleCloseDialog()
+            fetchVendors()
+          }}
+        />
 
-      <VendorDialog
-        open={dialogOpen}
-        onOpenChange={handleCloseDialog}
-        vendor={editingVendor}
-        onSuccess={() => {
-          toast.success(editingVendor ? 'Vendor updated successfully' : 'Vendor created successfully')
-          handleCloseDialog()
-          fetchVendors()
-        }}
-      />
-    </div>
+        <DeleteConfirmationDialog
+          open={Boolean(deletingVendor)}
+          onOpenChange={(open) => {
+            if (!open) setDeletingVendor(null)
+          }}
+          title="Delete vendor"
+          description={`Delete ${deletingVendor?.name ?? 'this vendor'}? Their ledger history goes with them. This cannot be undone.`}
+          onConfirm={handleDelete}
+        />
+      </div>
     </RoleGuard>
   )
 }

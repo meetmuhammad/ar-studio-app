@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ArrowUpDown, MoreHorizontal, Edit, Trash2, Star } from "lucide-react";
 import { Measurement } from "@/types/measurements";
+import { formatDate } from "@/lib/format";
 
 interface MeasurementColumnsProps {
   onEdit: (measurement: Measurement) => void;
@@ -90,8 +91,13 @@ export const createMeasurementColumns = ({
       );
     },
     cell: ({ row }) => {
-      const date = new Date(row.getValue("created_at"));
-      return <div className="text-sm">{date.toLocaleDateString()}</div>;
+      // formatDate, not toLocaleDateString(): the bare call rendered "8/18/2026"
+      // beside "Aug 18, 2026" everywhere else in the studio.
+      return (
+        <div className="font-mono text-xs tabular-nums">
+          {formatDate(row.getValue("created_at"))}
+        </div>
+      );
     },
   },
   {

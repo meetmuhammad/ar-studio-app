@@ -50,9 +50,9 @@ function CustomerActions({ customer, onEdit, onDelete }: CustomerActionsProps) {
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => onDelete(customer)}
-          className="text-red-600"
+          className="text-destructive-text focus:text-destructive-text"
         >
-          <Trash className="mr-2 h-4 w-4" />
+          <Trash className="mr-2 size-4" aria-hidden="true" />
           Delete customer
         </DropdownMenuItem>
       </DropdownMenuContent>

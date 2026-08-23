@@ -1,8 +1,9 @@
+import { withAdmin } from '@/lib/api-auth'
 import { NextResponse } from 'next/server'
 import { getAllOrdersSimple } from '@/lib/database'
 
 // GET /api/orders/all - Get all orders (simplified, for dropdowns)
-export async function GET() {
+export const GET = withAdmin(async () => {
   try {
     const orders = await getAllOrdersSimple()
     return NextResponse.json({ data: orders })
@@ -13,4 +14,4 @@ export async function GET() {
       { status: 500 }
     )
   }
-}
+})

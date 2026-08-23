@@ -1,8 +1,9 @@
+import { withAdmin } from '@/lib/api-auth'
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 
 // GET /api/vendor-tags?vendor_id={id} - Get tags for a vendor
-export async function GET(request: Request) {
+export const GET = withAdmin(async (request: Request) => {
   try {
     const supabase = createAdminSupabaseClient()
     const { searchParams } = new URL(request.url)
@@ -37,10 +38,10 @@ export async function GET(request: Request) {
       { status: 500 }
     )
   }
-}
+})
 
 // POST /api/vendor-tags - Create new tag
-export async function POST(request: Request) {
+export const POST = withAdmin(async (request: Request) => {
   try {
     const supabase = createAdminSupabaseClient()
     const body = await request.json()
@@ -85,4 +86,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
+})

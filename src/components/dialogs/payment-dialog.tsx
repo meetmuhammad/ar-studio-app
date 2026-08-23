@@ -388,22 +388,22 @@ export function PaymentDialog({
                               <TableCell className="font-mono text-sm">
                                 {format(new Date(selectedOrder.booking_date), 'MMM d, yyyy')}
                               </TableCell>
-                              <TableCell className="font-medium text-green-700">Advance Payment</TableCell>
-                              <TableCell className="text-right font-mono text-green-700">
+                              <TableCell className="font-medium">Advance Payment</TableCell>
+                              <TableCell className="text-right font-mono tabular-nums text-success-text">
                                 -{(selectedOrder.advance_paid || 0).toFixed(2)}
                               </TableCell>
                             </TableRow>
                           )}
                           {/* Show additional payments */}
                           {payments.map((payment) => (
-                            <TableRow key={payment.id} className={editingPayment?.id === payment.id ? "bg-blue-50 dark:bg-blue-950" : ""}>
+                            <TableRow key={payment.id} className={editingPayment?.id === payment.id ? "bg-accent" : ""}>
                               <TableCell className="font-mono text-sm">
                                 {format(new Date(payment.payment_date), 'MMM d, yyyy')}
                               </TableCell>
-                              <TableCell className="font-medium text-green-700">
+                              <TableCell className="font-medium">
                                 {payment.notes || `Payment via ${payment.payment_method}`}
                               </TableCell>
-                              <TableCell className="text-right font-mono text-green-700">
+                              <TableCell className="text-right font-mono tabular-nums text-success-text">
                                 -{payment.amount.toFixed(2)}
                               </TableCell>
                               <TableCell className="text-right">
@@ -414,8 +414,9 @@ export function PaymentDialog({
                                     size="sm"
                                     onClick={() => handleEditPayment(payment)}
                                     disabled={isSubmitting}
+                                    aria-label="Edit this payment"
                                   >
-                                    <Edit className="h-4 w-4" />
+                                    <Edit className="size-4" aria-hidden="true" />
                                   </Button>
                                   <Button
                                     type="button"
@@ -423,9 +424,10 @@ export function PaymentDialog({
                                     size="sm"
                                     onClick={() => handleDeletePayment(payment.id)}
                                     disabled={isSubmitting}
-                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    aria-label="Delete this payment"
+                                    className="text-muted-foreground hover:bg-destructive-surface hover:text-destructive-text"
                                   >
-                                    <Trash2 className="h-4 w-4" />
+                                    <Trash2 className="size-4" aria-hidden="true" />
                                   </Button>
                                 </div>
                               </TableCell>
@@ -445,9 +447,9 @@ export function PaymentDialog({
                           <TableRow>
                             <TableCell></TableCell>
                             <TableCell className="font-bold">Balance Due</TableCell>
-                            <TableCell className={`text-right font-mono font-bold ${
-                              calculateBalance() > 0 ? 'text-orange-600' : 
-                              calculateBalance() < 0 ? 'text-red-600' : 'text-green-600'
+                            <TableCell className={`text-right font-mono font-bold tabular-nums ${
+                              calculateBalance() > 0 ? 'text-warning-text' :
+                              calculateBalance() < 0 ? 'text-destructive-text' : 'text-success-text'
                             }`}>
                               {calculateBalance().toFixed(2)}
                             </TableCell>

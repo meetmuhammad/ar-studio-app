@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/query-client'
+import { useAuth } from '@/contexts/auth-context'
 import type { 
   Customer, 
   OrderWithCustomer, 
@@ -30,7 +31,27 @@ export interface DashboardStatsResponse {
   chartData: Array<{ month: string; revenue: number }>
 }
 
+/**
+ * GET /api/dashboard-stats is withAdmin, so staff are refused by design. The
+ * refusal is correct but the request should never be made: RoleGuard sends
+ * staff to /customers from an effect, which cannot run until after the first
+ * render has already fired this query, so a staff sign-in landed on / and
+ * logged two console errors -- the 403 plus React Query's retry -- before the
+ * redirect took effect.
+ *
+ * Gating on the resolved role removes the request rather than the symptom. The
+ * API guard is untouched and just as strict; this only stops the client asking
+ * a question it already knows the answer to.
+ *
+ * `enabled` waits on `loading` as well as the role. Treating a not-yet-resolved
+ * user as "not admin" would be a permanent false negative -- the query is
+ * disabled on first render and nothing re-enables it -- so an admin would get
+ * an empty dashboard. Parking it until auth resolves keeps admin behaviour as
+ * it was.
+ */
 export function useDashboardStats() {
+  const { user, loading } = useAuth()
+
   return useQuery({
     queryKey: queryKeys.dashboard.stats,
     queryFn: async () => {
@@ -38,6 +59,7 @@ export function useDashboardStats() {
       if (!response.ok) throw new Error('Failed to fetch dashboard stats')
       return response.json() as Promise<DashboardStatsResponse>
     },
+    enabled: !loading && user?.role === 'admin',
   })
 }
 

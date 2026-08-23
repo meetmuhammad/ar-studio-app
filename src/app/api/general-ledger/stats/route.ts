@@ -1,8 +1,9 @@
+import { withAdmin } from '@/lib/api-auth'
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 
 // GET /api/general-ledger/stats - Get ledger statistics using lightweight queries
-export async function GET() {
+export const GET = withAdmin(async () => {
   try {
     const supabase = createAdminSupabaseClient()
 
@@ -38,7 +39,10 @@ export async function GET() {
       entryCount: countResult.count || 0,
     }, {
       headers: {
-        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
+        // Same shared-cache leak as /api/dashboard-stats -- see the note there.
+        // `public` let Vercel's edge serve these ledger totals to callers the
+        // withAdmin guard had never seen.
+        'Cache-Control': 'no-store',
       }
     })
   } catch (error) {
@@ -48,4 +52,4 @@ export async function GET() {
       { status: 500 }
     )
   }
-}
+})

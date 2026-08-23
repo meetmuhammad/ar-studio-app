@@ -1,8 +1,9 @@
+import { withAdmin } from '@/lib/api-auth'
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 
 // GET /api/vendors - List all vendors
-export async function GET() {
+export const GET = withAdmin(async () => {
   try {
     const supabase = createAdminSupabaseClient()
 
@@ -27,10 +28,10 @@ export async function GET() {
       { status: 500 }
     )
   }
-}
+})
 
 // POST /api/vendors - Create new vendor
-export async function POST(request: Request) {
+export const POST = withAdmin(async (request: Request) => {
   try {
     const supabase = createAdminSupabaseClient()
     const body = await request.json()
@@ -73,4 +74,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
+})

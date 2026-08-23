@@ -1,11 +1,12 @@
+import { withAdmin } from '@/lib/api-auth'
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 
 // GET /api/general-ledger/[id] - Get single entry
-export async function GET(
+export const GET = withAdmin<{ params: Promise<{ id: string }> }>(async (
   request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   try {
     const supabase = createAdminSupabaseClient()
     const { id } = await params
@@ -43,13 +44,13 @@ export async function GET(
       { status: 500 }
     )
   }
-}
+})
 
 // PUT /api/general-ledger/[id] - Update entry
-export async function PUT(
+export const PUT = withAdmin<{ params: Promise<{ id: string }> }>(async (
   request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   try {
     const supabase = createAdminSupabaseClient()
     const { id } = await params
@@ -150,13 +151,13 @@ export async function PUT(
       { status: 500 }
     )
   }
-}
+})
 
 // DELETE /api/general-ledger/[id] - Delete entry
-export async function DELETE(
+export const DELETE = withAdmin<{ params: Promise<{ id: string }> }>(async (
   request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   try {
     const supabase = createAdminSupabaseClient()
     const { id } = await params
@@ -194,4 +195,4 @@ export async function DELETE(
       { status: 500 }
     )
   }
-}
+})
