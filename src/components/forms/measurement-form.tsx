@@ -224,7 +224,7 @@ export function MeasurementForm({
                               field.key.includes('chest') || field.key.includes('waist') || field.key.includes('hip') || field.key.includes('pent') ? "100" :
                               field.key.includes('biceps') || field.key.includes('neck') || field.key.includes('knee') || field.key.includes('bottom') ? "30" :
                               field.key.includes('wrist') ? "20" :
-                              field.key.includes('turban') ? "25" : "60"
+                              field.key.includes('turban') ? "50" : "60"
                             }
                             placeholder="0.0"
                             {...formField}

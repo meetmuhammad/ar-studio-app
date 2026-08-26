@@ -18,9 +18,20 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type { GeneralLedgerWithRelations } from '@/lib/supabase-client'
 import { toast } from 'sonner'
-import { useLedgerEntries, useLedgerStats, useCreateLedgerEntry, useUpdateLedgerEntry, useDeleteLedgerEntry, useSyncOrderPayments } from '@/hooks/use-api'
+import { useLedgerEntries, useLedgerStats, useCreateLedgerEntry, useUpdateLedgerEntry, useDeleteLedgerEntry, useSyncOrderPayments, useVendorCategories } from '@/hooks/use-api'
+
+// Sentinel for "no filter" -- Radix Select cannot use an empty string as an
+// item value.
+const ALL_CATEGORIES = 'all'
 
 export default function LedgerPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -29,9 +40,12 @@ export default function LedgerPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
+  const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 20
   const debounceTimer = useRef<NodeJS.Timeout | null>(null)
+
+  const { data: categories = [] } = useVendorCategories()
 
   // React Query hooks
   const { data: entriesResult, isLoading, refetch: fetchData } = useLedgerEntries({
@@ -40,6 +54,9 @@ export default function LedgerPage() {
     search: debouncedSearch,
     startDate: dateFrom?.toISOString().split('T')[0],
     endDate: dateTo?.toISOString().split('T')[0],
+    // Filters by the LEDGER SNAPSHOT category, not the vendor's current
+    // category -- see supabase/migrations/20260827000000_vendor_categories.sql.
+    vendorCategoryId: categoryFilter === ALL_CATEGORIES ? undefined : categoryFilter,
   })
   const { data: stats = { totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 } } = useLedgerStats()
   const syncMutation = useSyncOrderPayments()
@@ -62,10 +79,10 @@ export default function LedgerPage() {
     }, 300)
   }
 
-  // Reset page when date filters change
+  // Reset page when date or category filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [dateFrom, dateTo])
+  }, [dateFrom, dateTo, categoryFilter])
 
   const syncOrderPayments = async () => {
     await syncMutation.mutateAsync()
@@ -92,7 +109,7 @@ export default function LedgerPage() {
   const exportToCSV = () => {
     try {
       // CSV headers
-      const headers = ['Date', 'Particulars', 'Type', 'Debit', 'Credit', 'Balance', 'Vendor', 'Order Number', 'Notes']
+      const headers = ['Date', 'Particulars', 'Type', 'Debit', 'Credit', 'Balance', 'Vendor', 'Vendor Category', 'Order Number', 'Notes']
       
       // Convert entries to CSV rows
       const rows = entries.map(entry => [
@@ -107,6 +124,9 @@ export default function LedgerPage() {
         entry.credit || 0,
         entry.calculatedBalance || entry.balance,
         entry.vendors?.name ? `"${entry.vendors.name.replace(/"/g, '""')}"` : '',
+        // The ledger SNAPSHOT category (what the books said when this row was
+        // written), not the vendor's current category.
+        entry.vendor_id ? `"${(entry.vendor_category_name || 'Uncategorised').replace(/"/g, '""')}"` : '',
         entry.orders?.order_number ? `"${entry.orders.order_number.replace(/"/g, '""')}"` : '',
         entry.notes ? `"${entry.notes.replace(/"/g, '""')}"` : '',
       ])
@@ -203,8 +223,8 @@ export default function LedgerPage() {
         </div>
       </div>
 
-      {/* Search and Date Range Filters */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_auto_auto]">
+      {/* Search, Category, and Date Range Filters */}
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_auto_auto_auto]">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -213,6 +233,22 @@ export default function LedgerPage() {
           onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-10"
           />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label className="text-sm text-muted-foreground whitespace-nowrap">Category</Label>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_CATEGORIES}>All categories</SelectItem>
+              {categories.map((category) => (
+                <SelectItem key={category.id} value={category.id}>
+                  {category.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex items-center gap-2">
           <Label className="text-sm text-muted-foreground whitespace-nowrap">From Date</Label>
@@ -333,6 +369,9 @@ export default function LedgerPage() {
                       {entry.vendors && (
                         <div className="text-xs text-muted-foreground">
                           Vendor: {entry.vendors.name}
+                          {/* Ledger SNAPSHOT category -- what the books said at the
+                              time, not the vendor's current category. */}
+                          {' · '}{entry.vendor_category_name || 'Uncategorised'}
                         </div>
                       )}
                       {entry.orders && (

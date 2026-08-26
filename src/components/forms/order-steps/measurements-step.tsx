@@ -152,8 +152,10 @@ export function OrderMeasurementsStep() {
           maxValue = 100
         } else if (field.key.includes('biceps') || field.key.includes('neck') || field.key.includes('knee') || field.key.includes('bottom')) {
           maxValue = 30
-        } else if (field.key.includes('wrist') || field.key.includes('turban')) {
+        } else if (field.key.includes('wrist')) {
           maxValue = 20
+        } else if (field.key.includes('turban')) {
+          maxValue = 50
         } else {
           maxValue = 60 // For shoulder, sleeves, cross_back, thigh etc.
         }
@@ -239,8 +241,10 @@ export function OrderMeasurementsStep() {
       maxValue = 100
     } else if (fieldKey.includes('biceps') || fieldKey.includes('neck') || fieldKey.includes('knee') || fieldKey.includes('bottom')) {
       maxValue = 30
-    } else if (fieldKey.includes('wrist') || fieldKey.includes('turban')) {
+    } else if (fieldKey.includes('wrist')) {
       maxValue = 20
+    } else if (fieldKey.includes('turban')) {
+      maxValue = 50
     } else {
       maxValue = 60 // For shoulder, sleeves, cross_back, thigh etc.
     }
@@ -455,6 +459,7 @@ export function OrderMeasurementsStep() {
                         field.key.includes('chest') || field.key.includes('waist') || field.key.includes('hip') || field.key.includes('thigh') ? 100 :
                         field.key.includes('neck') || field.key.includes('bicep') || field.key.includes('knee') || field.key.includes('calf') ? 30 :
                         field.key.includes('wrist') ? 15 :
+                        field.key.includes('turban') ? 50 :
                         field.key.includes('ankle') ? 20 : 100
                       
                       return (

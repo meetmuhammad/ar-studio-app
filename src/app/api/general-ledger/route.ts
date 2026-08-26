@@ -11,6 +11,11 @@ export async function GET(request: Request) {
     const endDate = searchParams.get('end_date')
     const entryType = searchParams.get('entry_type')
     const vendorId = searchParams.get('vendor_id')
+    // Filters by the LEDGER SNAPSHOT category (general_ledger.vendor_category_id),
+    // not the vendor's current category_id -- so a report for a past period
+    // still reflects what the books said at the time, even if the vendor has
+    // since been reclassified. See supabase/migrations/20260827000000_vendor_categories.sql.
+    const vendorCategoryId = searchParams.get('vendor_category_id')
     const search = searchParams.get('search')
     const page = parseInt(searchParams.get('page') || '0') // 0 = no pagination (legacy)
     const pageSize = parseInt(searchParams.get('pageSize') || '20')
@@ -37,6 +42,9 @@ export async function GET(request: Request) {
     }
     if (vendorId) {
       query = query.eq('vendor_id', vendorId)
+    }
+    if (vendorCategoryId) {
+      query = query.eq('vendor_category_id', vendorCategoryId)
     }
     if (search) {
       query = query.ilike('particulars', `%${search}%`)

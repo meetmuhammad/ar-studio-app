@@ -18,7 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import type { Vendor, GeneralLedgerWithRelations } from '@/lib/supabase-client'
+import type { VendorWithCategory, GeneralLedgerWithRelations } from '@/lib/supabase-client'
 import { toast } from 'sonner'
 import { VendorBillDialog } from '@/components/dialogs/vendor-bill-dialog'
 
@@ -27,7 +27,7 @@ export default function VendorLedgerPage() {
   const params = useParams()
   const vendorId = params.id as string
 
-  const [vendor, setVendor] = useState<Vendor | null>(null)
+  const [vendor, setVendor] = useState<VendorWithCategory | null>(null)
   const [entries, setEntries] = useState<any[]>([])
   const [filteredEntries, setFilteredEntries] = useState<any[]>([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -172,6 +172,9 @@ export default function VendorLedgerPage() {
             <div className="flex items-center gap-2">
               <Building2 className="h-6 w-6 text-muted-foreground" />
               <h1 className="text-3xl font-bold">{vendor.name}</h1>
+              {vendor.vendor_categories && (
+                <Badge variant="secondary">{vendor.vendor_categories.name}</Badge>
+              )}
             </div>
             <p className="text-muted-foreground mt-1">Vendor Ledger</p>
           </div>

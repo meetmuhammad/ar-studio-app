@@ -48,7 +48,39 @@ export async function GET(request: Request) {
   }
 }
 
-// POST /api/vendor-ledger - Create vendor bill (sub-ledger only, no main ledger entry)
+// POST /api/vendor-ledger - Create vendor bill
+//
+// Ported from feat/vendor-categories (commit 91bb9ab). This route used to
+// insert straight into vendor_ledger with `general_ledger_id: null` and a
+// comment reading "no link to general ledger" -- so a bill entered from a
+// vendor's sub-ledger screen existed only in vendor_ledger and never reached
+// general_ledger. Money recorded against a vendor was invisible in the main
+// books, and the running `balance` on that orphaned row was computed by hand
+// here, disconnected from the rest of the ledger.
+//
+// The other direction already keeps the two ledgers in sync: main's own
+// `POST /api/general-ledger` (src/app/api/general-ledger/route.ts) inserts
+// only into general_ledger and explicitly comments
+// "Vendor ledger entry is automatically created by database trigger
+// (trg_create_vendor_sub_ledger_entry) -- no need to create it here". That
+// trigger is not part of this port (no migration here creates or changes it);
+// it is existing infrastructure this route now relies on, the same way the
+// general-ledger route already does.
+//
+// Fix: write to general_ledger, the trigger mirrors the row into
+// vendor_ledger (balance included), and this route reads that mirrored row
+// back so the response contract (a vendor_ledger row) is unchanged.
+//
+// Direction: the caller speaks sub-ledger -- the bill form sends
+// `credit: amount` for "bill from vendor". The mirroring trigger inverts
+// (general-ledger credit -> vendor debit), so the general-ledger row must be
+// written inverted for the sub-ledger row to come back out the way the user
+// entered it.
+//
+// This cannot recurse or double-write: there is no vendor_ledger ->
+// general_ledger trigger, none is added here, and this route no longer
+// touches vendor_ledger directly at all. One insert yields exactly one
+// general_ledger row and exactly one vendor_ledger row.
 export async function POST(request: Request) {
   try {
     const supabase = createAdminSupabaseClient()
@@ -79,39 +111,40 @@ export async function POST(request: Request) {
       )
     }
 
-    // Get the last balance for this vendor
-    const { data: lastEntry } = await supabase
-      .from('vendor_ledger')
-      .select('balance')
-      .eq('vendor_id', vendor_id)
-      .order('entry_date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
-
-    const previousBalance = lastEntry?.balance || 0
-    const newBalance = previousBalance + (debit || 0) - (credit || 0)
-
-    // Create vendor_ledger entry only (no general ledger entry)
-    const { data: entry, error } = await supabase
-      .from('vendor_ledger')
+    const { data: ledgerEntry, error: ledgerError } = await supabase
+      .from('general_ledger')
       .insert({
-        vendor_id,
-        general_ledger_id: null, // No link to general ledger
         entry_date,
         particulars: particulars.trim(),
-        debit: debit || null,
-        credit: credit || null,
-        balance: newBalance,
+        debit: credit || null,   // sub-ledger credit -> general-ledger debit
+        credit: debit || null,   // sub-ledger debit  -> general-ledger credit
+        entry_type: 'vendor_payment',
+        vendor_id,
         notes: notes?.trim() || null,
       })
       .select()
       .single()
 
-    if (error) {
-      console.error('Error creating vendor ledger entry:', error)
+    if (ledgerError) {
+      console.error('Error creating general ledger entry:', ledgerError)
       return NextResponse.json(
         { error: 'Failed to create vendor ledger entry' },
+        { status: 500 }
+      )
+    }
+
+    // Return the vendor_ledger row the trigger produced -- callers of this
+    // endpoint expect the sub-ledger entry, and that contract is unchanged.
+    const { data: entry, error } = await supabase
+      .from('vendor_ledger')
+      .select('*')
+      .eq('general_ledger_id', ledgerEntry.id)
+      .single()
+
+    if (error || !entry) {
+      console.error('General ledger row created but no vendor_ledger row found:', error)
+      return NextResponse.json(
+        { error: 'Vendor ledger entry was not created' },
         { status: 500 }
       )
     }
