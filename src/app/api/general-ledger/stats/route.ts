@@ -31,6 +31,10 @@ export async function GET() {
     const totalCredit = entries.reduce((sum, entry) => sum + (entry.credit || 0), 0)
     const currentBalance = totalDebit - totalCredit
 
+    // Not CDN-cached: this is live financial data, and a public s-maxage here
+    // previously meant a client that correctly invalidated its own React
+    // Query cache (e.g. after deleting an entry) could still be served a
+    // stale response from Vercel's edge cache for up to 30-90s.
     return NextResponse.json({
       totalDebit,
       totalCredit,
@@ -38,7 +42,7 @@ export async function GET() {
       entryCount: countResult.count || 0,
     }, {
       headers: {
-        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
+        'Cache-Control': 'no-store',
       }
     })
   } catch (error) {

@@ -1,5 +1,6 @@
 "use client"
 
+import { useQueryClient } from "@tanstack/react-query"
 import {
   Dialog,
   DialogContent,
@@ -8,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { LedgerEntryForm } from "@/components/forms/ledger-entry-form"
+import { queryKeys } from "@/lib/query-client"
 import type { GeneralLedger } from "@/lib/supabase-client"
 
 interface LedgerEntryDialogProps {
@@ -23,6 +25,8 @@ export function LedgerEntryDialog({
   entry,
   onSuccess,
 }: LedgerEntryDialogProps) {
+  const queryClient = useQueryClient()
+
   const handleSubmit = async (data: any) => {
     const url = entry ? `/api/general-ledger/${entry.id}` : '/api/general-ledger'
     const method = entry ? 'PUT' : 'POST'
@@ -37,6 +41,13 @@ export function LedgerEntryDialog({
       const error = await response.json()
       throw new Error(error.error || 'Failed to create ledger entry')
     }
+
+    // This dialog posts with a raw fetch rather than the useCreateLedgerEntry /
+    // useUpdateLedgerEntry mutation hooks, so nothing else invalidates the
+    // React Query cache on success. Without this, the stat cards (useLedgerStats,
+    // staleTime 2 minutes) never learn a new/edited entry changed the totals --
+    // only the entries table refreshes, via the parent's onSuccess -> fetchData().
+    queryClient.invalidateQueries({ queryKey: queryKeys.ledger.all })
 
     onOpenChange(false)
     onSuccess?.()
