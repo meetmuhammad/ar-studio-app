@@ -11,20 +11,34 @@ export async function GET(request: Request) {
     const endDate = searchParams.get('end_date')
     const entryType = searchParams.get('entry_type')
     const vendorId = searchParams.get('vendor_id')
-    // Filters by the LEDGER SNAPSHOT category (general_ledger.vendor_category_id),
-    // not the vendor's current category_id -- so a report for a past period
-    // still reflects what the books said at the time, even if the vendor has
-    // since been reclassified. See supabase/migrations/20260827000000_vendor_categories.sql.
+    // Filters by the vendor's CURRENT category (vendors.category_id), not the
+    // per-row snapshot general_ledger.vendor_category_id.
+    //
+    // The snapshot columns are still written by the database triggers, but
+    // nothing reads them for filtering or display any more. Filtering on them
+    // meant a vendor classified AFTER its entries were written -- which is
+    // every vendor, since the category system postdates the books -- matched
+    // nothing at all: the snapshot is NULL on every historical row and no
+    // trigger backfills it when a vendor is reclassified. Reported as
+    // "assigned Employees to Ghazanfar, ledger filter finds nothing".
+    //
+    // Resolving through the vendor means the filter always agrees with the
+    // category shown on the vendors page, with no backfill to run and no
+    // production data to rewrite.
     const vendorCategoryId = searchParams.get('vendor_category_id')
     const search = searchParams.get('search')
     const page = parseInt(searchParams.get('page') || '0') // 0 = no pagination (legacy)
     const pageSize = parseInt(searchParams.get('pageSize') || '20')
 
+    // !inner only when filtering by category -- an inner join would otherwise
+    // drop every entry that has no vendor (order payments, direct expenses).
+    const vendorJoin = vendorCategoryId ? 'vendors!inner' : 'vendors'
+
     let query = supabase
       .from('general_ledger')
       .select(`
         *,
-        vendors (id, name),
+        ${vendorJoin} (id, name, category_id, vendor_categories (id, name)),
         orders (id, order_number),
         vendor_tags (id, tag_name)
       `, { count: 'exact' })
@@ -44,7 +58,7 @@ export async function GET(request: Request) {
       query = query.eq('vendor_id', vendorId)
     }
     if (vendorCategoryId) {
-      query = query.eq('vendor_category_id', vendorCategoryId)
+      query = query.eq('vendors.category_id', vendorCategoryId)
     }
     if (search) {
       query = query.ilike('particulars', `%${search}%`)

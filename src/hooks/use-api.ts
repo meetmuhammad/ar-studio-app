@@ -306,9 +306,7 @@ export function useLedgerEntries(params: LedgerQueryParams = {}) {
       if (search?.trim()) searchParams.set('search', search.trim())
       if (startDate) searchParams.set('start_date', startDate)
       if (endDate) searchParams.set('end_date', endDate)
-      // Filters by the LEDGER SNAPSHOT category (vendor_category_id stored on
-      // the row itself), not the vendor's current category -- see
-      // supabase/migrations/20260827000000_vendor_categories.sql.
+      // Resolved against the vendor's current category by the API route.
       if (vendorCategoryId) searchParams.set('vendor_category_id', vendorCategoryId)
       
       const response = await fetch(`/api/general-ledger?${searchParams}`)

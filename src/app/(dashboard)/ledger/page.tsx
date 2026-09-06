@@ -54,8 +54,6 @@ export default function LedgerPage() {
     search: debouncedSearch,
     startDate: dateFrom?.toISOString().split('T')[0],
     endDate: dateTo?.toISOString().split('T')[0],
-    // Filters by the LEDGER SNAPSHOT category, not the vendor's current
-    // category -- see supabase/migrations/20260827000000_vendor_categories.sql.
     vendorCategoryId: categoryFilter === ALL_CATEGORIES ? undefined : categoryFilter,
   })
   const { data: stats = { totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 } } = useLedgerStats()
@@ -124,9 +122,8 @@ export default function LedgerPage() {
         entry.credit || 0,
         entry.calculatedBalance || entry.balance,
         entry.vendors?.name ? `"${entry.vendors.name.replace(/"/g, '""')}"` : '',
-        // The ledger SNAPSHOT category (what the books said when this row was
-        // written), not the vendor's current category.
-        entry.vendor_id ? `"${(entry.vendor_category_name || 'Uncategorized').replace(/"/g, '""')}"` : '',
+        // The vendor's CURRENT category, matching what the filter selects on.
+        entry.vendor_id ? `"${(entry.vendors?.vendor_categories?.name || 'Uncategorized').replace(/"/g, '""')}"` : '',
         entry.orders?.order_number ? `"${entry.orders.order_number.replace(/"/g, '""')}"` : '',
         entry.notes ? `"${entry.notes.replace(/"/g, '""')}"` : '',
       ])
@@ -369,9 +366,7 @@ export default function LedgerPage() {
                       {entry.vendors && (
                         <div className="text-xs text-muted-foreground">
                           Vendor: {entry.vendors.name}
-                          {/* Ledger SNAPSHOT category -- what the books said at the
-                              time, not the vendor's current category. */}
-                          {' · '}{entry.vendor_category_name || 'Uncategorized'}
+                          {' · '}{entry.vendors?.vendor_categories?.name || 'Uncategorized'}
                         </div>
                       )}
                       {entry.orders && (

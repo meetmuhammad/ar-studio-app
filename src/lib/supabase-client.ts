@@ -129,10 +129,11 @@ export interface GeneralLedger {
   order_id?: string | null
   vendor_id?: string | null
   tag_id?: string | null
-  // Snapshot of the vendor's category at write time (see
-  // supabase/migrations/20260827000000_vendor_categories.sql). Deliberately
-  // NOT re-derived from vendors.category_id at read time -- that would
-  // silently rewrite history whenever a vendor is reclassified.
+  // Snapshot of the vendor's category at write time, still maintained by the
+  // database triggers but no longer read by the app: the ledger filter and the
+  // category shown against an entry both resolve through vendors.category_id
+  // instead, so reclassifying a vendor updates its whole history. Kept because
+  // dropping populated columns from production is destructive and buys nothing.
   vendor_category_id?: string | null
   vendor_category_name?: string | null
   created_at: string
@@ -140,7 +141,9 @@ export interface GeneralLedger {
 }
 
 export interface GeneralLedgerWithRelations extends GeneralLedger {
-  vendors?: Vendor | null
+  // Carries the vendor's CURRENT category -- the ledger filter and the category
+  // shown against an entry both resolve through this, not the snapshot columns.
+  vendors?: VendorWithCategory | null
   orders?: Order | null
   vendor_tags?: VendorTag | null
   calculatedBalance?: number // Client-side calculated balance for correct display order
