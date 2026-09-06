@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Eye, Edit, Trash2, Search } from 'lucide-react'
+import { Plus, Eye, Edit, Trash2, Search, Tags } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { RoleGuard } from '@/components/auth/role-guard'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import {
   Table,
   TableBody,
@@ -15,18 +16,20 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import type { Vendor } from '@/lib/supabase-client'
+import type { VendorWithCategory } from '@/lib/supabase-client'
 import { toast } from 'sonner'
 import { VendorDialog } from '@/components/dialogs/vendor-dialog'
+import { VendorCategoriesDialog } from '@/components/dialogs/vendor-categories-dialog'
 
 export default function VendorsPage() {
   const router = useRouter()
-  const [vendors, setVendors] = useState<Vendor[]>([])
-  const [filteredVendors, setFilteredVendors] = useState<Vendor[]>([])
+  const [vendors, setVendors] = useState<VendorWithCategory[]>([])
+  const [filteredVendors, setFilteredVendors] = useState<VendorWithCategory[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingVendor, setEditingVendor] = useState<Vendor | null>(null)
+  const [editingVendor, setEditingVendor] = useState<VendorWithCategory | null>(null)
+  const [categoriesDialogOpen, setCategoriesDialogOpen] = useState(false)
 
   useEffect(() => {
     fetchVendors()
@@ -62,12 +65,12 @@ export default function VendorsPage() {
     }
   }
 
-  const handleEdit = (vendor: Vendor) => {
+  const handleEdit = (vendor: VendorWithCategory) => {
     setEditingVendor(vendor)
     setDialogOpen(true)
   }
 
-  const handleDelete = async (vendor: Vendor) => {
+  const handleDelete = async (vendor: VendorWithCategory) => {
     if (!confirm(`Are you sure you want to delete ${vendor.name}?`)) return
 
     try {
@@ -113,10 +116,16 @@ export default function VendorsPage() {
             Manage your vendors and supplier relationships
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Vendor
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setCategoriesDialogOpen(true)}>
+            <Tags className="h-4 w-4 mr-2" />
+            Manage Categories
+          </Button>
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Vendor
+          </Button>
+        </div>
       </div>
 
       {/* Search Bar */}
@@ -139,6 +148,7 @@ export default function VendorsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
+                <TableHead>Category</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -147,6 +157,13 @@ export default function VendorsPage() {
               {filteredVendors.map((vendor) => (
                 <TableRow key={vendor.id}>
                   <TableCell className="font-medium">{vendor.name}</TableCell>
+                  <TableCell>
+                    {vendor.vendor_categories ? (
+                      <Badge variant="secondary">{vendor.vendor_categories.name}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">—</span>
+                    )}
+                  </TableCell>
                   <TableCell className="max-w-md">{vendor.notes || '-'}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -198,6 +215,11 @@ export default function VendorsPage() {
           handleCloseDialog()
           fetchVendors()
         }}
+      />
+
+      <VendorCategoriesDialog
+        open={categoriesDialogOpen}
+        onOpenChange={setCategoriesDialogOpen}
       />
     </div>
     </RoleGuard>

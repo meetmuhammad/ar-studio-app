@@ -15,7 +15,8 @@ export async function GET(
       .select(`
         *,
         vendor_tags (*),
-        vendor_ledger (*)
+        vendor_ledger (*),
+        vendor_categories (id, name, archived_at)
       `)
       .eq('id', id)
       .single()
@@ -54,7 +55,7 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
-    const { name, contact_person, phone, email, address, notes } = body
+    const { name, contact_person, phone, email, address, notes, category_id } = body
 
     if (!name || name.trim() === '') {
       return NextResponse.json(
@@ -72,6 +73,11 @@ export async function PUT(
         email: email?.trim() || null,
         address: address?.trim() || null,
         notes: notes?.trim() || null,
+        // Optional: null clears the category. Changing it only affects future
+        // ledger snapshots -- existing general_ledger rows keep whatever
+        // category they were written with (see the snapshot triggers in
+        // supabase/migrations/).
+        category_id: category_id || null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)

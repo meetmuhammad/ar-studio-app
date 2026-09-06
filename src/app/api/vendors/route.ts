@@ -8,7 +8,10 @@ export async function GET() {
 
     const { data: vendors, error } = await supabase
       .from('vendors')
-      .select('*')
+      .select(`
+        *,
+        vendor_categories (id, name, archived_at)
+      `)
       .order('name', { ascending: true })
 
     if (error) {
@@ -35,7 +38,7 @@ export async function POST(request: Request) {
     const supabase = createAdminSupabaseClient()
     const body = await request.json()
 
-    const { name, contact_person, phone, email, address, notes } = body
+    const { name, contact_person, phone, email, address, notes, category_id } = body
 
     if (!name || name.trim() === '') {
       return NextResponse.json(
@@ -53,6 +56,8 @@ export async function POST(request: Request) {
         email: email?.trim() || null,
         address: address?.trim() || null,
         notes: notes?.trim() || null,
+        // Optional: every vendor may have ONE primary accounting category.
+        category_id: category_id || null,
       })
       .select()
       .single()

@@ -5,7 +5,9 @@ import type {
   OrderWithCustomer, 
   GeneralLedgerWithRelations,
   Vendor,
-  VendorWithLedger 
+  VendorWithLedger,
+  VendorCategory,
+  VendorWithCategory
 } from '@/lib/supabase-client'
 import { toast } from 'sonner'
 
@@ -289,12 +291,13 @@ interface LedgerQueryParams {
   search?: string
   startDate?: string
   endDate?: string
+  vendorCategoryId?: string
 }
 
 export function useLedgerEntries(params: LedgerQueryParams = {}) {
-  const { page = 1, pageSize = 20, search, startDate, endDate } = params
+  const { page = 1, pageSize = 20, search, startDate, endDate, vendorCategoryId } = params
   return useQuery({
-    queryKey: queryKeys.ledger.entries({ page, pageSize, search, startDate, endDate }),
+    queryKey: queryKeys.ledger.entries({ page, pageSize, search, startDate, endDate, vendorCategoryId }),
     queryFn: async () => {
       const searchParams = new URLSearchParams({
         page: page.toString(),
@@ -303,6 +306,10 @@ export function useLedgerEntries(params: LedgerQueryParams = {}) {
       if (search?.trim()) searchParams.set('search', search.trim())
       if (startDate) searchParams.set('start_date', startDate)
       if (endDate) searchParams.set('end_date', endDate)
+      // Filters by the LEDGER SNAPSHOT category (vendor_category_id stored on
+      // the row itself), not the vendor's current category -- see
+      // supabase/migrations/20260827000000_vendor_categories.sql.
+      if (vendorCategoryId) searchParams.set('vendor_category_id', vendorCategoryId)
       
       const response = await fetch(`/api/general-ledger?${searchParams}`)
       if (!response.ok) throw new Error('Failed to fetch ledger entries')
@@ -434,7 +441,7 @@ export function useVendors() {
     queryFn: async () => {
       const response = await fetch('/api/vendors')
       if (!response.ok) throw new Error('Failed to fetch vendors')
-      return response.json() as Promise<Vendor[]>
+      return response.json() as Promise<VendorWithCategory[]>
     },
   })
 }
@@ -520,6 +527,102 @@ export function useDeleteVendor() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.vendors.all })
       toast.success('Vendor deleted successfully')
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
+// =============================================================================
+// VENDOR CATEGORIES
+// =============================================================================
+
+export function useVendorCategories(includeArchived = false) {
+  return useQuery({
+    queryKey: queryKeys.vendorCategories.list(includeArchived),
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/vendor-categories${includeArchived ? '?include_archived=1' : ''}`
+      )
+      if (!response.ok) throw new Error('Failed to fetch vendor categories')
+      return response.json() as Promise<VendorCategory[]>
+    },
+  })
+}
+
+export function useCreateVendorCategory() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (name: string) => {
+      const response = await fetch('/api/vendor-categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to create category')
+      }
+      return response.json() as Promise<VendorCategory>
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.vendorCategories.all })
+      toast.success('Category created successfully')
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
+// Covers both rename ({ id, name }) and archive/unarchive ({ id, archived }).
+export function useUpdateVendorCategory() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ id, name, archived }: { id: string; name?: string; archived?: boolean }) => {
+      const response = await fetch(`/api/vendor-categories/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, archived }),
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to update category')
+      }
+      return response.json() as Promise<VendorCategory>
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.vendorCategories.all })
+      // A rename/archive can change what vendors/ledger rows display.
+      queryClient.invalidateQueries({ queryKey: queryKeys.vendors.all })
+      toast.success('Category updated successfully')
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
+export function useDeleteVendorCategory() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/vendor-categories/${id}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to delete category')
+      }
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.vendorCategories.all })
+      toast.success('Category deleted successfully')
     },
     onError: (error: Error) => {
       toast.error(error.message)

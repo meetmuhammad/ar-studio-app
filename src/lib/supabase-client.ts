@@ -89,6 +89,18 @@ export interface Vendor {
   email?: string | null
   address?: string | null
   notes?: string | null
+  category_id?: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Global, controlled accounting classification for vendors. Distinct from
+// VendorTag: a tag is a free-text label a vendor may have many of; a category
+// is one classification chosen from this globally managed list.
+export interface VendorCategory {
+  id: string
+  name: string
+  archived_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -99,6 +111,10 @@ export interface VendorTag {
   tag_name: string
   created_at: string
   updated_at: string
+}
+
+export interface VendorWithCategory extends Vendor {
+  vendor_categories?: VendorCategory | null
 }
 
 export interface GeneralLedger {
@@ -113,6 +129,12 @@ export interface GeneralLedger {
   order_id?: string | null
   vendor_id?: string | null
   tag_id?: string | null
+  // Snapshot of the vendor's category at write time (see
+  // supabase/migrations/20260827000000_vendor_categories.sql). Deliberately
+  // NOT re-derived from vendors.category_id at read time -- that would
+  // silently rewrite history whenever a vendor is reclassified.
+  vendor_category_id?: string | null
+  vendor_category_name?: string | null
   created_at: string
   updated_at: string
 }
