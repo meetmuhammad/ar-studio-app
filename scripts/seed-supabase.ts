@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { faker } from '@faker-js/faker'
+import { assertWritableDb } from './assert-writable-db'
+
+assertWritableDb('seed')
 
 // Make sure to set these environment variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!

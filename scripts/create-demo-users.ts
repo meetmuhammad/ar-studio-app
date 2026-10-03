@@ -6,6 +6,9 @@ import { resolve } from 'path'
 config({ path: resolve(__dirname, '../.env') })
 
 import { createClient } from '@supabase/supabase-js'
+import { assertWritableDb } from './assert-writable-db'
+
+assertWritableDb('create-demo-users')
 
 // Create admin client directly
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
