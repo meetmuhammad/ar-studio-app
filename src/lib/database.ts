@@ -186,6 +186,12 @@ export async function deleteCustomer(id: string): Promise<void> {
 }
 
 // Order operations
+// PostgREST splits an or() on commas and closes it on a paren, so an
+// unquoted search term containing either produces a filter that is either
+// malformed or quietly wrong. Quoting makes the value literal; inside quotes
+// only the quote and the backslash still need escaping.
+const pgLiteral = (value: string) => `"${value.replace(/["\\]/g, '\\$&')}"`
+
 export async function getOrders({
   q,
   customerId,
@@ -244,8 +250,28 @@ export async function getOrders({
     `, { count: 'exact' })
 
   // Add filters
-  if (q) {
-    query = query.or(`order_number.like.%${q}%,customers.name.ilike.%${q}%,customers.phone.like.%${q}%`)
+  if (q?.trim()) {
+    const term = q.trim()
+
+    // Customer name and phone live on an embedded table, and PostgREST cannot
+    // reference an embedded column from a top-level or() -- it fails to parse
+    // the logic tree and the whole request 400s, which is why searching used
+    // to return nothing at all rather than just missing those matches.
+    // Resolving the customers first keeps the orders filter to columns orders
+    // actually has.
+    const { data: matches } = await supabase
+      .from('customers')
+      .select('id')
+      .or(`name.ilike.${pgLiteral(`%${term}%`)},phone.ilike.${pgLiteral(`%${term}%`)}`)
+      // ponytail: 1000 customers is far past this studio's book; raise it or
+      // move the search into a Postgres function if that stops being true.
+      .limit(1000)
+
+    const clauses = [`order_number.ilike.${pgLiteral(`%${term}%`)}`]
+    if (matches?.length) {
+      clauses.push(`customer_id.in.(${matches.map((c) => c.id).join(',')})`)
+    }
+    query = query.or(clauses.join(','))
   }
 
   if (customerId) {
