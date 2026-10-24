@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge'
 import type { VendorWithCategory, GeneralLedgerWithRelations } from '@/lib/supabase-client'
 import { toast } from 'sonner'
 import { VendorBillDialog } from '@/components/dialogs/vendor-bill-dialog'
+import { authFetch } from '@/lib/auth-fetch'
 
 export default function VendorLedgerPage() {
   const router = useRouter()
@@ -83,7 +84,7 @@ export default function VendorLedgerPage() {
     try {
       const [vendorRes, entriesRes] = await Promise.all([
         fetch(`/api/vendors/${vendorId}`),
-        fetch(`/api/vendor-ledger?vendor_id=${vendorId}`),
+        authFetch(`/api/vendor-ledger?vendor_id=${vendorId}`),
       ])
 
       if (!vendorRes.ok || !entriesRes.ok) throw new Error('Failed to fetch data')

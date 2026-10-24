@@ -10,6 +10,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { CreateOrderInput } from '@/lib/validators'
 import { DashboardActionsProvider } from '@/contexts/dashboard-actions'
 import { toast } from 'sonner'
+import { authFetch } from '@/lib/auth-fetch'
 
 export default function DashboardLayout({
   children,
@@ -30,7 +31,7 @@ export default function DashboardLayout({
   // Handle create order
   const handleCreateOrder = async (data: CreateOrderInput) => {
     try {
-      const response = await fetch('/api/orders', {
+      const response = await authFetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),

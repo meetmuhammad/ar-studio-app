@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
+import { requireAdmin } from '@/lib/api-auth'
 
 // GET /api/general-ledger/[id] - Get single entry
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const supabase = createAdminSupabaseClient()
     const { id } = await params
@@ -50,6 +54,9 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const supabase = createAdminSupabaseClient()
     const { id } = await params
@@ -157,6 +164,9 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const supabase = createAdminSupabaseClient()
     const { id } = await params

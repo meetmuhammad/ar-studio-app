@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import type { Customer } from "@/lib/supabase-client"
+import { authFetch } from "@/lib/auth-fetch"
 
 interface CustomerOrder {
   id: string
@@ -58,7 +59,7 @@ export function CustomerDetailDialog({
 
     setLoading(true)
     try {
-      const response = await fetch(`/api/orders?customerId=${customer.id}&pageSize=100`)
+      const response = await authFetch(`/api/orders?customerId=${customer.id}&pageSize=100`)
       if (response.ok) {
         const data = await response.json()
         setOrders(data.data || [])

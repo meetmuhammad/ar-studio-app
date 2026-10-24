@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { authFetch } from "@/lib/auth-fetch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -81,7 +82,7 @@ export function OrderDetailsDialog({
   const fetchPayments = async (orderId: string) => {
     try {
       setLoadingPayments(true)
-      const response = await fetch(`/api/payments?order_id=${orderId}`)
+      const response = await authFetch(`/api/payments?order_id=${orderId}`)
       if (!response.ok) throw new Error('Failed to fetch payments')
       
       const data = await response.json()
@@ -152,7 +153,7 @@ export function OrderDetailsDialog({
 
     try {
       setIsSaving(true)
-      const response = await fetch(`/api/payments/${paymentId}`, {
+      const response = await authFetch(`/api/payments/${paymentId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount }),

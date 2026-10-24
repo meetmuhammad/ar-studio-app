@@ -15,8 +15,8 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1787780981.193627,
-    "ast_hash": "a72d143ad43aa994d0f20194d5a7af8a",
+    "mtime": 1792847943.1651435,
+    "ast_hash": "ac8312da76798c1e501c50a5c14293cb",
     "semantic_hash": ""
   },
   "postcss.config.mjs": {
@@ -45,8 +45,8 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/layout.tsx": {
-    "mtime": 1787018054.9905376,
-    "ast_hash": "67fb37e7f04fb466d30a7c5e2af108af",
+    "mtime": 1792798312.864206,
+    "ast_hash": "59d208dc9466274baf6d238a267ba21b",
     "semantic_hash": ""
   },
   "src/app/(dashboard)/ledger/page.tsx": {
@@ -70,8 +70,8 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/vendors/[id]/page.tsx": {
-    "mtime": 1788714251.5110688,
-    "ast_hash": "3e04e0322f13bbc23c5a22a1e043465d",
+    "mtime": 1792798321.105798,
+    "ast_hash": "d9ee0f5eb20ac9eb410d51385b56bb83",
     "semantic_hash": ""
   },
   "src/app/(dashboard)/vendors/page.tsx": {
@@ -100,23 +100,23 @@
     "semantic_hash": ""
   },
   "src/app/api/general-ledger/[id]/route.ts": {
-    "mtime": 1787780981.1953275,
-    "ast_hash": "5ace10c4fa36103cccf92f71a98ac49d",
+    "mtime": 1792798472.9303448,
+    "ast_hash": "efa4d7143234a6b552a4669078c99c2d",
     "semantic_hash": ""
   },
   "src/app/api/general-ledger/route.ts": {
-    "mtime": 1788715185.0810494,
-    "ast_hash": "6b725d57352a6dc507c8973f164d79eb",
+    "mtime": 1792799179.7890801,
+    "ast_hash": "5a0cd3d85c49f39f5f7fb48beb5b406c",
     "semantic_hash": ""
   },
   "src/app/api/general-ledger/stats/route.ts": {
-    "mtime": 1788713569.1566143,
-    "ast_hash": "fbf17e94f158105a43dd22d2672b7fca",
+    "mtime": 1792799200.543662,
+    "ast_hash": "40cd3f9cf98d8a06884a663552734804",
     "semantic_hash": ""
   },
   "src/app/api/general-ledger/sync-payments/route.ts": {
-    "mtime": 1787780981.1957066,
-    "ast_hash": "ed0f219699b2044e3c8e648c5bc1ec7d",
+    "mtime": 1792798488.293532,
+    "ast_hash": "3ebac699fc675f0275df60cbb94f92de",
     "semantic_hash": ""
   },
   "src/app/api/measurements/[id]/route.ts": {
@@ -130,28 +130,28 @@
     "semantic_hash": ""
   },
   "src/app/api/orders/[id]/route.ts": {
-    "mtime": 1787780981.1960828,
-    "ast_hash": "1cf2de8e99a1621a373d0a2fabe129bc",
+    "mtime": 1792798589.3146982,
+    "ast_hash": "586e230f66314c9da2b13d60804e32e4",
     "semantic_hash": ""
   },
   "src/app/api/orders/all/route.ts": {
-    "mtime": 1787780981.1961813,
-    "ast_hash": "0514016e7539ab5290a4e807d3835eed",
+    "mtime": 1792798601.9642544,
+    "ast_hash": "1574ff20fd771234cf77d0a75b6bcfba",
     "semantic_hash": ""
   },
   "src/app/api/orders/route.ts": {
-    "mtime": 1787780981.1963093,
-    "ast_hash": "a49d057fd2c94d2eaf1bb82bfba1c7fc",
+    "mtime": 1792798567.603491,
+    "ast_hash": "33287716566d1b9a7515cbfad5954494",
     "semantic_hash": ""
   },
   "src/app/api/payments/[id]/route.ts": {
-    "mtime": 1787780981.196441,
-    "ast_hash": "35e618536deebedc4b2a581a2d135d6d",
+    "mtime": 1792798555.666693,
+    "ast_hash": "26a54ce1871b260734a128fdfb66a9c5",
     "semantic_hash": ""
   },
   "src/app/api/payments/route.ts": {
-    "mtime": 1787780981.1965654,
-    "ast_hash": "729aea96b06e6f922c2be98c5007e8c1",
+    "mtime": 1792798533.6423478,
+    "ast_hash": "4de679196fd7bf97f587198916bff0f7",
     "semantic_hash": ""
   },
   "src/app/api/vendor-categories/[id]/route.ts": {
@@ -165,8 +165,8 @@
     "semantic_hash": ""
   },
   "src/app/api/vendor-ledger/route.ts": {
-    "mtime": 1788713569.1567438,
-    "ast_hash": "98fe192b0fc3eed75316527b3bc8defb",
+    "mtime": 1792798501.9487958,
+    "ast_hash": "78a048c87681f5b8d85cb5d9f43f84a9",
     "semantic_hash": ""
   },
   "src/app/api/vendor-tags/[id]/route.ts": {
@@ -195,8 +195,8 @@
     "semantic_hash": ""
   },
   "src/app/sign-in/page.tsx": {
-    "mtime": 1787018054.996069,
-    "ast_hash": "9aa5dd6e807e819b2eef9f26374bd5ac",
+    "mtime": 1792844383.654345,
+    "ast_hash": "ef1ef386238e5ecca48a3b0cfd0fa753",
     "semantic_hash": ""
   },
   "src/components/auth/role-guard.tsx": {
@@ -275,8 +275,8 @@
     "semantic_hash": ""
   },
   "src/components/dialogs/customer-detail-dialog.tsx": {
-    "mtime": 1787780981.1979642,
-    "ast_hash": "46f39f0c6b7624e54ee9a2b86ca0bda0",
+    "mtime": 1792798347.227206,
+    "ast_hash": "c785a81063d36df7d01775182b20fca4",
     "semantic_hash": ""
   },
   "src/components/dialogs/customer-dialog.tsx": {
@@ -290,8 +290,8 @@
     "semantic_hash": ""
   },
   "src/components/dialogs/ledger-entry-dialog.tsx": {
-    "mtime": 1788713569.1571364,
-    "ast_hash": "8c6ed42bfb42592fc5ff9ff3bea58e21",
+    "mtime": 1792798327.772798,
+    "ast_hash": "1cbf1ac118577603cb7e7bd716c2c9aa",
     "semantic_hash": ""
   },
   "src/components/dialogs/measurement-select-dialog.tsx": {
@@ -300,8 +300,8 @@
     "semantic_hash": ""
   },
   "src/components/dialogs/order-details-dialog.tsx": {
-    "mtime": 1787780981.198072,
-    "ast_hash": "f21384cd6a837cdd3ee9604a811bb45c",
+    "mtime": 1792798376.4427261,
+    "ast_hash": "a813a2091dc8556a94c7d90de9ed0adc",
     "semantic_hash": ""
   },
   "src/components/dialogs/order-dialog.tsx": {
@@ -310,13 +310,13 @@
     "semantic_hash": ""
   },
   "src/components/dialogs/payment-dialog.tsx": {
-    "mtime": 1787428522.3964047,
-    "ast_hash": "c732b7f76ea939f76994cdeb07cc1a11",
+    "mtime": 1792798404.3362448,
+    "ast_hash": "3d6e4525acadbdf1a1a6b8b9740144a5",
     "semantic_hash": ""
   },
   "src/components/dialogs/vendor-bill-dialog.tsx": {
-    "mtime": 1787018054.999688,
-    "ast_hash": "c84bf289bbc4ed50e5c4972b87fc1528",
+    "mtime": 1792798336.4302475,
+    "ast_hash": "9b1bced5312fd527275b22f824929672",
     "semantic_hash": ""
   },
   "src/components/dialogs/vendor-categories-dialog.tsx": {
@@ -565,8 +565,8 @@
     "semantic_hash": ""
   },
   "src/hooks/use-api.ts": {
-    "mtime": 1788715207.2387648,
-    "ast_hash": "a6ea6b0e7f3fc079b444240767c773e2",
+    "mtime": 1792798282.869846,
+    "ast_hash": "a8e2082f390cea1667688c4d3ace3bbc",
     "semantic_hash": ""
   },
   "src/hooks/use-debounce.ts": {
@@ -580,8 +580,8 @@
     "semantic_hash": ""
   },
   "src/lib/api-auth.ts": {
-    "mtime": 1787780981.1995332,
-    "ast_hash": "3035b7296b393fa64b20b71b6716bee7",
+    "mtime": 1792797586.649779,
+    "ast_hash": "c15111b0796dad8b19e9f6864d55474f",
     "semantic_hash": ""
   },
   "src/lib/database.ts": {
@@ -625,8 +625,8 @@
     "semantic_hash": ""
   },
   "src/lib/validators.ts": {
-    "mtime": 1786834379.3440077,
-    "ast_hash": "66c41baefe880585685f7a603e271c27",
+    "mtime": 1792800298.5789964,
+    "ast_hash": "58440751ba69abe30ab0a154bd43bc5a",
     "semantic_hash": ""
   },
   "src/types/measurements.ts": {
@@ -722,6 +722,131 @@
   "supabase/migrations/20260827000300_vendor_category_uncategorized.sql": {
     "mtime": 1788714251.515203,
     "ast_hash": "dba75608e8356a77f98f9aa482762cbd",
+    "semantic_hash": ""
+  },
+  "scripts/ledger-mcp/normalize.check.ts": {
+    "mtime": 1792799701.871002,
+    "ast_hash": "dacd41de70b705292f5f48f04acb6529",
+    "semantic_hash": ""
+  },
+  "scripts/ledger-mcp/protocol.check.ts": {
+    "mtime": 1792848023.169507,
+    "ast_hash": "fb24c97ddc92752adc564f6079b89b7a",
+    "semantic_hash": ""
+  },
+  "scripts/security/api-auth.check.ts": {
+    "mtime": 1792798728.5321925,
+    "ast_hash": "acada26d0a376ddfc1adec9ce46a0904",
+    "semantic_hash": ""
+  },
+  "scripts/security/auth-fetch.check.ts": {
+    "mtime": 1792798778.801645,
+    "ast_hash": "37a215f05df5e61049cf1d59ce9d81a3",
+    "semantic_hash": ""
+  },
+  "scripts/security/capture-grants.sql": {
+    "mtime": 1792797652.4279528,
+    "ast_hash": "e5a8be5a9dfa5b890287479bb328f391",
+    "semantic_hash": ""
+  },
+  "scripts/security/db-privileges.check.ts": {
+    "mtime": 1792798167.9176164,
+    "ast_hash": "16340bb01addeeffb627a6c73ef67352",
+    "semantic_hash": ""
+  },
+  "scripts/security/support.ts": {
+    "mtime": 1792848703.326854,
+    "ast_hash": "8c6ca2864a49e4b88f35f7425d3f6a6a",
+    "semantic_hash": ""
+  },
+  "src/app/.well-known/oauth-protected-resource/api/mcp/route.ts": {
+    "mtime": 1792799644.2078428,
+    "ast_hash": "dd241254e7ac364fab86d2847ade9977",
+    "semantic_hash": ""
+  },
+  "src/app/api/mcp/route.ts": {
+    "mtime": 1792799636.2779732,
+    "ast_hash": "700c4f5d5b79388dc99950e3b9e59011",
+    "semantic_hash": ""
+  },
+  "src/lib/auth-fetch.ts": {
+    "mtime": 1792798179.1974583,
+    "ast_hash": "b724efc37f8704324ef7a21ece92353f",
+    "semantic_hash": ""
+  },
+  "src/lib/ledger-mcp/auth.ts": {
+    "mtime": 1792847893.3755,
+    "ast_hash": "03174595dc56296ee9529c9787bbc94a",
+    "semantic_hash": ""
+  },
+  "src/lib/ledger-mcp/config.ts": {
+    "mtime": 1792799623.765834,
+    "ast_hash": "a4584792a89545fa947a9faa18489fec",
+    "semantic_hash": ""
+  },
+  "src/lib/ledger-mcp/normalize.ts": {
+    "mtime": 1792799109.6268098,
+    "ast_hash": "0a8885b622888dacd5760244871f2aba",
+    "semantic_hash": ""
+  },
+  "src/lib/ledger-mcp/proposals.ts": {
+    "mtime": 1792799471.2796474,
+    "ast_hash": "c592bfa6cdd2340826519575ce15b5b4",
+    "semantic_hash": ""
+  },
+  "src/lib/ledger-mcp/server.ts": {
+    "mtime": 1792799977.1026542,
+    "ast_hash": "6c867dbbb6ffeebac0a086bc7051cb99",
+    "semantic_hash": ""
+  },
+  "src/lib/ledger-service.ts": {
+    "mtime": 1792799159.4683824,
+    "ast_hash": "49c565500b78225e504412b069b943d1",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20261024000000_close_role_escalation_and_ledger_direct_access.sql": {
+    "mtime": 1792797637.3623767,
+    "ast_hash": "8fa961be19fdc468cb970368edb6f86d",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20261024000100_ledger_mcp_proposals.sql": {
+    "mtime": 1792800677.103682,
+    "ast_hash": "56d42dd644d06e596cc51f4ba030b8aa",
+    "semantic_hash": ""
+  },
+  ".abide/compile-skill.md": {
+    "mtime": 1792795524.018446,
+    "ast_hash": "c8e8106037e9d5683353dcab1fa3b57c",
+    "semantic_hash": ""
+  },
+  "docs/LEDGER-MCP.md": {
+    "mtime": 1792800878.1224291,
+    "ast_hash": "8e9437acb8a5d19df98daa5922fc3923",
+    "semantic_hash": ""
+  },
+  "scripts/check-order-validators.ts": {
+    "mtime": 1792800390.0529213,
+    "ast_hash": "b7bcf917302fdaf25ceb0e909019df6d",
+    "semantic_hash": ""
+  },
+  "scripts/ledger-mcp/timezone.check.ts": {
+    "mtime": 1792848023.1696403,
+    "ast_hash": "adb5622538298453295242a116bfb787",
+    "semantic_hash": ""
+  },
+  "scripts/ledger-mcp/auth.check.ts": {
+    "mtime": 1792840913.569259,
+    "ast_hash": "54fbd3a5aa4955b107175f7ba687e571",
+    "semantic_hash": ""
+  },
+  "scripts/ledger-mcp/demo.ts": {
+    "mtime": 1792848759.4282331,
+    "ast_hash": "b35d890870dfbbdefa69b72484d2965f",
+    "semantic_hash": ""
+  },
+  "src/app/oauth/consent/page.tsx": {
+    "mtime": 1792847964.4247413,
+    "ast_hash": "1e996d895329391e6c816b6ebfcb73d9",
     "semantic_hash": ""
   }
 }

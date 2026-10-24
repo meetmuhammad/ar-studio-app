@@ -35,7 +35,12 @@ export const OrderItemSchema = z.object({
 export type OrderItem = z.infer<typeof OrderItemSchema>
 
 // Order schemas
-export const CreateOrderSchema = z.object({
+// The fields of an order, before any cross-field checks. Kept separate because
+// zod >= 4.2 refuses `.partial()` on a schema that has `.refine()` checks (the
+// MCP SDK requires zod >= 4.2). zod 4.1 allowed it but silently dropped every
+// check on the result, so UpdateOrderSchema below is built from this unrefined
+// base, which is exactly the validation updates have always had.
+const CreateOrderFields = z.object({
   customerId: z.string().uuid("Please select a customer"),
   bookingDate: z.date(),
   deliveryDate: z.date(), // Now mandatory
@@ -73,7 +78,9 @@ export const CreateOrderSchema = z.object({
   measurementId: z.string().uuid().optional(),
   // Fitting preferences moved to separate field
   fittingPreferences: z.string().max(1000, "Fitting preferences too long").optional().or(z.literal(""))
-}).refine((data) => {
+})
+
+export const CreateOrderSchema = CreateOrderFields.refine((data) => {
   // Delivery date must be on or after booking date
   return data.deliveryDate >= data.bookingDate
 }, {
@@ -101,7 +108,7 @@ export const CreateOrderSchema = z.object({
   path: ["orderItems"]
 })
 
-export const UpdateOrderSchema = CreateOrderSchema.partial().extend({
+export const UpdateOrderSchema = CreateOrderFields.partial().extend({
   orderNumber: z.string().optional() // Allow order number on updates but don't require it
 })
 
