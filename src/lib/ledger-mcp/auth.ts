@@ -53,7 +53,7 @@ export function createLedgerVerifier(p: VerifierPolicy): OAuthTokenVerifier {
       const role = await p.roleOf(claims.sub)
       if (role !== 'admin') throw new OAuthError(OAuthErrorCode.InsufficientScope, 'The ledger is available to admin users only')
 
-      return { token, clientId, scopes: ['ledger'], expiresAt: claims.exp, resource: new URL(p.audience), extra: { userId: claims.sub, role } }
+      return { token, clientId, scopes: [], expiresAt: claims.exp, resource: new URL(p.audience), extra: { userId: claims.sub, role } }
     },
   }
 }

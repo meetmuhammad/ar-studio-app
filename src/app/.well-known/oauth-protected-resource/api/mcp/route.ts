@@ -17,7 +17,7 @@ export async function GET() {
       resource: mcpResourceUrl(base).toString(),
       authorization_servers: [authorizationServer()],
       bearer_methods_supported: ['header'],
-      scopes_supported: ['ledger'],
+      scopes_supported: ['openid', 'email', 'profile'],
       resource_name: 'AR Studio ledger',
     },
     { headers: { 'Cache-Control': 'public, max-age=300' } },
