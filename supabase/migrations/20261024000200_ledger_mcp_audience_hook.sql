@@ -1,5 +1,4 @@
--- PROPOSED, NOT APPLIED. Kept with a .proposed suffix so no migration runner picks it up.
--- Rename to .sql only after approval of the local-stack / staging plan.
+-- Binds ledger MCP access tokens to the MCP endpoint (RFC 8707 audience binding).
 --
 -- Supabase's OAuth 2.1 server does not implement RFC 8707 resource indicators. Its
 -- documented way to bind a token to a service is a Custom Access Token Hook that
@@ -7,8 +6,12 @@
 -- aud to the MCP endpoint URL for registered ledger clients ONLY; every other token
 -- (web sessions, other clients) is returned unchanged.
 --
+-- Applying this file creates the table and function but does NOT turn the hook on.
 -- Enable it under Authentication > Hooks (or [auth.hook.custom_access_token] locally).
 -- Hooks run for all token issuance, so it must stay cheap and must not raise.
+-- Rollback: disable the hook first, then
+--   drop function public.ledger_mcp_access_token_hook(jsonb);
+--   drop table public.ledger_mcp_clients;
 
 create table if not exists public.ledger_mcp_clients (
   client_id text primary key,
