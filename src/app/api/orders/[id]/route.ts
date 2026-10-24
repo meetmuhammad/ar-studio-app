@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOrder, updateOrder, deleteOrder, updateOrderItems } from '@/lib/database'
 import { UpdateOrderSchema } from '@/lib/validators'
+import { requireAuth } from '@/lib/api-auth'
 
 // GET /api/orders/[id] - Get order by ID
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const { id } = await params
     const order = await getOrder(id)
@@ -33,6 +37,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -109,6 +116,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const { id } = await params
     await deleteOrder(id)

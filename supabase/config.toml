@@ -1,0 +1,27 @@
+# LOCAL stack only. Matches the existing supabase_*_ar-studio-app containers
+# (project_id, ports, Postgres 17). Never applied to staging or production;
+# hosted projects configure these under Authentication in the dashboard.
+project_id = "ar-studio-app"
+
+[api]
+port = 54321
+
+[db]
+port = 54322
+major_version = 17
+
+[auth]
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["https://127.0.0.1:3000"]
+
+# OAuth 2.1 server, so an MCP client can sign in with its own client and consent.
+[auth.oauth_server]
+enabled = true
+authorization_url_path = "/oauth/consent"
+allow_dynamic_registration = false
+
+# Sets `aud` to the MCP endpoint for registered ledger clients only
+# (public.ledger_mcp_clients). See docs/LEDGER-MCP.md.
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/public/ledger_mcp_access_token_hook"

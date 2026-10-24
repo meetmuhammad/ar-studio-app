@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOrders, createOrder, createOrderItems } from '@/lib/database'
 import { CreateOrderSchema, OrderQuerySchema } from '@/lib/validators'
+import { requireAuth } from '@/lib/api-auth'
 
 // GET /api/orders - List orders with search and pagination
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const { searchParams } = new URL(request.url)
     const query = OrderQuerySchema.parse({
@@ -50,6 +54,11 @@ export async function GET(request: NextRequest) {
 
 // POST /api/orders - Create a new order
 export async function POST(request: NextRequest) {
+  // Creating an order also writes its advance to the ledger, so this is a
+  // ledger write path; staff create orders, so staff stay allowed.
+  const auth = await requireAuth(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const body = await request.json()
     

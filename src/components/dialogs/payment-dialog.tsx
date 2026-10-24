@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { authFetch } from "@/lib/auth-fetch"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -118,7 +119,7 @@ export function PaymentDialog({
   const fetchOrders = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/orders/all')
+      const response = await authFetch('/api/orders/all')
       if (!response.ok) throw new Error('Failed to fetch orders')
       
       const data = await response.json()
@@ -141,7 +142,7 @@ export function PaymentDialog({
   const fetchPayments = async (orderId: string) => {
     try {
       setLoadingPayments(true)
-      const response = await fetch(`/api/payments?order_id=${orderId}`)
+      const response = await authFetch(`/api/payments?order_id=${orderId}`)
       if (!response.ok) throw new Error('Failed to fetch payments')
       
       const data = await response.json()
@@ -182,7 +183,7 @@ export function PaymentDialog({
 
       if (editingPayment) {
         // Update existing payment
-        const response = await fetch(`/api/payments/${editingPayment.id}`, {
+        const response = await authFetch(`/api/payments/${editingPayment.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(paymentData),
@@ -197,7 +198,7 @@ export function PaymentDialog({
         setEditingPayment(null)
       } else {
         // Create new payment
-        const response = await fetch('/api/payments', {
+        const response = await authFetch('/api/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(paymentData),
@@ -251,7 +252,7 @@ export function PaymentDialog({
     if (!confirm('Are you sure you want to delete this payment?')) return
     
     try {
-      const response = await fetch(`/api/payments/${paymentId}`, {
+      const response = await authFetch(`/api/payments/${paymentId}`, {
         method: 'DELETE',
       })
 

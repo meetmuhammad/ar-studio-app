@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
 import { getAllOrdersSimple } from '@/lib/database'
+import { requireAuth } from '@/lib/api-auth'
 
 // GET /api/orders/all - Get all orders (simplified, for dropdowns)
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = await requireAuth(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const orders = await getAllOrdersSimple()
     return NextResponse.json({ data: orders })

@@ -10,6 +10,12 @@ import { useAuth } from '@/contexts/auth-context'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 
+// Only the OAuth consent page may be returned to after sign-in (no open redirect).
+const afterSignIn = () => {
+  const next = new URLSearchParams(window.location.search).get('next') ?? ''
+  return /^\/oauth\/consent\?authorization_id=[\w-]+$/.test(next) ? next : '/'
+}
+
 export default function SignInPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -21,7 +27,7 @@ export default function SignInPage() {
   // Redirect if already signed in
   useEffect(() => {
     if (user && !authLoading) {
-      router.replace('/')
+      router.replace(afterSignIn())
     }
   }, [user, authLoading, router])
 
@@ -32,7 +38,7 @@ export default function SignInPage() {
     try {
       await signIn(email, password)
       toast.success('Successfully signed in!')
-      router.push('/')
+      router.push(afterSignIn())
     } catch (error) {
       console.error('Sign in error:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to sign in')

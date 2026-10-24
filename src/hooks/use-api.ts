@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/query-client'
-import type { 
+import { authFetch } from '@/lib/auth-fetch'
+import type {
   Customer, 
   OrderWithCustomer, 
   GeneralLedgerWithRelations,
@@ -195,7 +196,7 @@ export function useOrders(params: OrderQueryParams = {}) {
       if (status && status !== 'all') searchParams.set('status', status)
       if (q?.trim()) searchParams.set('q', q.trim())
       
-      const response = await fetch(`/api/orders?${searchParams}`)
+      const response = await authFetch(`/api/orders?${searchParams}`)
       if (!response.ok) throw new Error('Failed to fetch orders')
       return response.json() as Promise<PaginatedResponse<OrderWithCustomer>>
     },
@@ -207,7 +208,7 @@ export function useCreateOrder() {
   
   return useMutation({
     mutationFn: async (data: any) => {
-      const response = await fetch('/api/orders', {
+      const response = await authFetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -235,7 +236,7 @@ export function useUpdateOrder() {
   
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      const response = await fetch(`/api/orders/${id}`, {
+      const response = await authFetch(`/api/orders/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -262,7 +263,7 @@ export function useDeleteOrder() {
   
   return useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/orders/${id}`, {
+      const response = await authFetch(`/api/orders/${id}`, {
         method: 'DELETE',
       })
       if (!response.ok) {
@@ -309,7 +310,7 @@ export function useLedgerEntries(params: LedgerQueryParams = {}) {
       // Resolved against the vendor's current category by the API route.
       if (vendorCategoryId) searchParams.set('vendor_category_id', vendorCategoryId)
       
-      const response = await fetch(`/api/general-ledger?${searchParams}`)
+      const response = await authFetch(`/api/general-ledger?${searchParams}`)
       if (!response.ok) throw new Error('Failed to fetch ledger entries')
       return response.json() as Promise<{ data: GeneralLedgerWithRelations[]; pagination: { page: number; pageSize: number; total: number; pages: number } }>
     },
@@ -320,7 +321,7 @@ export function useLedgerStats() {
   return useQuery({
     queryKey: queryKeys.ledger.stats,
     queryFn: async () => {
-      const response = await fetch('/api/general-ledger/stats')
+      const response = await authFetch('/api/general-ledger/stats')
       if (!response.ok) throw new Error('Failed to fetch ledger stats')
       return response.json() as Promise<{
         totalDebit: number
@@ -337,7 +338,7 @@ export function useCreateLedgerEntry() {
   
   return useMutation({
     mutationFn: async (data: any) => {
-      const response = await fetch('/api/general-ledger', {
+      const response = await authFetch('/api/general-ledger', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -363,7 +364,7 @@ export function useUpdateLedgerEntry() {
   
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      const response = await fetch(`/api/general-ledger/${id}`, {
+      const response = await authFetch(`/api/general-ledger/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -389,7 +390,7 @@ export function useDeleteLedgerEntry() {
   
   return useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/general-ledger/${id}`, {
+      const response = await authFetch(`/api/general-ledger/${id}`, {
         method: 'DELETE',
       })
       if (!response.ok) {
@@ -413,7 +414,7 @@ export function useSyncOrderPayments() {
   
   return useMutation({
     mutationFn: async () => {
-      const response = await fetch('/api/general-ledger/sync-payments', {
+      const response = await authFetch('/api/general-ledger/sync-payments', {
         method: 'POST',
       })
       if (!response.ok) throw new Error('Failed to sync payments')
@@ -448,7 +449,7 @@ export function useVendorLedger(vendorId: string) {
   return useQuery({
     queryKey: queryKeys.vendors.ledger(vendorId),
     queryFn: async () => {
-      const response = await fetch(`/api/vendor-ledger?vendor_id=${vendorId}`)
+      const response = await authFetch(`/api/vendor-ledger?vendor_id=${vendorId}`)
       if (!response.ok) throw new Error('Failed to fetch vendor ledger')
       return response.json()
     },

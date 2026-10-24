@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { VendorBillForm } from "@/components/forms/vendor-bill-form"
 import { toast } from "sonner"
+import { authFetch } from "@/lib/auth-fetch"
 
 interface VendorBillDialogProps {
   open: boolean
@@ -27,7 +28,7 @@ export function VendorBillDialog({
 }: VendorBillDialogProps) {
   const handleSubmit = async (data: any) => {
     try {
-      const response = await fetch('/api/vendor-ledger', {
+      const response = await authFetch('/api/vendor-ledger', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),

@@ -1,84 +1,36 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
+import { requireAdmin } from '@/lib/api-auth'
+import { listLedgerEntries } from '@/lib/ledger-service'
 
 // GET /api/general-ledger - List entries with filters and pagination
 export async function GET(request: Request) {
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
-    const supabase = createAdminSupabaseClient()
     const { searchParams } = new URL(request.url)
-    
-    const startDate = searchParams.get('start_date')
-    const endDate = searchParams.get('end_date')
-    const entryType = searchParams.get('entry_type')
-    const vendorId = searchParams.get('vendor_id')
-    // Filters by the vendor's CURRENT category (vendors.category_id), not the
-    // per-row snapshot general_ledger.vendor_category_id.
-    //
-    // The snapshot columns are still written by the database triggers, but
-    // nothing reads them for filtering or display any more. Filtering on them
-    // meant a vendor classified AFTER its entries were written -- which is
-    // every vendor, since the category system postdates the books -- matched
-    // nothing at all: the snapshot is NULL on every historical row and no
-    // trigger backfills it when a vendor is reclassified. Reported as
-    // "assigned Employees to Ghazanfar, ledger filter finds nothing".
-    //
-    // Resolving through the vendor means the filter always agrees with the
-    // category shown on the vendors page, with no backfill to run and no
-    // production data to rewrite.
-    const vendorCategoryId = searchParams.get('vendor_category_id')
-    const search = searchParams.get('search')
+
+    // vendor_category_id filters by the vendor's CURRENT category
+    // (vendors.category_id), not the per-row snapshot
+    // general_ledger.vendor_category_id. Filtering on the snapshot matched
+    // nothing for any vendor classified after its entries were written, which
+    // is every vendor, since the category system postdates the books.
     const page = parseInt(searchParams.get('page') || '0') // 0 = no pagination (legacy)
     const pageSize = parseInt(searchParams.get('pageSize') || '20')
 
-    // !inner only when filtering by category -- an inner join would otherwise
-    // drop every entry that has no vendor (order payments, direct expenses).
-    const vendorJoin = vendorCategoryId ? 'vendors!inner' : 'vendors'
-
-    let query = supabase
-      .from('general_ledger')
-      .select(`
-        *,
-        ${vendorJoin} (id, name, category_id, vendor_categories (id, name)),
-        orders (id, order_number),
-        vendor_tags (id, tag_name)
-      `, { count: 'exact' })
-      .order('entry_date', { ascending: false })
-      .order('created_at', { ascending: false })
-
-    if (startDate) {
-      query = query.gte('entry_date', startDate)
-    }
-    if (endDate) {
-      query = query.lte('entry_date', endDate)
-    }
-    if (entryType) {
-      query = query.eq('entry_type', entryType)
-    }
-    if (vendorId) {
-      query = query.eq('vendor_id', vendorId)
-    }
-    if (vendorCategoryId) {
-      query = query.eq('vendors.category_id', vendorCategoryId)
-    }
-    if (search) {
-      query = query.ilike('particulars', `%${search}%`)
-    }
-
-    // Apply pagination if page > 0
-    if (page > 0) {
-      const offset = (page - 1) * pageSize
-      query = query.range(offset, offset + pageSize - 1)
-    }
-
-    const { data: entries, error, count } = await query
-
-    if (error) {
-      console.error('Error fetching ledger entries:', error)
-      return NextResponse.json(
-        { error: 'Failed to fetch ledger entries' },
-        { status: 500 }
-      )
-    }
+    // The query itself lives in the shared ledger service so the MCP server
+    // reads the ledger through exactly the same code.
+    const { entries, count } = await listLedgerEntries({
+      startDate: searchParams.get('start_date'),
+      endDate: searchParams.get('end_date'),
+      entryType: searchParams.get('entry_type'),
+      vendorId: searchParams.get('vendor_id'),
+      vendorCategoryId: searchParams.get('vendor_category_id'),
+      search: searchParams.get('search'),
+      page,
+      pageSize,
+    })
 
     // If paginated, return with pagination info
     if (page > 0) {
@@ -87,8 +39,8 @@ export async function GET(request: Request) {
         pagination: {
           page,
           pageSize,
-          total: count || 0,
-          pages: Math.ceil((count || 0) / pageSize),
+          total: count,
+          pages: Math.ceil(count / pageSize),
         }
       })
     }
@@ -98,7 +50,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Error in GET /api/general-ledger:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to fetch ledger entries' },
       { status: 500 }
     )
   }
@@ -106,6 +58,9 @@ export async function GET(request: Request) {
 
 // POST /api/general-ledger - Create new entry
 export async function POST(request: Request) {
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const supabase = createAdminSupabaseClient()
     const body = await request.json()

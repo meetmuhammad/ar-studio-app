@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { LedgerEntryForm } from "@/components/forms/ledger-entry-form"
+import { authFetch } from "@/lib/auth-fetch"
 import type { GeneralLedger } from "@/lib/supabase-client"
 
 interface LedgerEntryDialogProps {
@@ -27,7 +28,7 @@ export function LedgerEntryDialog({
     const url = entry ? `/api/general-ledger/${entry.id}` : '/api/general-ledger'
     const method = entry ? 'PUT' : 'POST'
     
-    const response = await fetch(url, {
+    const response = await authFetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),

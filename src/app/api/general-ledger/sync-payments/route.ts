@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
+import { requireAdmin } from '@/lib/api-auth'
 
 // POST /api/general-ledger/sync-payments - Sync existing order payments to ledger
-export async function POST() {
+export async function POST(request: Request) {
+  // Admin only, and checked before anything else: this handler deletes every
+  // order_payment ledger row before it rebuilds them.
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const supabase = createAdminSupabaseClient()
 

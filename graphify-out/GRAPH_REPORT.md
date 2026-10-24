@@ -1,23 +1,23 @@
-# Graph Report - ar-studio-app  (2026-10-04)
+# Graph Report - ar-studio-app  (2026-10-24)
 
 ## Corpus Check
-- 142 files · ~63,015 words
+- 166 files · ~85,943 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 861 nodes · 2068 edges · 69 communities (33 shown, 36 thin omitted)
+- 1040 nodes · 2543 edges · 81 communities (43 shown, 38 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 2 edges (avg confidence: 0.5)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a8cbea48`
+- Built from commit: `85539f43`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- cn
+- order-details-dialog.tsx
 - payment-dialog.tsx
-- measurements-step.tsx
+- cn
 - use-api.ts
 - (dashboard)/page.tsx
 - AR Studio — Design System (Master)
@@ -25,14 +25,14 @@
 - createAdminSupabaseClient
 - AR Studio - Theming System
 - compilerOptions
-- supabase-client.ts
+- OrderWithCustomer
 - public.resnapshot_vendor_category
 - (dashboard)/layout.tsx
 - validators.ts
-- supabase.ts
+- orders/page.tsx
 - components.json
 - AR Dashboard - Customer & Order Management System
-- alert-dialog.tsx
+- measurements/page.tsx
 - 20260827000000_vendor_categories.sql
 - dependencies
 - database.ts
@@ -41,12 +41,12 @@
 - eslint.config.mjs
 - dashboard-stats/route.ts
 - theme-config.ts
-- payments/[id]/route.ts
-- assert-writable-db.ts
-- payments/route.ts
-- tailwind-merge
-- clsx
-- cmdk
+- customers/page.tsx
+- support.ts
+- proposals.ts
+- supabase.ts
+- requireAuth
+- auth.ts
 - date-fns
 - @hookform/resolvers
 - lucide-react
@@ -54,7 +54,7 @@
 - next.config.ts
 - next-themes
 - @radix-ui/react-alert-dialog
-- @radix-ui/react-checkbox
+- supabase-client.ts
 - @radix-ui/react-dialog
 - @radix-ui/react-dropdown-menu
 - @radix-ui/react-label
@@ -66,7 +66,7 @@
 - @radix-ui/react-switch
 - @radix-ui/react-tooltip
 - react
-- react-dom
+- cmdk
 - react-hook-form
 - recharts
 - sonner
@@ -77,57 +77,67 @@
 - zod
 - postcss.config.mjs
 - orders
-- public.general_ledger
+- button.tsx
 - public.vendors
+- Ledger MCP pilot
+- Compile an Abide rubric
+- 20261024000100_ledger_mcp_proposals.sql
+- @radix-ui/react-tabs
+- react-day-picker
+- @tanstack/react-table
+- public.general_ledger
+- jose
+- @modelcontextprotocol/server
+- @radix-ui/react-checkbox
 
 ## God Nodes (most connected - your core abstractions)
 1. `cn()` - 133 edges
-2. `createAdminSupabaseClient()` - 65 edges
-3. `Button()` - 36 edges
-4. `OrderWithCustomer` - 25 edges
-5. `Input()` - 21 edges
-6. `Badge()` - 19 edges
-7. `Card()` - 19 edges
-8. `CardTitle()` - 19 edges
-9. `CardContent()` - 19 edges
-10. `CardHeader()` - 18 edges
+2. `createAdminSupabaseClient()` - 75 edges
+3. `Button()` - 37 edges
+4. `authFetch()` - 30 edges
+5. `OrderWithCustomer` - 25 edges
+6. `Input()` - 21 edges
+7. `Card()` - 20 edges
+8. `CardTitle()` - 20 edges
+9. `CardContent()` - 20 edges
+10. `Badge()` - 19 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `main()` --calls--> `getOrders()`  [EXTRACTED]
   scripts/check-order-search.ts → src/lib/database.ts
+- `main()` --calls--> `createLedgerVerifier()`  [EXTRACTED]
+  scripts/ledger-mcp/auth.check.ts → src/lib/ledger-mcp/auth.ts
+- `run()` --calls--> `normalizeEntry()`  [EXTRACTED]
+  scripts/ledger-mcp/normalize.check.ts → src/lib/ledger-mcp/normalize.ts
+- `DashboardLayout()` --calls--> `authFetch()`  [EXTRACTED]
+  src/app/(dashboard)/layout.tsx → src/lib/auth-fetch.ts
 - `GET()` --calls--> `createAdminSupabaseClient()`  [EXTRACTED]
   src/app/api/customers/[id]/measurements/route.ts → src/lib/supabase.ts
-- `GET()` --calls--> `createAdminSupabaseClient()`  [EXTRACTED]
-  src/app/api/general-ledger/stats/route.ts → src/lib/supabase.ts
-- `POST()` --calls--> `createAdminSupabaseClient()`  [EXTRACTED]
-  src/app/api/general-ledger/sync-payments/route.ts → src/lib/supabase.ts
-- `PATCH()` --calls--> `createAdminSupabaseClient()`  [EXTRACTED]
-  src/app/api/payments/[id]/route.ts → src/lib/supabase.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (69 total, 36 thin omitted)
+## Communities (81 total, 38 thin omitted)
 
-### Community 0 - "cn"
-Cohesion: 0.06
-Nodes (47): CustomerComboboxProps, CustomerDialog(), LedgerEntryDialog(), LedgerEntryDialogProps, VendorBillDialog(), VendorBillDialogProps, VendorDialog(), CustomerForm() (+39 more)
+### Community 0 - "order-details-dialog.tsx"
+Cohesion: 0.26
+Nodes (11): MeasurementSelectDialog(), OrderDetailsDialog(), Payment, VendorBillDialogProps, Dialog(), DialogContent(), DialogDescription(), DialogHeader() (+3 more)
 
 ### Community 1 - "payment-dialog.tsx"
-Cohesion: 0.09
-Nodes (48): MeasurementsPage(), RoleGuard(), RoleGuardProps, CustomerActionsProps, OrderActionsProps, DataTable(), DataTableProps, globalFilterFn() (+40 more)
+Cohesion: 0.19
+Nodes (17): RoleGuard(), RoleGuardProps, DataTable(), DataTableProps, globalFilterFn(), Payment, PaymentDialogProps, VendorDialog() (+9 more)
 
-### Community 2 - "measurements-step.tsx"
-Cohesion: 0.09
-Nodes (52): CustomerCombobox(), LedgerEntryInput, LedgerEntrySchema, MeasurementFieldProps, measurementSections, MeasurementForm(), OrderFormProps, ORDER_TYPES (+44 more)
+### Community 2 - "cn"
+Cohesion: 0.06
+Nodes (80): CustomerCombobox(), CustomerComboboxProps, CustomerForm(), LedgerEntryForm(), LedgerEntryInput, LedgerEntrySchema, MeasurementFieldProps, measurementSections (+72 more)
 
 ### Community 3 - "use-api.ts"
-Cohesion: 0.07
-Nodes (38): CustomersPage(), CustomerWithOrderCount, LedgerPage(), OrdersPage(), createCustomerColumns(), CustomerWithOrderCount, CustomerDetailDialog(), CustomerWithOrderCount (+30 more)
+Cohesion: 0.10
+Nodes (28): LedgerPage(), VendorLedgerPage(), LedgerEntryDialog(), VendorBillDialog(), VendorCategoriesDialog(), VendorForm(), DatePicker(), CustomerQueryParams (+20 more)
 
 ### Community 4 - "(dashboard)/page.tsx"
-Cohesion: 0.07
-Nodes (39): DashboardPage(), RevenueOverview(), daysUntil(), DeliveryRow(), DeliveryRowProps, UpcomingOrder, EmptyState(), EmptyStateProps (+31 more)
+Cohesion: 0.06
+Nodes (40): DashboardPage(), RevenueOverview(), daysUntil(), DeliveryRow(), DeliveryRowProps, UpcomingOrder, EmptyState(), EmptyStateProps (+32 more)
 
 ### Community 5 - "AR Studio — Design System (Master)"
 Cohesion: 0.04
@@ -135,11 +145,11 @@ Nodes (46): 0b. Visual identity (second pass — locked), 10. Pre-delivery check
 
 ### Community 6 - "devDependencies"
 Cohesion: 0.05
-Nodes (38): dotenv, eslint, eslint-config-next, @eslint/eslintrc, @faker-js/faker, devDependencies, dotenv, eslint (+30 more)
+Nodes (40): dotenv, eslint, eslint-config-next, @eslint/eslintrc, @faker-js/faker, @modelcontextprotocol/client, devDependencies, dotenv (+32 more)
 
 ### Community 7 - "createAdminSupabaseClient"
-Cohesion: 0.09
-Nodes (26): DELETE(), GET(), PUT(), GET(), POST(), DELETE(), GET(), PUT() (+18 more)
+Cohesion: 0.12
+Nodes (20): DELETE(), GET(), PUT(), RouteParams, GET(), POST(), DELETE(), PATCH() (+12 more)
 
 ### Community 8 - "AR Studio - Theming System"
 Cohesion: 0.06
@@ -149,9 +159,9 @@ Nodes (34): 1. Use Semantic Colors, 2. Consistent Status Colors, 3. Proper Contr
 Cohesion: 0.07
 Nodes (26): dom, dom.iterable, esnext, next-env.d.ts, .next/types/**/*.ts, node_modules, **/*.ts, **/*.tsx (+18 more)
 
-### Community 10 - "supabase-client.ts"
+### Community 10 - "OrderWithCustomer"
 Cohesion: 0.08
-Nodes (35): MeasurementSelectDialogProps, OrderDetailsDialogProps, OrderDialogProps, VendorDialogProps, MeasurementFormProps, VendorFormProps, PrintMeasurement(), PrintMeasurementProps (+27 more)
+Nodes (33): CustomerActionsProps, OrderActionsProps, MeasurementSelectDialogProps, OrderDetailsDialogProps, OrderDialogProps, OrderMultiStepFormProps, PrintMeasurement(), PrintMeasurementProps (+25 more)
 
 ### Community 11 - "public.resnapshot_vendor_category"
 Cohesion: 0.33
@@ -159,15 +169,15 @@ Nodes (5): public.resnapshot_vendor_category, public.vendor_categories, public.r
 
 ### Community 12 - "(dashboard)/layout.tsx"
 Cohesion: 0.06
-Nodes (34): geistMono, inter, manrope, metadata, SignInPage(), RouteGuard(), RouteGuardProps, Header() (+26 more)
+Nodes (34): DashboardLayout(), geistMono, inter, manrope, metadata, afterSignIn(), SignInPage(), RouteGuard() (+26 more)
 
 ### Community 13 - "validators.ts"
-Cohesion: 0.11
-Nodes (20): GET(), POST(), createCustomer(), getCustomers(), CreateCustomerSchema, CreatePaymentInput, CreatePaymentSchema, CustomerQuery (+12 more)
+Cohesion: 0.08
+Nodes (23): valid, GET(), POST(), createCustomer(), getCustomers(), CreateCustomerSchema, CreateOrderFields, CreateOrderSchema (+15 more)
 
-### Community 14 - "supabase.ts"
-Cohesion: 0.12
-Nodes (12): GET(), RouteParams, GET(), POST(), DELETE(), Counter, Customer, Order (+4 more)
+### Community 14 - "orders/page.tsx"
+Cohesion: 0.48
+Nodes (6): OrdersPage(), OrderDialog(), useCreateOrder(), useDeleteOrder(), useOrders(), useUpdateOrder()
 
 ### Community 15 - "components.json"
 Cohesion: 0.11
@@ -177,9 +187,9 @@ Nodes (18): aliases, components, hooks, lib, ui, utils, iconLibrary, registries 
 Cohesion: 0.11
 Nodes (18): 1. Install Dependencies, 2. Supabase Setup, 3. Seed the Database (Optional), 4. Run the Development Server, 📊 Advanced Features, 📋 API Endpoints, AR Dashboard - Customer & Order Management System, 🧑‍💼 Customer Management (+10 more)
 
-### Community 17 - "alert-dialog.tsx"
-Cohesion: 0.21
-Nodes (12): DeleteConfirmationDialog(), DeleteConfirmationDialogProps, AlertDialog(), AlertDialogAction(), AlertDialogCancel(), AlertDialogContent(), AlertDialogDescription(), AlertDialogFooter() (+4 more)
+### Community 17 - "measurements/page.tsx"
+Cohesion: 0.13
+Nodes (23): CustomerWithOrderCount, MeasurementsPage(), CustomerWithOrderCount, CustomerWithOrderCount, CustomerDialogProps, DeleteConfirmationDialogProps, CustomerFormProps, MeasurementForm() (+15 more)
 
 ### Community 18 - "20260827000000_vendor_categories.sql"
 Cohesion: 0.40
@@ -187,19 +197,19 @@ Nodes (5): public.snapshot_vendor_category, public.snapshot_vendor_category(), p
 
 ### Community 19 - "dependencies"
 Cohesion: 0.22
-Nodes (9): class-variance-authority, dependencies, class-variance-authority, @radix-ui/react-tabs, react-day-picker, @tanstack/react-table, @radix-ui/react-tabs, react-day-picker (+1 more)
+Nodes (9): class-variance-authority, clsx, dependencies, class-variance-authority, clsx, react-dom, tailwind-merge, react-dom (+1 more)
 
 ### Community 20 - "database.ts"
-Cohesion: 0.17
-Nodes (18): main(), GET(), DELETE(), GET(), PATCH(), GET(), POST(), createOrder() (+10 more)
+Cohesion: 0.20
+Nodes (16): main(), DELETE(), GET(), PATCH(), GET(), POST(), createOrder(), createOrderItems() (+8 more)
 
 ### Community 21 - "customers/[id]/route.ts"
 Cohesion: 0.36
 Nodes (7): DELETE(), GET(), PATCH(), deleteCustomer(), getCustomer(), updateCustomer(), UpdateCustomerSchema
 
 ### Community 22 - "api-auth.ts"
-Cohesion: 0.39
-Nodes (7): AuthUser, getAuthUser(), requireAdmin(), requireAuth(), requireRole(), UserRole, createServerSupabaseClient()
+Cohesion: 0.18
+Nodes (15): DELETE(), GET(), PUT(), GET(), POST(), POST(), GET(), POST() (+7 more)
 
 ### Community 23 - "eslint.config.mjs"
 Cohesion: 0.40
@@ -209,37 +219,69 @@ Nodes (4): compat, __dirname, eslintConfig, __filename
 Cohesion: 0.70
 Nodes (4): buildChartData(), GET(), getFirstDayOfMonth(), getSixMonthsAgo()
 
-### Community 26 - "payments/[id]/route.ts"
-Cohesion: 0.50
-Nodes (3): DELETE(), PATCH(), IMPORTANT: Prepare update data - ONLY update payments table fields
+### Community 26 - "customers/page.tsx"
+Cohesion: 0.31
+Nodes (9): CustomersPage(), createCustomerColumns(), CustomerDetailDialog(), CustomerDialog(), DeleteConfirmationDialog(), useCreateCustomer(), useCustomers(), useDeleteCustomer() (+1 more)
 
-### Community 27 - "assert-writable-db.ts"
-Cohesion: 0.24
-Nodes (4): assertWritableDb(), supabase, supabase, supabase
+### Community 27 - "support.ts"
+Cohesion: 0.09
+Nodes (45): assertWritableDb(), supabase, main(), R, say(), forgedJwt(), ledgerFingerprint(), main() (+37 more)
 
-### Community 28 - "payments/route.ts"
-Cohesion: 0.50
-Nodes (3): GET(), POST(), IMPORTANT: We are creating a NEW payment in the payments table
+### Community 28 - "proposals.ts"
+Cohesion: 0.10
+Nodes (40): good, problems(), run(), GET(), businessToday(), centsToDecimal(), CURRENCY, Direction (+32 more)
+
+### Community 29 - "supabase.ts"
+Cohesion: 0.17
+Nodes (9): GET(), RouteParams, Counter, Customer, Order, OrderWithCustomer, supabase, User (+1 more)
+
+### Community 31 - "requireAuth"
+Cohesion: 0.26
+Nodes (9): GET(), DELETE(), PATCH(), IMPORTANT: Prepare update data - ONLY update payments table fields, GET(), POST(), IMPORTANT: We are creating a NEW payment in the payments table, requireAuth() (+1 more)
+
+### Community 32 - "auth.ts"
+Cohesion: 0.14
+Nodes (21): RFC-8707, RFC-9728, main(), dynamic, handler, serve(), dynamic, GET() (+13 more)
+
+### Community 40 - "supabase-client.ts"
+Cohesion: 0.11
+Nodes (20): LedgerEntryDialogProps, VendorDialogProps, LedgerEntryFormProps, VendorFormProps, Counter, GeneralLedger, GeneralLedgerWithRelations, LedgerEntryType (+12 more)
+
+### Community 65 - "button.tsx"
+Cohesion: 0.22
+Nodes (12): Details, CustomerDetailDialogProps, CustomerOrder, OrderMultiStepForm(), steps, Badge(), badgeVariants, Button() (+4 more)
+
+### Community 69 - "Ledger MCP pilot"
+Cohesion: 0.17
+Nodes (11): Authentication, Demo conversation, Files, Ledger MCP pilot, Prepare → confirm → commit, Release blockers (not shortcuts to be waived), Run it locally (isolated database only), The limit of "confirmation" (+3 more)
+
+### Community 70 - "Compile an Abide rubric"
+Cohesion: 0.20
+Nodes (9): Compile an Abide rubric, Step 1. Read the sources, Step 2. Extract every statement that instructs, Step 3. Classify each rule into exactly one bucket, Step 4. Write the question for each model rule, Step 5. Decide when each model rule runs, Step 6. Write the rubric file, Step 7. Validate, then calibrate (+1 more)
+
+### Community 71 - "20261024000100_ledger_mcp_proposals.sql"
+Cohesion: 0.22
+Nodes (6): auth.users, public.ledger_mcp_set_payload_hash, public.ledger_mcp_audit, public.ledger_mcp_proposals, public.general_ledger, trg_ledger_mcp_payload_hash
 
 ## Knowledge Gaps
-- **261 isolated node(s):** `$schema`, `style`, `rsc`, `tsx`, `config` (+256 more)
+- **317 isolated node(s):** `$schema`, `style`, `rsc`, `tsx`, `config` (+312 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **36 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **38 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `cn()` connect `cn` to `payment-dialog.tsx`, `measurements-step.tsx`, `(dashboard)/page.tsx`, `(dashboard)/layout.tsx`, `alert-dialog.tsx`?**
-  _High betweenness centrality (0.087) - this node is a cross-community bridge._
-- **Why does `createAdminSupabaseClient()` connect `createAdminSupabaseClient` to `validators.ts`, `supabase.ts`, `database.ts`, `customers/[id]/route.ts`, `dashboard-stats/route.ts`, `payments/[id]/route.ts`, `payments/route.ts`?**
-  _High betweenness centrality (0.057) - this node is a cross-community bridge._
-- **Why does `OrderWithCustomer` connect `supabase-client.ts` to `cn`, `payment-dialog.tsx`, `measurements-step.tsx`, `use-api.ts`, `database.ts`?**
-  _High betweenness centrality (0.029) - this node is a cross-community bridge._
+- **Why does `createAdminSupabaseClient()` connect `createAdminSupabaseClient` to `auth.ts`, `validators.ts`, `database.ts`, `customers/[id]/route.ts`, `api-auth.ts`, `dashboard-stats/route.ts`, `proposals.ts`, `supabase.ts`, `requireAuth`?**
+  _High betweenness centrality (0.081) - this node is a cross-community bridge._
+- **Why does `cn()` connect `cn` to `order-details-dialog.tsx`, `button.tsx`, `payment-dialog.tsx`, `use-api.ts`, `(dashboard)/page.tsx`, `OrderWithCustomer`, `(dashboard)/layout.tsx`, `measurements/page.tsx`?**
+  _High betweenness centrality (0.061) - this node is a cross-community bridge._
+- **Why does `OrderWithCustomer` connect `OrderWithCustomer` to `order-details-dialog.tsx`, `payment-dialog.tsx`, `cn`, `button.tsx`, `use-api.ts`, `supabase-client.ts`, `orders/page.tsx`, `database.ts`?**
+  _High betweenness centrality (0.030) - this node is a cross-community bridge._
 - **What connects `$schema`, `style`, `rsc` to the rest of the system?**
-  _261 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _317 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `cn` be split into smaller, more focused modules?**
-  _Cohesion score 0.05926251097453907 - nodes in this community are weakly interconnected._
-- **Should `payment-dialog.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.08734567901234568 - nodes in this community are weakly interconnected._
-- **Should `measurements-step.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.08591408591408592 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05526083112290009 - nodes in this community are weakly interconnected._
+- **Should `use-api.ts` be split into smaller, more focused modules?**
+  _Cohesion score 0.1036036036036036 - nodes in this community are weakly interconnected._
+- **Should `(dashboard)/page.tsx` be split into smaller, more focused modules?**
+  _Cohesion score 0.06464646464646465 - nodes in this community are weakly interconnected._
