@@ -4,11 +4,31 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+function Table({
+  className,
+  stack = false,
+  bordered = false,
+  ...props
+}: React.ComponentProps<"table"> & {
+  /**
+   * Render each row as a card, with each cell's `data-label` next to its value,
+   * whenever the table's own container is too narrow for its columns (a container
+   * query: see .table-stack in globals.css). `true` switches below 800px, "wide"
+   * (for tables with 7+ columns) below 900px, "narrow" (4 columns) below 560px. Every cell, total and action is
+   * kept; only the layout changes.
+   */
+  stack?: boolean | "wide" | "narrow"
+  /** Draw the rounded outline around the table while it is still a table. */
+  bordered?: boolean
+}) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      className={cn(
+        "relative w-full overflow-x-auto",
+        stack === "wide" ? "table-stack-wide" : stack === "narrow" ? "table-stack-narrow" : stack && "table-stack",
+        bordered && "table-bordered"
+      )}
     >
       <table
         data-slot="table"

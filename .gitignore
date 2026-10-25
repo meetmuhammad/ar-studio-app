@@ -82,3 +82,9 @@ graphify-out/reflections/
 # local tooling scratch — never part of the app
 .gstack/
 supabase/.temp/
+
+# QA / e2e artifacts (screenshots, reports, saved sessions)
+/e2e/.auth/
+/qa-artifacts/
+/test-results/
+/playwright-report/

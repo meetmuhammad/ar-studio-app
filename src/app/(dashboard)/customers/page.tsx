@@ -1,5 +1,6 @@
 "use client"
 
+import { ErrorState } from '@/components/dashboard/error-state'
 import { useState, useRef } from "react"
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
@@ -27,7 +28,7 @@ export default function CustomersPage() {
   const pageSize = 20
   
   // React Query hooks
-  const { data: customersData, isLoading: loading } = useCustomers({
+  const { data: customersData, isLoading: loading, isError: loadFailed, error: loadError, refetch: refetchCustomers } = useCustomers({
     page: currentPage,
     pageSize,
     q: debouncedSearch,
@@ -142,11 +143,19 @@ export default function CustomersPage() {
           placeholder="Search customers by name or phone..."
           value={searchQuery}
           onChange={(e) => handleSearchChange(e.target.value)}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 pl-10 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-full rounded-md border border-input bg-background px-3 py-2 pl-10 text-sm pointer-coarse:h-11 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
       </div>
 
+      {loadFailed && customers.length === 0 ? (
+        <ErrorState
+          title="Couldn't load customers"
+          detail={loadError instanceof Error ? loadError.message : undefined}
+          onRetry={() => refetchCustomers()}
+        />
+      ) : (
+      <>
       <Card>
         <CardHeader>
           <CardTitle>All Customers ({totalCustomers})</CardTitle>
@@ -155,7 +164,7 @@ export default function CustomersPage() {
           <DataTable
             columns={columns}
             data={customers}
-            searchPlaceholder=""
+            searchPlaceholder="Filter this page..."
             onRowClick={handleRowClick}
           />
 
@@ -187,6 +196,8 @@ export default function CustomersPage() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* Create/Edit Customer Dialog */}
       <CustomerDialog

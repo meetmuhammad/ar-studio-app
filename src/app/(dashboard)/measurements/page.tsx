@@ -205,8 +205,7 @@ export default function MeasurementsPage() {
       {/* Add Measurement Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent 
-          className="w-[95vw] max-w-none sm:w-[90vw] md:w-[80vw] lg:w-[70vw] xl:w-[70vw] 2xl:w-[60vw] max-h-[95vh] overflow-y-auto"
-          style={{ width: '70vw', maxWidth: 'none' }}
+          className="max-sm:w-full w-[95vw] max-w-none sm:w-[90vw] md:w-[80vw] lg:w-[70vw] max-h-[95vh] overflow-y-auto"
           onInteractOutside={(e) => e.preventDefault()}
         >
           <DialogHeader>
@@ -224,8 +223,7 @@ export default function MeasurementsPage() {
       {/* Edit Measurement Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent 
-          className="w-[95vw] max-w-none sm:w-[90vw] md:w-[80vw] lg:w-[70vw] xl:w-[70vw] 2xl:w-[60vw] max-h-[95vh] overflow-y-auto"
-          style={{ width: '70vw', maxWidth: 'none' }}
+          className="max-sm:w-full w-[95vw] max-w-none sm:w-[90vw] md:w-[80vw] lg:w-[70vw] max-h-[95vh] overflow-y-auto"
           onInteractOutside={(e) => e.preventDefault()}
         >
           <DialogHeader>

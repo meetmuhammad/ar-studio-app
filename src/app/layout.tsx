@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter, Manrope } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from '@/contexts/auth-context'
@@ -32,6 +32,25 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "AR Studio Dashboard",
   description: "Customer & Order Management System",
+  applicationName: "AR Studio",
+  // Home-screen install on iOS/iPadOS. "default" keeps the status bar opaque and
+  // readable in both light and dark themes (black-translucent would put white
+  // status text over the light theme's header).
+  appleWebApp: { capable: true, title: "AR Studio", statusBarStyle: "default" },
+  icons: { apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }] },
+};
+
+// Zoom stays enabled (no maximumScale / userScalable). viewport-fit=cover lets
+// the layout use the full screen and handle notches and the home indicator with
+// env(safe-area-inset-*); the dashboard shell and sign-in page apply those.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8f8f9" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b0c0d" },
+  ],
 };
 
 export default function RootLayout({

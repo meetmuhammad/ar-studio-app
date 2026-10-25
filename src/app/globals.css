@@ -239,10 +239,10 @@
   
   /* Mobile-friendly touch targets */
   @media (max-width: 768px) {
-    button, 
-    a, 
-    input, 
-    select, 
+    button:not([role="checkbox"]):not([role="radio"]):not([role="switch"]),
+    a,
+    input,
+    select,
     textarea {
       min-height: 44px; /* iOS recommended minimum touch target size */
     }
@@ -273,5 +273,93 @@
   .no-underline:hover,
   a.no-underline:hover {
     @apply opacity-100;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Responsive tables: a <Table stack> becomes a list of labelled cards when the
+   table's OWN container is narrower than the columns need. That is a container
+   query, not a viewport breakpoint, because the space a table gets depends on the
+   sidebar as much as on the screen (an iPad in landscape has 1024px but a table
+   only ~700px). Thresholds come from measured minimum table widths
+   (ledger 869, customers 785, vendors 775, orders 702). `stack` switches at 800px, `stack="wide"` (7+ columns) at 900px,
+   `stack="narrow"` (4 columns, e.g. inside dialogs) at 560px.
+   Cells carry data-label="Column name"; the header row stays in the DOM (visually
+   hidden) so columns keep their names for assistive technology. Where there is
+   room for two columns of cards (iPad portrait/landscape) they sit side by side.
+   ───────────────────────────────────────────────────────────────────────────── */
+.table-stack, .table-stack-wide, .table-stack-narrow { container-type: inline-size; }
+
+.table-bordered { position: relative; }
+.table-bordered::after { content: ""; position: absolute; inset: 0; pointer-events: none; border: 1px solid var(--border); border-radius: var(--radius-md); }
+
+@container (max-width: 800px) {
+  .table-stack table, .table-stack tbody, .table-stack tfoot, .table-stack tr, .table-stack td { display: block; width: 100%; }
+  .table-stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .table-stack tr { margin: 0 0 0.625rem; padding: 0.25rem 0.875rem; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); }
+  .table-stack tbody tr:last-child { border-bottom: 1px solid var(--border); }
+  .table-stack td { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 2.75rem; padding: 0.5rem 0; border: 0; text-align: right; white-space: normal; overflow-wrap: anywhere; }
+  .table-stack td + td { border-top: 1px solid color-mix(in oklab, var(--border) 60%, transparent); }
+  .table-stack td::before { content: attr(data-label); flex: 0 0 auto; max-width: 42%; font-size: 0.75rem; font-weight: 500; line-height: 1.2; color: var(--muted-foreground); text-align: left; overflow-wrap: normal; }
+  .table-stack td:not([data-label])::before, .table-stack td[data-label=""]::before { content: none; }
+  .table-stack td:empty { display: none; }
+  .table-stack td[colspan] { justify-content: center; text-align: center; }
+  .table-stack td[colspan]::before { content: none; }
+  .table-stack.table-bordered::after { display: none; }
+  .table-stack { overflow-x: visible; }
+}
+@container (min-width: 520px) and (max-width: 800px) {
+  .table-stack tbody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 0.625rem; align-items: start; }
+}
+@container (max-width: 900px) {
+  .table-stack-wide table, .table-stack-wide tbody, .table-stack-wide tfoot, .table-stack-wide tr, .table-stack-wide td { display: block; width: 100%; }
+  .table-stack-wide thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .table-stack-wide tr { margin: 0 0 0.625rem; padding: 0.25rem 0.875rem; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); }
+  .table-stack-wide tbody tr:last-child { border-bottom: 1px solid var(--border); }
+  .table-stack-wide td { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 2.75rem; padding: 0.5rem 0; border: 0; text-align: right; white-space: normal; overflow-wrap: anywhere; }
+  .table-stack-wide td + td { border-top: 1px solid color-mix(in oklab, var(--border) 60%, transparent); }
+  .table-stack-wide td::before { content: attr(data-label); flex: 0 0 auto; max-width: 42%; font-size: 0.75rem; font-weight: 500; line-height: 1.2; color: var(--muted-foreground); text-align: left; overflow-wrap: normal; }
+  .table-stack-wide td:not([data-label])::before, .table-stack-wide td[data-label=""]::before { content: none; }
+  .table-stack-wide td:empty { display: none; }
+  .table-stack-wide td[colspan] { justify-content: center; text-align: center; }
+  .table-stack-wide td[colspan]::before { content: none; }
+  .table-stack-wide.table-bordered::after { display: none; }
+  .table-stack-wide { overflow-x: visible; }
+}
+@container (min-width: 520px) and (max-width: 900px) {
+  .table-stack-wide tbody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 0.625rem; align-items: start; }
+}
+@container (max-width: 560px) {
+  .table-stack-narrow table, .table-stack-narrow tbody, .table-stack-narrow tfoot, .table-stack-narrow tr, .table-stack-narrow td { display: block; width: 100%; }
+  .table-stack-narrow thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .table-stack-narrow tr { margin: 0 0 0.625rem; padding: 0.25rem 0.875rem; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); }
+  .table-stack-narrow tbody tr:last-child { border-bottom: 1px solid var(--border); }
+  .table-stack-narrow td { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 2.75rem; padding: 0.5rem 0; border: 0; text-align: right; white-space: normal; overflow-wrap: anywhere; }
+  .table-stack-narrow td + td { border-top: 1px solid color-mix(in oklab, var(--border) 60%, transparent); }
+  .table-stack-narrow td::before { content: attr(data-label); flex: 0 0 auto; max-width: 42%; font-size: 0.75rem; font-weight: 500; line-height: 1.2; color: var(--muted-foreground); text-align: left; overflow-wrap: normal; }
+  .table-stack-narrow td:not([data-label])::before, .table-stack-narrow td[data-label=""]::before { content: none; }
+  .table-stack-narrow td:empty { display: none; }
+  .table-stack-narrow td[colspan] { justify-content: center; text-align: center; }
+  .table-stack-narrow td[colspan]::before { content: none; }
+  .table-stack-narrow.table-bordered::after { display: none; }
+  .table-stack-narrow { overflow-x: visible; }
+}
+
+/* Touch devices: keep checkbox/radio at their drawn size (the 44px minimum above
+   is for buttons and text fields), and honour reduced-motion everywhere. */
+input[type="checkbox"], input[type="radio"] { min-height: 0 !important; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+  }
+}
+
+/* Checkboxes, radios and switches keep their drawn size (a 44px-tall checkbox is a pill);
+   on touch devices an invisible pseudo-element grows the tappable area to 44px instead. */
+@media (pointer: coarse) {
+  [role="checkbox"], [role="radio"], [role="switch"] { position: relative; }
+  [role="checkbox"]::after, [role="radio"]::after, [role="switch"]::after {
+    content: ""; position: absolute; inset: -0.75rem;
   }
 }

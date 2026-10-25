@@ -1,5 +1,6 @@
 "use client"
 
+import { ErrorState } from '@/components/dashboard/error-state'
 import { useState, useEffect } from "react"
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
@@ -41,7 +42,7 @@ export default function OrdersPage() {
   const itemsPerPage = 20
   
   // React Query hooks
-  const { data: ordersData, isLoading: loading, refetch: fetchOrders } = useOrders({
+  const { data: ordersData, isLoading: loading, isError: loadFailed, error: loadError, refetch: fetchOrders } = useOrders({
     page: currentPage,
     pageSize: itemsPerPage,
     status: statusFilter,
@@ -198,6 +199,14 @@ export default function OrdersPage() {
         />
       </div>
 
+      {loadFailed && orders.length === 0 ? (
+        <ErrorState
+          title="Couldn't load orders"
+          detail={loadError instanceof Error ? loadError.message : undefined}
+          onRetry={() => fetchOrders()}
+        />
+      ) : (
+      <>
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -243,7 +252,7 @@ export default function OrdersPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
+          <Table stack>
             <TableHeader>
               <TableRow>
                 <TableHead>Order #</TableHead>
@@ -261,24 +270,25 @@ export default function OrdersPage() {
                   className="cursor-pointer hover:bg-muted/50"
                   onClick={() => handleRowClick(order)}
                 >
-                  <TableCell className="font-medium">{order.order_number}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="Order #" className="font-medium">{order.order_number}</TableCell>
+                  <TableCell data-label="Customer">
                     <div>
                       <div className="font-medium">{order.customers.name}</div>
                       <div className="text-xs text-muted-foreground">{order.customers.phone}</div>
                     </div>
                   </TableCell>
-                  <TableCell>{formatDate(order.delivery_date)}</TableCell>
-                  <TableCell>{getStatusBadge(order.status)}</TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell data-label="Delivery Date">{formatDate(order.delivery_date)}</TableCell>
+                  <TableCell data-label="Status">{getStatusBadge(order.status)}</TableCell>
+                  <TableCell data-label="Total Amount" className="text-right font-medium">
                     {formatCurrency(order.total_amount || 0)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell data-label="Actions" className="text-right">
                     <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => handleView(order)}
+                        aria-label={`View order ${order.order_number}`}
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
@@ -286,6 +296,7 @@ export default function OrdersPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleEdit(order)}
+                        aria-label={`Edit order ${order.order_number}`}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -293,6 +304,7 @@ export default function OrdersPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDelete(order)}
+                        aria-label={`Delete order ${order.order_number}`}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
@@ -311,20 +323,25 @@ export default function OrdersPage() {
 
           {/* Pagination */}
           {totalOrders > 0 && (
-            <div className="flex items-center justify-between pt-4">
+            <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-muted-foreground">
                 Showing {startIndex + 1} to {Math.min(endIndex, totalOrders)} of {totalOrders} orders
               </div>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
+                  className="flex-1 sm:flex-none"
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
                 >
                   Previous
                 </Button>
-                <div className="flex items-center gap-1">
+                {/* Phones: "Page x of y" instead of a row of page buttons. */}
+                <span className="px-2 text-sm tabular-nums text-muted-foreground sm:hidden" aria-live="polite">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <div className="hidden items-center gap-1 sm:flex">
                   {Array.from({ length: totalPages }, (_, i) => i + 1)
                     .filter(page => {
                       // Show first page, last page, current page, and pages around current
@@ -351,6 +368,7 @@ export default function OrdersPage() {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="flex-1 sm:flex-none"
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
                 >
@@ -361,6 +379,8 @@ export default function OrdersPage() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* Create/Edit Order Dialog */}
       <OrderDialog

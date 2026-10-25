@@ -52,6 +52,17 @@ const globalFilterFn = (row: any, columnId: string, value: string) => {
   return searchInObject(row.original)
 }
 
+/** Visible name of a column, used to label each value when rows stack into cards. */
+function columnLabel(column: { id: string; columnDef: { header?: unknown; meta?: unknown } }): string {
+  const meta = column.columnDef.meta as { label?: string } | undefined
+  if (meta?.label) return meta.label
+  if (typeof column.columnDef.header === "string") return column.columnDef.header
+  return column.id
+    .replace(/[_.-]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/^./, (c) => c.toUpperCase())
+}
+
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
@@ -106,7 +117,7 @@ export function DataTable<TData, TValue>({
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="sm:ml-auto w-full sm:w-auto">
+            <Button variant="outline" className="hidden md:inline-flex md:ml-auto">
               Columns <ChevronDown className="ml-2 h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -131,8 +142,8 @@ export function DataTable<TData, TValue>({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <div className="rounded-md border overflow-x-auto">
-        <Table>
+      <div>
+        <Table stack bordered>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
@@ -161,7 +172,7 @@ export function DataTable<TData, TValue>({
                   className={onRowClick ? "cursor-pointer hover:bg-muted/50" : ""}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} data-label={columnLabel(cell.column)}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}

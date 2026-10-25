@@ -71,8 +71,8 @@ export function OrderPaymentStep() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Total *</FormLabel>
-              <FormControl>
-                <div className="relative">
+              <div className="relative">
+                <FormControl>
                   <Input
                     type="number"
                     step="0.01"
@@ -99,11 +99,11 @@ export function OrderPaymentStep() {
                     onWheel={(e) => e.currentTarget.blur()}
                     className="pr-12"
                   />
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm font-medium">
+                </FormControl>
+                  <div className="pointer-events-none absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm font-medium" aria-hidden="true">
                     PKR
                   </div>
-                </div>
-              </FormControl>
+              </div>
               <FormMessage />
             </FormItem>
           )}
@@ -116,8 +116,8 @@ export function OrderPaymentStep() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Advance *</FormLabel>
-              <FormControl>
-                <div className="relative">
+              <div className="relative">
+                <FormControl>
                   <Input
                     type="number"
                     step="0.01"
@@ -144,11 +144,11 @@ export function OrderPaymentStep() {
                     onWheel={(e) => e.currentTarget.blur()}
                     className="pr-12"
                   />
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm font-medium">
+                </FormControl>
+                  <div className="pointer-events-none absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm font-medium" aria-hidden="true">
                     PKR
                   </div>
-                </div>
-              </FormControl>
+              </div>
               <FormMessage />
             </FormItem>
           )}
@@ -161,8 +161,8 @@ export function OrderPaymentStep() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Balance (Calculated)</FormLabel>
-              <FormControl>
-                <div className="relative">
+              <div className="relative">
+                <FormControl>
                   <Input
                     type="number"
                     step="0.01"
@@ -173,11 +173,11 @@ export function OrderPaymentStep() {
                     readOnly
                     className="pr-12 bg-muted cursor-not-allowed"
                   />
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm font-medium">
+                </FormControl>
+                  <div className="pointer-events-none absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm font-medium" aria-hidden="true">
                     PKR
                   </div>
-                </div>
-              </FormControl>
+              </div>
               <FormMessage />
             </FormItem>
           )}

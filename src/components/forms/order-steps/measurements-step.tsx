@@ -314,7 +314,7 @@ export function OrderMeasurementsStep() {
                     size="sm"
                     onClick={() => fetchCustomerMeasurements(customerId, true)}
                     disabled={loading}
-                    className="h-8 w-8 p-0"
+                    className="h-8 w-8 p-0 pointer-coarse:h-11 pointer-coarse:w-11"
                     title="Refresh measurements"
                   >
                     <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />

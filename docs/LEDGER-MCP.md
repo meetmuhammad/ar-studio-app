@@ -131,7 +131,8 @@ You can also point the MCP Inspector at it (`npx @modelcontextprotocol/inspector
    equivalent control is in place and tested, any valid admin token from the Supabase project is accepted here.
 2. **The real client OAuth flow is untested.** Everything above was exercised with the SDK client and Supabase session tokens against the local
    database. The local auth server has its OAuth endpoints disabled, so discovery → dynamic registration → consent → token → call has never run.
-3. **The production timezone is unconfirmed.** `Asia/Karachi` was used for local tests only; the owner must confirm the production value.
+3. ~~The production timezone is unconfirmed.~~ **Resolved:** the owner confirmed on 2026-10-25 that the business timezone is `Asia/Karachi`.
+   Production sets `BUSINESS_TIMEZONE=Asia/Karachi`.
 
 ## What a real phone pilot still needs
 
@@ -147,7 +148,7 @@ Organization settings → Connectors), then choose how sign-in works. The guide 
    require user approval, watch registrations, validate redirect URIs. Agent sign-ins count toward Monthly Active Users.
 4. **Build the consent page** the OAuth server redirects to (client name, requested scopes, approve/deny, revoke later). `@supabase/supabase-js` is 2.57.4 here and has no OAuth helpers; upgrade and verify.
    Not buildable or testable locally: the local auth server has the OAuth endpoints disabled.
-5. **Set the environment** (`.env.ledger-mcp.template`) on the deployed environment: `LEDGER_MCP_ENABLED=true`, `LEDGER_MCP_PUBLIC_URL`, `BUSINESS_TIMEZONE` (**confirm the zone with the owner**).
+5. **Set the environment** (`.env.ledger-mcp.template`) on the deployed environment: `LEDGER_MCP_ENABLED=true`, `LEDGER_MCP_PUBLIC_URL`, `BUSINESS_TIMEZONE` (`Asia/Karachi`, confirmed by the owner on 2026-10-25).
 6. **Add the connector in Claude**, sign in as an admin, and run the demo against a **staging** database first. Never test writes on production data.
 7. Decide `LEDGER_MCP_REQUIRE_OAUTH_CLIENT` after inspecting a real OAuth token's claims.
 8. Close the remaining open API routes (customers, measurements, vendors, categories, tags, `dashboard-stats`): they are still unauthenticated and are outside this pilot.
