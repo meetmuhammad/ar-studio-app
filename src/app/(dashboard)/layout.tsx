@@ -6,7 +6,7 @@ import { Header } from '@/components/dashboard/header'
 import { RouteGuard } from '@/components/auth/route-guard'
 import { OrderDialog } from '@/components/dialogs/order-dialog'
 import { PaymentDialog } from '@/components/dialogs/payment-dialog'
-import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { BottomNav } from '@/components/dashboard/bottom-nav'
 import { CreateOrderInput } from '@/lib/validators'
 import { DashboardActionsProvider } from '@/contexts/dashboard-actions'
 import { toast } from 'sonner'
@@ -25,8 +25,6 @@ export default function DashboardLayout({
   const [paymentDialog, setPaymentDialog] = useState<{
     open: boolean
   }>({ open: false })
-
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   // Handle create order
   const handleCreateOrder = async (data: CreateOrderInput) => {
@@ -75,28 +73,29 @@ export default function DashboardLayout({
   return (
     <RouteGuard requireAuth={true} requiredRoles={['admin', 'staff']}>
       <DashboardActionsProvider value={dashboardActions}>
-      <div className="flex h-screen bg-background">
-        {/* Desktop Sidebar */}
-        <aside className="hidden lg:flex w-64 border-r">
-          <Sidebar />
+      {/* h-dvh, not h-screen: on phones 100vh is taller than the visible area
+          while the browser toolbar is showing, which pushes the bottom of the
+          page (and the tab bar) off screen. */}
+      <div className="flex h-dvh bg-background">
+        {/* Tablet (md-lg): icon rail. Desktop (lg+): full sidebar. Phones: the
+            bottom tab bar below replaces both. */}
+        <aside className="hidden md:flex w-[4.5rem] lg:w-64 border-r">
+          <Sidebar responsiveRail />
         </aside>
 
-        {/* Mobile Sidebar */}
-        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-          <SheetContent side="left" className="p-0 w-64">
-            <Sidebar onLinkClick={() => setMobileMenuOpen(false)} />
-          </SheetContent>
-        </Sheet>
-
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <Header onMenuClick={() => setMobileMenuOpen(true)} />
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <Header />
           {/* bg-background, not bg-muted/40: the page surface is now a distinct
-              step below the white cards, so the extra tint only muddied it. */}
-          <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-3 sm:p-4 md:p-6">
+              step below the white cards, so the extra tint only muddied it.
+              Bottom padding on phones clears the fixed tab bar plus the home
+              indicator, so the last row is never covered. */}
+          <main className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain bg-background p-3 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:p-4 sm:pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:p-6">
             {children}
           </main>
         </div>
-        
+
+        <BottomNav />
+
         {/* Global Order Dialog */}
         <OrderDialog
           open={orderDialog.open}

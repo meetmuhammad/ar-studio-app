@@ -20,6 +20,7 @@ import type { VendorWithCategory } from '@/lib/supabase-client'
 import { toast } from 'sonner'
 import { VendorDialog } from '@/components/dialogs/vendor-dialog'
 import { VendorCategoriesDialog } from '@/components/dialogs/vendor-categories-dialog'
+import { DeleteConfirmationDialog } from '@/components/dialogs/delete-confirmation-dialog'
 
 export default function VendorsPage() {
   const router = useRouter()
@@ -30,6 +31,7 @@ export default function VendorsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingVendor, setEditingVendor] = useState<VendorWithCategory | null>(null)
   const [categoriesDialogOpen, setCategoriesDialogOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<VendorWithCategory | null>(null)
 
   useEffect(() => {
     fetchVendors()
@@ -70,8 +72,12 @@ export default function VendorsPage() {
     setDialogOpen(true)
   }
 
-  const handleDelete = async (vendor: VendorWithCategory) => {
-    if (!confirm(`Are you sure you want to delete ${vendor.name}?`)) return
+  // Asks first (in-app dialog, not the browser's confirm()); confirmDelete does the delete.
+  const handleDelete = (vendor: VendorWithCategory) => setDeleteTarget(vendor)
+
+  const confirmDelete = async () => {
+    const vendor = deleteTarget
+    if (!vendor) return
 
     try {
       const response = await fetch(`/api/vendors/${vendor.id}`, {
@@ -98,7 +104,7 @@ export default function VendorsPage() {
       <RoleGuard allowedRoles={['admin']}>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Vendors</h1>
+          <h1 className="text-2xl font-bold sm:text-3xl">Vendors</h1>
         </div>
         <div className="text-center py-12">Loading vendors...</div>
       </div>
@@ -109,14 +115,14 @@ export default function VendorsPage() {
   return (
     <RoleGuard allowedRoles={['admin']}>
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Vendors</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold sm:text-3xl">Vendors</h1>
           <p className="text-muted-foreground mt-1">
             Manage your vendors and supplier relationships
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
           <Button variant="outline" onClick={() => setCategoriesDialogOpen(true)}>
             <Tags className="h-4 w-4 mr-2" />
             Manage Categories
@@ -144,7 +150,7 @@ export default function VendorsPage() {
           <CardTitle>All Vendors ({filteredVendors.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
+          <Table stack>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
@@ -156,16 +162,16 @@ export default function VendorsPage() {
             <TableBody>
               {filteredVendors.map((vendor) => (
                 <TableRow key={vendor.id}>
-                  <TableCell className="font-medium">{vendor.name}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="Name" className="font-medium">{vendor.name}</TableCell>
+                  <TableCell data-label="Category">
                     {vendor.vendor_categories ? (
                       <Badge variant="secondary">{vendor.vendor_categories.name}</Badge>
                     ) : (
                       <span className="text-muted-foreground text-sm">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="max-w-md">{vendor.notes || '-'}</TableCell>
-                  <TableCell className="text-right">
+                  <TableCell data-label="Description" className="max-w-md">{vendor.notes || '-'}</TableCell>
+                  <TableCell data-label="Actions" className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button
                         variant="outline"
@@ -179,6 +185,7 @@ export default function VendorsPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleEdit(vendor)}
+                        aria-label={`Edit ${vendor.name}`}
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
@@ -186,6 +193,7 @@ export default function VendorsPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDelete(vendor)}
+                        aria-label={`Delete ${vendor.name}`}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
@@ -220,6 +228,14 @@ export default function VendorsPage() {
       <VendorCategoriesDialog
         open={categoriesDialogOpen}
         onOpenChange={setCategoriesDialogOpen}
+      />
+
+      <DeleteConfirmationDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+        title="Delete Vendor"
+        description={`Are you sure you want to delete ${deleteTarget?.name ?? 'this vendor'}?`}
+        onConfirm={confirmDelete}
       />
     </div>
     </RoleGuard>

@@ -53,6 +53,7 @@ import { format } from "date-fns"
 import { Banknote, CreditCard, Wallet, DollarSign, Check, ChevronsUpDown, Edit, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
+import { DeleteConfirmationDialog } from "@/components/dialogs/delete-confirmation-dialog"
 
 interface Payment {
   id: string
@@ -84,6 +85,7 @@ export function PaymentDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [orderSearchOpen, setOrderSearchOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null)
+  const [paymentToDelete, setPaymentToDelete] = useState<string | null>(null)
 
   const form = useForm<CreatePaymentInput>({
     resolver: zodResolver(CreatePaymentSchema) as any,
@@ -248,9 +250,13 @@ export function PaymentDialog({
     form.setValue("notes", payment.notes || "")
   }
 
-  const handleDeletePayment = async (paymentId: string) => {
-    if (!confirm('Are you sure you want to delete this payment?')) return
-    
+  // Asks first with the in-app dialog (not the browser's confirm()); confirmDeletePayment does the delete.
+  const handleDeletePayment = (paymentId: string) => setPaymentToDelete(paymentId)
+
+  const confirmDeletePayment = async () => {
+    const paymentId = paymentToDelete
+    if (!paymentId) return
+
     try {
       const response = await authFetch(`/api/payments/${paymentId}`, {
         method: 'DELETE',
@@ -281,8 +287,7 @@ export function PaymentDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
-        className="w-[95vw] max-w-none sm:w-[90vw] md:w-[80vw] lg:w-[70vw] xl:w-[70vw] 2xl:w-[60vw] max-h-[95vh] overflow-y-auto"
-        style={{ width: '70vw', maxWidth: 'none' }}
+        className="max-sm:w-full w-[95vw] max-w-none sm:w-[90vw] md:w-[80vw] lg:w-[70vw] max-h-[95vh] overflow-y-auto"
         onInteractOutside={(e) => e.preventDefault()}
       >
         <DialogHeader>
@@ -373,7 +378,7 @@ export function PaymentDialog({
                       </div>
 
                       {/* Payment Summary Table */}
-                      <Table>
+                      <Table stack="narrow">
                         <TableHeader>
                           <TableRow>
                             <TableHead className="text-left">Date</TableHead>
@@ -386,11 +391,11 @@ export function PaymentDialog({
                           {/* Show advance payment if paid */}
                           {(selectedOrder.advance_paid && selectedOrder.advance_paid > 0) && (
                             <TableRow>
-                              <TableCell className="font-mono text-sm">
+                              <TableCell data-label="Date" className="font-mono text-sm">
                                 {format(new Date(selectedOrder.booking_date), 'MMM d, yyyy')}
                               </TableCell>
-                              <TableCell className="font-medium text-green-700">Advance Payment</TableCell>
-                              <TableCell className="text-right font-mono text-green-700">
+                              <TableCell data-label="Description" className="font-medium text-green-700">Advance Payment</TableCell>
+                              <TableCell data-label="Amount (PKR)" className="text-right font-mono text-green-700">
                                 -{(selectedOrder.advance_paid || 0).toFixed(2)}
                               </TableCell>
                             </TableRow>
@@ -398,16 +403,16 @@ export function PaymentDialog({
                           {/* Show additional payments */}
                           {payments.map((payment) => (
                             <TableRow key={payment.id} className={editingPayment?.id === payment.id ? "bg-blue-50 dark:bg-blue-950" : ""}>
-                              <TableCell className="font-mono text-sm">
+                              <TableCell data-label="Date" className="font-mono text-sm">
                                 {format(new Date(payment.payment_date), 'MMM d, yyyy')}
                               </TableCell>
-                              <TableCell className="font-medium text-green-700">
+                              <TableCell data-label="Description" className="font-medium text-green-700">
                                 {payment.notes || `Payment via ${payment.payment_method}`}
                               </TableCell>
-                              <TableCell className="text-right font-mono text-green-700">
+                              <TableCell data-label="Amount (PKR)" className="text-right font-mono text-green-700">
                                 -{payment.amount.toFixed(2)}
                               </TableCell>
-                              <TableCell className="text-right">
+                              <TableCell data-label="Actions" className="text-right">
                                 <div className="flex items-center justify-end gap-1">
                                   <Button
                                     type="button"
@@ -435,18 +440,18 @@ export function PaymentDialog({
                         </TableBody>
                         <TableFooter>
                           <TableRow>
-                            <TableCell className="font-mono text-sm">
+                            <TableCell data-label="Date" className="font-mono text-sm">
                               {format(new Date(selectedOrder.booking_date), 'MMM d, yyyy')}
                             </TableCell>
-                            <TableCell className="font-bold">Total Order Amount</TableCell>
-                            <TableCell className="text-right font-mono font-bold">
+                            <TableCell data-label="Description" className="font-bold">Total Order Amount</TableCell>
+                            <TableCell data-label="Amount (PKR)" className="text-right font-mono font-bold">
                               {(selectedOrder.total_amount || 0).toFixed(2)}
                             </TableCell>
                           </TableRow>
                           <TableRow>
-                            <TableCell></TableCell>
-                            <TableCell className="font-bold">Balance Due</TableCell>
-                            <TableCell className={`text-right font-mono font-bold ${
+                            <TableCell data-label="Date"></TableCell>
+                            <TableCell data-label="Description" className="font-bold">Balance Due</TableCell>
+                            <TableCell data-label="Amount (PKR)" className={`text-right font-mono font-bold ${
                               calculateBalance() > 0 ? 'text-orange-600' : 
                               calculateBalance() < 0 ? 'text-red-600' : 'text-green-600'
                             }`}>
@@ -638,6 +643,14 @@ export function PaymentDialog({
             </div>
           </form>
         </Form>
+
+        <DeleteConfirmationDialog
+          open={paymentToDelete !== null}
+          onOpenChange={(open) => { if (!open) setPaymentToDelete(null) }}
+          title="Delete Payment"
+          description="Are you sure you want to delete this payment?"
+          onConfirm={confirmDeletePayment}
+        />
       </DialogContent>
     </Dialog>
   )

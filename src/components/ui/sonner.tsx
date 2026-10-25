@@ -10,6 +10,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      // Phones: sit above the bottom tab bar (4.5rem) and the home indicator, not on top of them.
+      mobileOffset={{ bottom: "calc(4.75rem + env(safe-area-inset-bottom))", left: "0.75rem", right: "0.75rem" }}
       style={
         {
           "--normal-bg": "var(--popover)",

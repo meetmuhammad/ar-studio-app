@@ -191,19 +191,18 @@ export function OrderDetailsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
-        className="w-[95vw] max-w-none sm:w-[90vw] md:w-[80vw] lg:w-[70vw] xl:w-[70vw] 2xl:w-[60vw] max-h-[95vh] overflow-y-auto"
-        style={{ width: '70vw', maxWidth: 'none' }}
+        className="max-sm:w-full w-[95vw] max-w-none sm:w-[90vw] md:w-[80vw] lg:w-[70vw] max-h-[95vh] overflow-y-auto"
         onInteractOutside={(e) => e.preventDefault()}
       >
         <DialogHeader>
-          <DialogTitle className="flex items-center justify-between gap-2">
+          <DialogTitle className="flex flex-col items-start gap-2 pr-8 sm:flex-row sm:items-center sm:justify-between sm:pr-0">
             <span className="flex items-center gap-2">
               Order Details
               <Badge variant="secondary" className="font-mono">
                 {order.order_number}
               </Badge>
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => openPrintPreview({ order, payments })}>
                 <Printer className="h-4 w-4 mr-2" />
                 Print Receipt
@@ -299,7 +298,7 @@ export function OrderDetailsDialog({
             </CardHeader>
             <CardContent>
               {/* Payment Summary Table */}
-              <Table>
+              <Table stack="narrow">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-left">Date</TableHead>
@@ -312,11 +311,11 @@ export function OrderDetailsDialog({
                   {/* Show advance payment if paid */}
                   {(order.advance_paid && order.advance_paid > 0) && (
                     <TableRow>
-                      <TableCell className="font-mono text-sm">
+                      <TableCell data-label="Date" className="font-mono text-sm">
                         {format(new Date(order.booking_date), 'MMM d, yyyy')}
                       </TableCell>
-                      <TableCell className="font-medium text-green-700">Advance Payment</TableCell>
-                      <TableCell className="text-right font-mono text-green-700">
+                      <TableCell data-label="Description" className="font-medium text-green-700">Advance Payment</TableCell>
+                      <TableCell data-label="Amount (PKR)" className="text-right font-mono text-green-700">
                         -{(order.advance_paid || 0).toFixed(2)}
                       </TableCell>
                     </TableRow>
@@ -331,13 +330,13 @@ export function OrderDetailsDialog({
                   ) : (
                     payments.map((payment) => (
                       <TableRow key={payment.id}>
-                        <TableCell className="font-mono text-sm">
+                        <TableCell data-label="Date" className="font-mono text-sm">
                           {format(new Date(payment.payment_date), 'MMM d, yyyy')}
                         </TableCell>
-                        <TableCell className="font-medium text-green-700">
+                        <TableCell data-label="Description" className="font-medium text-green-700">
                           {payment.notes || `Payment via ${payment.payment_method}`}
                         </TableCell>
-                        <TableCell className="text-right font-mono text-green-700">
+                        <TableCell data-label="Amount (PKR)" className="text-right font-mono text-green-700">
                           {editingPaymentId === payment.id ? (
                             <Input
                               type="number"
@@ -354,7 +353,7 @@ export function OrderDetailsDialog({
                             `-${payment.amount.toFixed(2)}`
                           )}
                         </TableCell>
-                        <TableCell>
+                        <TableCell data-label="Actions">
                           <div className="flex items-center justify-end gap-1">
                             {editingPaymentId === payment.id ? (
                               <>
@@ -403,18 +402,18 @@ export function OrderDetailsDialog({
                 </TableBody>
                 <TableFooter>
                   <TableRow>
-                    <TableCell className="font-mono text-sm">
+                    <TableCell data-label="Date" className="font-mono text-sm">
                       {format(new Date(order.booking_date), 'MMM d, yyyy')}
                     </TableCell>
-                    <TableCell className="font-bold">Total Order Amount</TableCell>
-                    <TableCell className="text-right font-mono font-bold">
+                    <TableCell data-label="Description" className="font-bold">Total Order Amount</TableCell>
+                    <TableCell data-label="Amount (PKR)" className="text-right font-mono font-bold">
                       {(order.total_amount || 0).toFixed(2)}
                     </TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell></TableCell>
-                    <TableCell className="font-bold">Balance Due</TableCell>
-                    <TableCell className={`text-right font-mono font-bold ${
+                    <TableCell data-label="Description" className="font-bold">Balance Due</TableCell>
+                    <TableCell data-label="Amount (PKR)" className={`text-right font-mono font-bold ${
                       calculateBalance() > 0 ? 'text-orange-600' : 
                       calculateBalance() < 0 ? 'text-red-600' : 'text-green-600'
                     }`}>

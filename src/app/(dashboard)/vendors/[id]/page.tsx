@@ -164,15 +164,15 @@ export default function VendorLedgerPage() {
     <RoleGuard allowedRoles={['admin']}>
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push('/vendors')}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+          <Button variant="ghost" size="icon" onClick={() => router.push('/vendors')} aria-label="Back to vendors" className="shrink-0">
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div>
-            <div className="flex items-center gap-2">
-              <Building2 className="h-6 w-6 text-muted-foreground" />
-              <h1 className="text-3xl font-bold">{vendor.name}</h1>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Building2 className="h-6 w-6 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <h1 className="min-w-0 text-2xl font-bold [overflow-wrap:anywhere] sm:text-3xl">{vendor.name}</h1>
               {vendor.vendor_categories && (
                 <Badge variant="secondary">{vendor.vendor_categories.name}</Badge>
               )}
@@ -180,15 +180,15 @@ export default function VendorLedgerPage() {
             <p className="text-muted-foreground mt-1">Vendor Ledger</p>
           </div>
         </div>
-        <Button onClick={() => setBillDialogOpen(true)}>
+        <Button onClick={() => setBillDialogOpen(true)} className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           Create Bill
         </Button>
       </div>
 
       {/* Search and Date Range Filters */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_auto_auto]">
-        <div className="relative">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_auto_auto]">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search by particulars, notes, or date..."
@@ -197,52 +197,56 @@ export default function VendorLedgerPage() {
             className="pl-10"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
           <Label className="text-sm text-muted-foreground whitespace-nowrap">From Date</Label>
-          <DatePicker
-            date={dateFrom}
-            onDateChange={setDateFrom}
-            placeholder="From date"
-            className="w-[160px]"
-            maxDate={dateTo || undefined}
-          />
-          {dateFrom && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setDateFrom(undefined)}
-              className="h-10 w-10 flex-shrink-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
+          <div className="flex min-w-0 items-center gap-2">
+            <DatePicker
+              date={dateFrom}
+              onDateChange={setDateFrom}
+              placeholder="From date"
+              className="w-full sm:w-[160px]"
+              maxDate={dateTo || undefined}
+            />
+            {dateFrom && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setDateFrom(undefined)}
+                className="h-10 w-10 flex-shrink-0 pointer-coarse:h-11 pointer-coarse:w-11"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
           <Label className="text-sm text-muted-foreground whitespace-nowrap">To Date</Label>
-          <DatePicker
-            date={dateTo}
-            onDateChange={setDateTo}
-            placeholder="To date"
-            className="w-[160px]"
-            minDate={dateFrom || undefined}
-          />
-          {dateTo && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setDateTo(undefined)}
-              className="h-10 w-10 flex-shrink-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
+          <div className="flex min-w-0 items-center gap-2">
+            <DatePicker
+              date={dateTo}
+              onDateChange={setDateTo}
+              placeholder="To date"
+              className="w-full sm:w-[160px]"
+              minDate={dateFrom || undefined}
+            />
+            {dateTo && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setDateTo(undefined)}
+                className="h-10 w-10 flex-shrink-0 pointer-coarse:h-11 pointer-coarse:w-11"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-3">
+        <Card className="gap-2 py-4 sm:gap-6 sm:py-6">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0 sm:pb-2">
             <CardTitle className="text-sm font-medium">Total Debit</CardTitle>
           </CardHeader>
           <CardContent>
@@ -251,8 +255,8 @@ export default function VendorLedgerPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card className="gap-2 py-4 sm:gap-6 sm:py-6">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0 sm:pb-2">
             <CardTitle className="text-sm font-medium">Total Credit</CardTitle>
           </CardHeader>
           <CardContent>
@@ -261,8 +265,8 @@ export default function VendorLedgerPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card className="gap-2 py-4 sm:gap-6 sm:py-6">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0 sm:pb-2">
             <CardTitle className="text-sm font-medium">Net Balance</CardTitle>
           </CardHeader>
           <CardContent>
@@ -282,7 +286,7 @@ export default function VendorLedgerPage() {
           <CardTitle>Ledger Entries ({filteredEntries.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
+          <Table stack="wide">
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
@@ -296,10 +300,10 @@ export default function VendorLedgerPage() {
             <TableBody>
               {filteredEntries.map((entry) => (
                 <TableRow key={entry.id}>
-                  <TableCell className="font-medium">
+                  <TableCell data-label="Date" className="font-medium">
                     {formatDate(entry.entry_date)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-label="Particulars">
                     <div>
                       <div className="font-medium">{entry.particulars}</div>
                       {entry.notes && (
@@ -307,20 +311,20 @@ export default function VendorLedgerPage() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-label="Type">
                     {entry.general_ledger_id ? (
                       getEntryTypeBadge(entry.general_ledger?.entry_type || 'vendor_payment')
                     ) : (
                       <Badge variant="outline">Vendor Bill</Badge>
                     )}
                   </TableCell>
-                  <TableCell className="text-right text-green-600">
+                  <TableCell data-label="Debit" className="text-right text-green-600">
                     {entry.debit ? formatCurrency(entry.debit) : '-'}
                   </TableCell>
-                  <TableCell className="text-right text-red-600">
+                  <TableCell data-label="Credit" className="text-right text-red-600">
                     {entry.credit ? formatCurrency(entry.credit) : '-'}
                   </TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell data-label="Balance" className="text-right font-medium">
                     {/* Calculate running balance */}
                     {formatCurrency(
                       entries

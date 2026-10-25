@@ -107,7 +107,8 @@ export function OrderItemsRepeater({ control, disabled }: OrderItemsRepeaterProp
                       size="sm"
                       onClick={() => removeOrderItem(index)}
                       disabled={disabled}
-                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      aria-label={`Remove item ${index + 1}`}
+                      className="h-8 w-8 p-0 pointer-coarse:h-11 pointer-coarse:w-11 text-red-600 hover:text-red-700 hover:bg-red-50"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

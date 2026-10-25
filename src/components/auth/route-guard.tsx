@@ -39,7 +39,7 @@ export function RouteGuard({
   // Show loading while checking authentication
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-dvh flex items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
           <p className="text-muted-foreground">Checking authentication...</p>
@@ -52,7 +52,7 @@ export function RouteGuard({
   // (redirect is handled in useEffect)
   if (requireAuth && !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-dvh flex items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
           <p className="text-muted-foreground">Redirecting...</p>
@@ -66,7 +66,7 @@ export function RouteGuard({
     const hasRequiredRole = requiredRoles.includes(user.role)
     if (!hasRequiredRole) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="min-h-dvh flex items-center justify-center bg-background">
           <div className="text-center">
             <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
             <p className="text-muted-foreground">Redirecting...</p>

@@ -1,5 +1,6 @@
 'use client'
 
+import { ErrorState } from '@/components/dashboard/error-state'
 import { useEffect, useState, useRef } from 'react'
 import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, RefreshCw, Edit, Search, Download, Trash2, X } from 'lucide-react'
 import { RoleGuard } from '@/components/auth/role-guard'
@@ -9,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Label } from '@/components/ui/label'
 import { LedgerEntryDialog } from '@/components/dialogs/ledger-entry-dialog'
+import { DeleteConfirmationDialog } from '@/components/dialogs/delete-confirmation-dialog'
 import {
   Table,
   TableBody,
@@ -36,6 +38,7 @@ const ALL_CATEGORIES = 'all'
 export default function LedgerPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingEntry, setEditingEntry] = useState<GeneralLedgerWithRelations | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<GeneralLedgerWithRelations | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
@@ -48,7 +51,7 @@ export default function LedgerPage() {
   const { data: categories = [] } = useVendorCategories()
 
   // React Query hooks
-  const { data: entriesResult, isLoading, refetch: fetchData } = useLedgerEntries({
+  const { data: entriesResult, isLoading, isError: loadFailed, error: loadError, refetch: fetchData } = useLedgerEntries({
     page: currentPage,
     pageSize: itemsPerPage,
     search: debouncedSearch,
@@ -56,7 +59,7 @@ export default function LedgerPage() {
     endDate: dateTo?.toISOString().split('T')[0],
     vendorCategoryId: categoryFilter === ALL_CATEGORIES ? undefined : categoryFilter,
   })
-  const { data: stats = { totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 } } = useLedgerStats()
+  const { data: stats = { totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 }, refetch: refetchStats } = useLedgerStats()
   const syncMutation = useSyncOrderPayments()
   const deleteMutation = useDeleteLedgerEntry()
   
@@ -92,11 +95,12 @@ export default function LedgerPage() {
     setDialogOpen(true)
   }
 
-  const handleDelete = async (entry: GeneralLedgerWithRelations) => {
-    if (!confirm(`Are you sure you want to delete this ledger entry? This will also delete the corresponding vendor ledger entry if any.`)) {
-      return
-    }
-    await deleteMutation.mutateAsync(entry.id)
+  // Asks first with the in-app dialog (not the browser's confirm()); confirmDelete does the delete.
+  const handleDelete = (entry: GeneralLedgerWithRelations) => setDeleteTarget(entry)
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    await deleteMutation.mutateAsync(deleteTarget.id)
   }
 
   const handleCloseDialog = () => {
@@ -197,14 +201,14 @@ export default function LedgerPage() {
   return (
     <RoleGuard allowedRoles={['admin']}>
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">General Ledger</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold sm:text-3xl">General Ledger</h1>
           <p className="text-muted-foreground mt-1">
             Track all financial transactions and balances
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
           <Button
             variant="outline"
             onClick={exportToCSV}
@@ -221,8 +225,8 @@ export default function LedgerPage() {
       </div>
 
       {/* Search, Category, and Date Range Filters */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_auto_auto_auto]">
-        <div className="relative">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_auto_auto_auto]">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
           placeholder="Search by particulars..."
@@ -231,10 +235,10 @@ export default function LedgerPage() {
             className="pl-10"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
           <Label className="text-sm text-muted-foreground whitespace-nowrap">Category</Label>
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="All categories" />
             </SelectTrigger>
             <SelectContent>
@@ -247,102 +251,114 @@ export default function LedgerPage() {
             </SelectContent>
           </Select>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
           <Label className="text-sm text-muted-foreground whitespace-nowrap">From Date</Label>
-          <DatePicker
-            date={dateFrom}
-            onDateChange={setDateFrom}
-            placeholder="From date"
-            className="w-[160px]"
-            maxDate={dateTo || undefined}
-          />
-          {dateFrom && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setDateFrom(undefined)}
-              className="h-10 w-10 flex-shrink-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
+          <div className="flex min-w-0 items-center gap-2">
+            <DatePicker
+              date={dateFrom}
+              onDateChange={setDateFrom}
+              placeholder="From date"
+              className="w-full sm:w-[160px]"
+              maxDate={dateTo || undefined}
+            />
+            {dateFrom && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setDateFrom(undefined)}
+                className="h-10 w-10 flex-shrink-0 pointer-coarse:h-11 pointer-coarse:w-11"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
           <Label className="text-sm text-muted-foreground whitespace-nowrap">To Date</Label>
-          <DatePicker
-            date={dateTo}
-            onDateChange={setDateTo}
-            placeholder="To date"
-            className="w-[160px]"
-            minDate={dateFrom || undefined}
-          />
-          {dateTo && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setDateTo(undefined)}
-              className="h-10 w-10 flex-shrink-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
+          <div className="flex min-w-0 items-center gap-2">
+            <DatePicker
+              date={dateTo}
+              onDateChange={setDateTo}
+              placeholder="To date"
+              className="w-full sm:w-[160px]"
+              minDate={dateFrom || undefined}
+            />
+            {dateTo && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setDateTo(undefined)}
+                className="h-10 w-10 flex-shrink-0 pointer-coarse:h-11 pointer-coarse:w-11"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
+        <Card className="gap-2 py-4 sm:gap-6 sm:py-6">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0 sm:pb-2">
             <CardTitle className="text-sm font-medium">Total Debit</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalDebit)}</div>
+            <div className="text-xl font-bold tabular-nums sm:text-2xl">{formatCurrency(stats.totalDebit)}</div>
             <p className="text-xs text-muted-foreground mt-1">Money in</p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card className="gap-2 py-4 sm:gap-6 sm:py-6">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0 sm:pb-2">
             <CardTitle className="text-sm font-medium">Total Credit</CardTitle>
             <TrendingDown className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalCredit)}</div>
+            <div className="text-xl font-bold tabular-nums sm:text-2xl">{formatCurrency(stats.totalCredit)}</div>
             <p className="text-xs text-muted-foreground mt-1">Money out</p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card className="gap-2 py-4 sm:gap-6 sm:py-6">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0 sm:pb-2">
             <CardTitle className="text-sm font-medium">Current Balance</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.currentBalance)}</div>
+            <div className="text-xl font-bold tabular-nums sm:text-2xl">{formatCurrency(stats.currentBalance)}</div>
             <p className="text-xs text-muted-foreground mt-1">Net position</p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card className="gap-2 py-4 sm:gap-6 sm:py-6">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0 sm:pb-2">
             <CardTitle className="text-sm font-medium">Total Entries</CardTitle>
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.entryCount}</div>
+            <div className="text-xl font-bold tabular-nums sm:text-2xl">{stats.entryCount}</div>
             <p className="text-xs text-muted-foreground mt-1">All transactions</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Entries Table */}
+      {loadFailed && entries.length === 0 ? (
+        <ErrorState
+          title="Couldn't load the ledger"
+          detail={loadError instanceof Error ? loadError.message : undefined}
+          onRetry={() => fetchData()}
+        />
+      ) : (
+      <>
       <Card>
         <CardHeader>
           <CardTitle>Ledger Entries</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
+          <Table stack="wide">
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
@@ -357,10 +373,10 @@ export default function LedgerPage() {
             <TableBody>
               {entries.map((entry) => (
                 <TableRow key={entry.id}>
-                  <TableCell className="font-medium">
+                  <TableCell data-label="Date" className="font-medium">
                     {formatDate(entry.entry_date)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-label="Particulars">
                     <div>
                       <div className="font-medium">{entry.particulars}</div>
                       {entry.vendors && (
@@ -376,23 +392,24 @@ export default function LedgerPage() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>{getEntryTypeBadge(entry.entry_type)}</TableCell>
-                  <TableCell className="text-right text-green-600">
+                  <TableCell data-label="Type">{getEntryTypeBadge(entry.entry_type)}</TableCell>
+                  <TableCell data-label="Debit" className="text-right text-green-600">
                     {entry.debit ? formatCurrency(entry.debit) : '-'}
                   </TableCell>
-                  <TableCell className="text-right text-red-600">
+                  <TableCell data-label="Credit" className="text-right text-red-600">
                     {entry.credit ? formatCurrency(entry.credit) : '-'}
                   </TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell data-label="Balance" className="text-right font-medium">
                     {formatCurrency(entry.calculatedBalance || entry.balance)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell data-label="Actions" className="text-right">
                     {entry.entry_type !== 'order_payment' && (
                       <div className="flex justify-end gap-2">
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleEdit(entry)}
+                          aria-label="Edit ledger entry"
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
@@ -400,6 +417,7 @@ export default function LedgerPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDelete(entry)}
+                          aria-label="Delete ledger entry"
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
@@ -469,6 +487,8 @@ export default function LedgerPage() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
       <LedgerEntryDialog
         open={dialogOpen}
@@ -477,8 +497,18 @@ export default function LedgerPage() {
         onSuccess={() => {
           toast.success(editingEntry ? 'Ledger entry updated successfully' : 'Ledger entry created successfully')
           handleCloseDialog()
+          // The dialog saves with its own request, so refresh the totals as well as the rows.
           fetchData()
+          refetchStats()
         }}
+      />
+
+      <DeleteConfirmationDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+        title="Delete Ledger Entry"
+        description="Are you sure you want to delete this ledger entry? This will also delete the corresponding vendor ledger entry if any."
+        onConfirm={confirmDelete}
       />
     </div>
     </RoleGuard>

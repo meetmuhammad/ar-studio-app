@@ -176,10 +176,10 @@ export function OrderMultiStepForm({
     <FormProvider {...form}>
       <div className="space-y-6">
         {/* Step Progress */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-1" role="list" aria-label="Order steps">
           {steps.map((step, index) => (
-            <div key={step.id} className="flex items-center">
-              <div className="flex items-center">
+            <div key={step.id} role="listitem" aria-current={currentStep === step.id ? "step" : undefined} className="flex min-w-0 items-center">
+              <div className="flex min-w-0 items-center">
                 <div
                   className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm font-medium
                     ${completedSteps.includes(step.id)
@@ -195,17 +195,18 @@ export function OrderMultiStepForm({
                     step.id
                   )}
                 </div>
-                <div className="ml-3">
+                {/* Phones: only the current step is named; the others are just their number. */}
+                <div className={`ml-2 min-w-0 sm:ml-3 ${currentStep === step.id ? "" : "hidden sm:block"}`}>
                   <p className={`text-sm font-medium ${
                     currentStep === step.id ? "text-foreground" : "text-muted-foreground"
                   }`}>
                     {step.title}
                   </p>
-                  <p className="text-xs text-muted-foreground">{step.description}</p>
+                  <p className="hidden text-xs text-muted-foreground md:block">{step.description}</p>
                 </div>
               </div>
               {index < steps.length - 1 && (
-                <div className={`mx-4 h-px w-12 ${
+                <div className={`mx-1 h-px w-4 shrink-0 sm:mx-4 sm:w-12 ${
                   completedSteps.includes(step.id) ? "bg-primary" : "bg-border"
                 }`} />
               )}
@@ -226,8 +227,8 @@ export function OrderMultiStepForm({
               {renderCurrentStep()}
               
               {/* Navigation Buttons */}
-              <div className="flex justify-between pt-6">
-                <div className="flex gap-2">
+              <div className="flex flex-col-reverse gap-3 pt-6 sm:flex-row sm:justify-between">
+                <div className="flex gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
                   {currentStep > 1 && (
                     <Button
                       type="button"
@@ -241,7 +242,7 @@ export function OrderMultiStepForm({
                   )}
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
                   <Button
                     type="button"
                     variant="outline"
