@@ -1,0 +1,214 @@
+{
+  "version": 1,
+  "compiledAt": "2026-10-24T00:00:00.000Z",
+  "compiledBy": "claude",
+  "sources": [
+    {
+      "path": "CLAUDE.md",
+      "sha": "f652e6a114e036abbd16153d50affe7a16801fe660c72ff068d01e7878805de8",
+      "scope": "**/*"
+    }
+  ],
+  "rules": [
+    {
+      "id": "prod-project-ref-in-code",
+      "text": "If a command would target `drdnqsjjxmqiklwfadmk`, **stop and ask.**",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 16
+      },
+      "check": {
+        "type": "lint",
+        "how": "no-restricted-syntax / grep for the production project ref; allowed only in a guard that refuses it",
+        "pattern": "drdnqsjjxmqiklwfadmk"
+      },
+      "status": "active"
+    },
+    {
+      "id": "no-credentials-committed",
+      "text": "Never put keys, passwords, database URLs, or tokens into Git.",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 21
+      },
+      "when": "edit",
+      "check": {
+        "type": "model",
+        "question": {
+          "type": "boolean",
+          "instructions": "Does this change add a literal credential value: a long `eyJ...` JWT, a database connection URL containing a password, or an API key or token written out as a string instead of read from the environment?",
+          "criteria": {
+            "true": "const key = \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\" or DATABASE_URL=postgresql://postgres:s3cret@db.host:5432/postgres",
+            "false": "process.env.SUPABASE_SERVICE_ROLE_KEY, or an empty placeholder in a .env.template"
+          }
+        }
+      },
+      "status": "active",
+      "calibration": {
+        "at": "2026-10-23T22:52:44.794Z",
+        "hunks": 20,
+        "median": 0.02,
+        "min": 0.02,
+        "max": 0.06,
+        "fired": 0,
+        "verdict": "decisive"
+      }
+    },
+    {
+      "id": "no-prod-data-into-staging",
+      "text": "Never copy production customer, measurement, order, payment, ledger, vendor, or auth data into staging. Staging data is synthetic, from `scripts/seed-supabase.ts`.",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 18
+      },
+      "check": {
+        "type": "deferred",
+        "reason": "needs to know which project each client in the change resolves to, which lives in env, not the diff"
+      },
+      "status": "active"
+    },
+    {
+      "id": "prod-write-needs-per-occasion-approval",
+      "text": "Never run a schema- or data-changing command against production without explicit, per-occasion approval from the user. Approval for one production action does not carry to the next.",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 9
+      },
+      "check": {
+        "type": "unenforceable",
+        "reason": "governs which commands the agent runs and when it asks, not the code"
+      },
+      "status": "active"
+    },
+    {
+      "id": "destructive-work-targets-local-or-staging",
+      "text": "Migrations, seeds, resets, destructive tests, and experiments target **local or staging only**.",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 12
+      },
+      "check": {
+        "type": "unenforceable",
+        "reason": "about the target a command is run against, which is not in the diff"
+      },
+      "status": "active"
+    },
+    {
+      "id": "state-target-database-verbatim",
+      "text": "Before any remote database-changing action, state the target verbatim: `TARGET DATABASE: STAGING - ohgqgkraybpvnfdbgmvl`",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 14
+      },
+      "check": {
+        "type": "unenforceable",
+        "reason": "about what the agent says in conversation"
+      },
+      "status": "active"
+    },
+    {
+      "id": "never-modify-production-records",
+      "text": "Never modify existing production records.",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 17
+      },
+      "check": {
+        "type": "unenforceable",
+        "reason": "about a runtime action against a live database, not committed code"
+      },
+      "status": "active"
+    },
+    {
+      "id": "confirm-target-with-env-check",
+      "text": "`npm run env:check` prints the resolved target — confirm with it rather than asserting from memory.",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 23
+      },
+      "check": {
+        "type": "unenforceable",
+        "reason": "a step the agent performs; also the script does not currently exist in package.json"
+      },
+      "status": "active"
+    },
+    {
+      "id": "graphify-absolute-path",
+      "text": "**Invoke it by absolute path: `/Users/Ammar/.local/bin/graphify`.** Use the absolute path in every command and in every subagent prompt.",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 35
+      },
+      "check": {
+        "type": "unenforceable",
+        "reason": "about how the agent invokes a CLI, not about code it writes"
+      },
+      "status": "active"
+    },
+    {
+      "id": "graphify-query-first",
+      "text": "For codebase questions, first run `graphify query \"<question>\"` when graphify-out/graph.json exists.",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 42
+      },
+      "check": {
+        "type": "unenforceable",
+        "reason": "orders the agent's own exploration steps"
+      },
+      "status": "active"
+    },
+    {
+      "id": "graphify-wiki-for-navigation",
+      "text": "If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 43
+      },
+      "check": {
+        "type": "unenforceable",
+        "reason": "orders the agent's own exploration steps; no wiki/ is currently generated"
+      },
+      "status": "active"
+    },
+    {
+      "id": "graph-report-only-for-architecture",
+      "text": "Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 44
+      },
+      "check": {
+        "type": "unenforceable",
+        "reason": "about which file the agent reads"
+      },
+      "status": "active"
+    },
+    {
+      "id": "graphify-update-after-changes",
+      "text": "After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 45
+      },
+      "check": {
+        "type": "unenforceable",
+        "reason": "a command the agent runs after editing; not visible in the diff it produced"
+      },
+      "status": "active"
+    },
+    {
+      "id": "refresh-stale-graph-before-trusting",
+      "text": "If a query returns nodes whose line numbers no longer match the file, run `update .` before trusting it.",
+      "source": {
+        "path": "CLAUDE.md",
+        "line": 46
+      },
+      "check": {
+        "type": "unenforceable",
+        "reason": "about the agent's confidence in a tool's output"
+      },
+      "status": "active"
+    }
+  ]
+}
