@@ -1,0 +1,1466 @@
+{
+  "base": "http://localhost:3100",
+  "checks": [
+    {
+      "ep": "GET /api/general-ledger",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/general-ledger",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/general-ledger",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/general-ledger",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/general-ledger",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/general-ledger",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/general-ledger/[id]",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/general-ledger/[id]",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/general-ledger/[id]",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PUT /api/general-ledger/[id]",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "PUT /api/general-ledger/[id]",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PUT /api/general-ledger/[id]",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "DELETE /api/general-ledger/[id]",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "DELETE /api/general-ledger/[id]",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "DELETE /api/general-ledger/[id]",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/general-ledger/stats",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/general-ledger/stats",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/general-ledger/stats",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/general-ledger/sync-payments",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/general-ledger/sync-payments",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/general-ledger/sync-payments",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/vendor-ledger",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/vendor-ledger",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/vendor-ledger",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/vendor-ledger",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/vendor-ledger",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/vendor-ledger",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/orders",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/orders",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/orders",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/orders",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/orders",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/orders",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/orders/all",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/orders/all",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/orders/all",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/orders/[id]",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/orders/[id]",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/orders/[id]",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PATCH /api/orders/[id]",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "PATCH /api/orders/[id]",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PATCH /api/orders/[id]",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "DELETE /api/orders/[id]",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "DELETE /api/orders/[id]",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "DELETE /api/orders/[id]",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/payments",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/payments",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/payments",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/payments",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/payments",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/payments",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PATCH /api/payments/[id]",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "PATCH /api/payments/[id]",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PATCH /api/payments/[id]",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "DELETE /api/payments/[id]",
+      "cat": "unauth",
+      "name": "no token -> 401",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "DELETE /api/payments/[id]",
+      "cat": "unauth",
+      "name": "garbage token -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "DELETE /api/payments/[id]",
+      "cat": "norole",
+      "name": "signed in, no users row -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/general-ledger",
+      "cat": "staff",
+      "name": "staff -> 403 (admin only)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/general-ledger",
+      "cat": "staff",
+      "name": "staff -> 403 (admin only)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/general-ledger/[id]",
+      "cat": "staff",
+      "name": "staff -> 403 (admin only)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PUT /api/general-ledger/[id]",
+      "cat": "staff",
+      "name": "staff -> 403 (admin only)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "DELETE /api/general-ledger/[id]",
+      "cat": "staff",
+      "name": "staff -> 403 (admin only)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/general-ledger/stats",
+      "cat": "staff",
+      "name": "staff -> 403 (admin only)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/general-ledger/sync-payments",
+      "cat": "staff",
+      "name": "staff -> 403 (admin only)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/vendor-ledger",
+      "cat": "staff",
+      "name": "staff -> 403 (admin only)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/vendor-ledger",
+      "cat": "staff",
+      "name": "staff -> 403 (admin only)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/orders",
+      "cat": "staff",
+      "name": "staff allowed (not 401/403)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/orders",
+      "cat": "staff",
+      "name": "staff allowed (not 401/403)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/orders/all",
+      "cat": "staff",
+      "name": "staff allowed (not 401/403)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/orders/[id]",
+      "cat": "staff",
+      "name": "staff allowed (not 401/403)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PATCH /api/orders/[id]",
+      "cat": "staff",
+      "name": "staff allowed (not 401/403)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "DELETE /api/orders/[id]",
+      "cat": "staff",
+      "name": "staff allowed (not 401/403)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/payments",
+      "cat": "staff",
+      "name": "staff allowed (not 401/403)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/payments",
+      "cat": "staff",
+      "name": "staff allowed (not 401/403)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PATCH /api/payments/[id]",
+      "cat": "staff",
+      "name": "staff allowed (not 401/403)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "DELETE /api/payments/[id]",
+      "cat": "staff",
+      "name": "staff allowed (not 401/403)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /.well-known/oauth-protected-resource/api/mcp",
+      "cat": "unauth",
+      "name": "public metadata names the resource, a Supabase auth server and scopes",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/mcp",
+      "cat": "unauth",
+      "name": "no token -> 401 with resource_metadata challenge",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/mcp",
+      "cat": "unauth",
+      "name": "no token -> 401 with resource_metadata challenge",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "DELETE /api/mcp",
+      "cat": "unauth",
+      "name": "no token -> 401 with resource_metadata challenge",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/mcp",
+      "cat": "unauth",
+      "name": "garbage bearer -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/mcp",
+      "cat": "admin",
+      "name": "ordinary admin web-session token (aud=authenticated) is refused -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/mcp",
+      "cat": "staff",
+      "name": "staff web-session token is refused -> 401",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/customers",
+      "cat": "admin",
+      "name": "create returns 201 with the record",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/customers",
+      "cat": "unauth",
+      "name": "unauthenticated create is accepted (OPEN)",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/customers",
+      "cat": "persist",
+      "name": "persisted: GET by id returns the same data",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/customers",
+      "cat": "invalid",
+      "name": "duplicate phone -> 400 and no second row",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/customers",
+      "cat": "invalid",
+      "name": "invalid body (short name, bad phone) is rejected and writes nothing",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/customers",
+      "cat": "admin",
+      "name": "list shape + pagination + search",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/customers",
+      "cat": "unauth",
+      "name": "unauthenticated list is accepted (OPEN, returns customer PII)",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/customers",
+      "cat": "invalid",
+      "name": "bad paging params are tolerated or rejected without a crash",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/customers/[id]",
+      "cat": "missing",
+      "name": "unknown uuid -> 404",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/customers/[id]",
+      "cat": "invalid",
+      "name": "non-uuid id is rejected",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/customers/[id]",
+      "cat": "unauth",
+      "name": "unauthenticated read is accepted (OPEN)",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "PATCH /api/customers/[id]",
+      "cat": "persist",
+      "name": "update persists (re-read)",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "PATCH /api/customers/[id]",
+      "cat": "invalid",
+      "name": "invalid update rejected, record unchanged",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "PATCH /api/customers/[id]",
+      "cat": "missing",
+      "name": "unknown id is rejected",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/vendor-categories",
+      "cat": "admin",
+      "name": "create 201",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/vendor-categories",
+      "cat": "invalid",
+      "name": "duplicate -> 409; empty -> 400; >120 chars -> 400",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/vendor-categories",
+      "cat": "persist",
+      "name": "created category is listed; archived is hidden unless include_archived=1",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/vendor-categories",
+      "cat": "unauth",
+      "name": "unauthenticated read accepted (OPEN)",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "PATCH /api/vendor-categories/[id]",
+      "cat": "persist",
+      "name": "rename persists",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "PATCH /api/vendor-categories/[id]",
+      "cat": "invalid",
+      "name": "empty body 400, empty name 400",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "PATCH /api/vendor-categories/[id]",
+      "cat": "missing",
+      "name": "unknown id -> 404",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/vendors",
+      "cat": "admin",
+      "name": "create 201 with category",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/vendors",
+      "cat": "invalid",
+      "name": "missing/blank name -> 400, nothing written",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/vendors",
+      "cat": "unauth",
+      "name": "unauthenticated create accepted (OPEN)",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/vendors",
+      "cat": "persist",
+      "name": "list includes vendor with its category object",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/vendors/[id]",
+      "cat": "persist",
+      "name": "detail embeds tags and ledger arrays",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/vendors/[id]",
+      "cat": "missing",
+      "name": "unknown id -> 404",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/vendors/[id]",
+      "cat": "invalid",
+      "name": "non-uuid id is rejected",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "PUT /api/vendors/[id]",
+      "cat": "persist",
+      "name": "update persists; blank name -> 400; unknown id -> 404",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/vendor-tags",
+      "cat": "admin",
+      "name": "create 201; duplicate 409; missing fields 400",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/vendor-tags",
+      "cat": "persist",
+      "name": "lists tags for a vendor; vendor_id required",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "DELETE /api/vendor-tags/[id]",
+      "cat": "persist",
+      "name": "delete removes it",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "DELETE /api/vendor-tags/[id]",
+      "cat": "missing",
+      "name": "unknown id",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "DELETE /api/vendor-categories/[id]",
+      "cat": "invalid",
+      "name": "category in use by a vendor -> 409 CATEGORY_IN_USE and it survives",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/general-ledger/stats",
+      "cat": "admin",
+      "name": "shape: numeric totals, count, private no-store",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/general-ledger",
+      "cat": "admin",
+      "name": "debit entry: 201, stored XOR, balance = previous + debit",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/general-ledger",
+      "cat": "admin",
+      "name": "credit entry: balance = previous - credit",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/general-ledger/stats",
+      "cat": "persist",
+      "name": "totals moved by exactly the two entries",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/general-ledger",
+      "cat": "invalid",
+      "name": "both debit and credit -> 400",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/general-ledger",
+      "cat": "invalid",
+      "name": "neither debit nor credit -> 400",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/general-ledger",
+      "cat": "invalid",
+      "name": "missing required fields -> 400",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/general-ledger",
+      "cat": "invalid",
+      "name": "bad entry_type is rejected and writes nothing",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/general-ledger",
+      "cat": "invalid",
+      "name": "negative and non-numeric amounts",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/general-ledger/[id]",
+      "cat": "persist",
+      "name": "reads back exactly what was written",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/general-ledger/[id]",
+      "cat": "missing",
+      "name": "unknown id -> 404",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/general-ledger/[id]",
+      "cat": "invalid",
+      "name": "non-uuid id rejected",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/general-ledger",
+      "cat": "admin",
+      "name": "list: filters (type, date range, search) and pagination shape",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/general-ledger",
+      "cat": "persist",
+      "name": "running balance is consistent across my entries (ordered by date, created_at)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PUT /api/general-ledger/[id]",
+      "cat": "persist",
+      "name": "flip debit to credit: persisted, balances recomputed",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PUT /api/general-ledger/[id]",
+      "cat": "invalid",
+      "name": "both/neither -> 400 and entry unchanged",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PUT /api/general-ledger/[id]",
+      "cat": "missing",
+      "name": "unknown id -> 404",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/general-ledger",
+      "cat": "persist",
+      "name": "vendor_payment credit mirrors into the vendor ledger (reverse sign)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/vendor-ledger",
+      "cat": "admin",
+      "name": "manual entry: 201, balance chains from the previous entry",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/vendor-ledger",
+      "cat": "invalid",
+      "name": "both/neither/missing -> 400",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/vendor-ledger",
+      "cat": "invalid",
+      "name": "vendor_id required -> 400",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/vendor-ledger",
+      "cat": "missing",
+      "name": "vendor with no entries -> 200 empty list",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "DELETE /api/general-ledger/[id]",
+      "cat": "persist",
+      "name": "delete removes the entry and its vendor mirror; later balances recomputed",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "DELETE /api/general-ledger/[id]",
+      "cat": "missing",
+      "name": "unknown id",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/orders",
+      "cat": "staff",
+      "name": "staff creates an order: 201, items saved",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/orders",
+      "cat": "admin",
+      "name": "admin creates an order too",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/orders/[id]",
+      "cat": "persist",
+      "name": "order reads back with amounts, dates, items and customer",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/orders",
+      "cat": "persist",
+      "name": "advance creates exactly one order_payment ledger entry for that amount (system invariant)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/orders",
+      "cat": "invalid",
+      "name": "validation: missing customer, advance>total, delivery<booking, >4 items, duplicate types, bad status",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/orders",
+      "cat": "invalid",
+      "name": "unknown customer uuid is rejected and writes no order",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/orders",
+      "cat": "admin",
+      "name": "list: shape, search by order number, status filter, pagination",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/orders/all",
+      "cat": "admin",
+      "name": "simple list shape {data: []} includes the new order",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/orders/[id]",
+      "cat": "missing",
+      "name": "unknown id -> 404",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PATCH /api/orders/[id]",
+      "cat": "persist",
+      "name": "status change persists",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PATCH /api/orders/[id]",
+      "cat": "invalid",
+      "name": "bad status rejected and order unchanged",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PATCH /api/orders/[id]",
+      "cat": "missing",
+      "name": "unknown id is rejected",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PATCH /api/orders/[id]",
+      "cat": "persist",
+      "name": "partial update nulls money fields it was not given (data-loss check)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/payments",
+      "cat": "staff",
+      "name": "staff records a payment: 201, order joined",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/payments",
+      "cat": "persist",
+      "name": "payment writes one order_payment ledger entry; GET lists it for the order",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/payments",
+      "cat": "invalid",
+      "name": "missing fields 400; zero 400; negative/NaN rejected; order of another customer 404 — none persist",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PATCH /api/payments/[id]",
+      "cat": "persist",
+      "name": "amount edit persists",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PATCH /api/payments/[id]",
+      "cat": "missing",
+      "name": "unknown id -> 404",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "PATCH /api/payments/[id]",
+      "cat": "invalid",
+      "name": "negative amount rejected, payment unchanged",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/payments",
+      "cat": "persist",
+      "name": "DOUBLE SUBMIT: two identical concurrent POSTs create two payments and two ledger rows (no idempotency)",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "DELETE /api/payments/[id]",
+      "cat": "persist",
+      "name": "delete removes it; unknown id -> 404",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/payments",
+      "cat": "admin",
+      "name": "list filters by customer; shape",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/orders",
+      "cat": "persist",
+      "name": "DOUBLE SUBMIT: two identical concurrent POSTs",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/measurements",
+      "cat": "admin",
+      "name": "create 201, numeric fields stored",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "POST /api/measurements",
+      "cat": "persist",
+      "name": "a second default for the same customer demotes the first (exactly one default)",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "POST /api/measurements",
+      "cat": "invalid",
+      "name": "invalid body 400 and nothing written (bad uuid, negative, too large)",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/measurements",
+      "cat": "admin",
+      "name": "list shape, search, pagination totals",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/measurements",
+      "cat": "invalid",
+      "name": "search term returns results (not a server error)",
+      "ok": false,
+      "detail": "search status 500",
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/measurements",
+      "cat": "unauth",
+      "name": "unauthenticated read accepted (OPEN)",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/measurements/[id]",
+      "cat": "persist",
+      "name": "reads back; unknown id -> 404",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/customers/[id]/measurements",
+      "cat": "persist",
+      "name": "lists the customer's measurements with a total",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/customers/[id]/measurements",
+      "cat": "missing",
+      "name": "customer with none -> 200 empty",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "PUT /api/measurements/[id]",
+      "cat": "persist",
+      "name": "update persists; invalid -> 400 unchanged",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "PUT /api/measurements/[id]",
+      "cat": "missing",
+      "name": "unknown id is rejected",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "DELETE /api/measurements/[id]",
+      "cat": "persist",
+      "name": "delete removes it",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "DELETE /api/measurements/[id]",
+      "cat": "missing",
+      "name": "unknown id",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "GET /api/dashboard-stats",
+      "cat": "admin",
+      "name": "shape and customer count equals the database",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "GET /api/dashboard-stats",
+      "cat": "unauth",
+      "name": "unauthenticated read accepted (OPEN, returns revenue and ledger totals)",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "DELETE /api/customers/[id]",
+      "cat": "invalid",
+      "name": "customer with orders cannot be deleted -> 400 and it survives",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "DELETE /api/orders/[id]",
+      "cat": "persist",
+      "name": "staff deletes an order: gone, items gone; unknown id handled",
+      "ok": true,
+      "tokenless": false
+    },
+    {
+      "ep": "DELETE /api/customers/[id]",
+      "cat": "persist",
+      "name": "customer with no orders deletes cleanly and its measurements go with it",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "DELETE /api/vendors/[id]",
+      "cat": "persist",
+      "name": "vendor delete removes it and its vendor ledger; its categories survive",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "DELETE /api/vendor-categories/[id]",
+      "cat": "persist",
+      "name": "unused category deletes (200) and is gone",
+      "ok": true,
+      "tokenless": true
+    },
+    {
+      "ep": "(cleanup)",
+      "cat": "persist",
+      "name": "row counts equal the baseline for 10 tables",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "ep": "(cleanup)",
+      "cat": "persist",
+      "name": "fingerprint of every pre-existing row is unchanged (no existing record modified)",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "findings": [
+    {
+      "ep": "POST /api/customers",
+      "text": "accepts an unauthenticated create (no auth guard; known open route)"
+    },
+    {
+      "ep": "POST /api/customers",
+      "text": "validation failure returns 500 \"Failed to create customer\" instead of 400 (zod error is not handled)"
+    },
+    {
+      "ep": "GET /api/customers",
+      "text": "returns customer names/phones without authentication (known open route)"
+    },
+    {
+      "ep": "GET /api/customers",
+      "text": "sortDir=sideways returns 500 instead of 400"
+    },
+    {
+      "ep": "GET /api/customers/[id]",
+      "text": "non-uuid id returns 500 instead of 400/404"
+    },
+    {
+      "ep": "GET /api/customers/[id]",
+      "text": "readable without authentication (known open route)"
+    },
+    {
+      "ep": "PATCH /api/customers/[id]",
+      "text": "validation failure returns 500 instead of 400"
+    },
+    {
+      "ep": "PATCH /api/customers/[id]",
+      "text": "unknown id returns 500 instead of 404"
+    },
+    {
+      "ep": "GET /api/vendor-categories",
+      "text": "readable without authentication (known open route)"
+    },
+    {
+      "ep": "POST /api/vendors",
+      "text": "accepts an unauthenticated create (known open route)"
+    },
+    {
+      "ep": "GET /api/vendors",
+      "text": "readable without authentication (known open route)"
+    },
+    {
+      "ep": "GET /api/vendors/[id]",
+      "text": "non-uuid id returns 500 instead of 400/404"
+    },
+    {
+      "ep": "DELETE /api/vendor-tags/[id]",
+      "text": "deleting a nonexistent tag returns 200 success instead of 404"
+    },
+    {
+      "ep": "POST /api/general-ledger",
+      "text": "unknown entry_type returns 500 instead of 400 (database check constraint surfaces as a server error)"
+    },
+    {
+      "ep": "POST /api/general-ledger",
+      "text": "a NEGATIVE debit is accepted (201): the route and the database only enforce debit-XOR-credit, not amount > 0, so a negative debit lowers the balance like a credit"
+    },
+    {
+      "ep": "POST /api/general-ledger",
+      "text": "non-numeric amount returns 500 instead of 400"
+    },
+    {
+      "ep": "GET /api/general-ledger/[id]",
+      "text": "non-uuid id returns 500 instead of 400/404"
+    },
+    {
+      "ep": "DELETE /api/general-ledger/[id]",
+      "text": "deleting a nonexistent entry returns 200 success instead of 404"
+    },
+    {
+      "ep": "POST /api/orders",
+      "text": "order for a nonexistent customer returns 500 (foreign-key error text) instead of 400/404"
+    },
+    {
+      "ep": "GET /api/orders",
+      "text": "invalid status filter returns 500 instead of 400"
+    },
+    {
+      "ep": "PATCH /api/orders/[id]",
+      "text": "validation failure returns 500 \"Failed to update order\" instead of 400"
+    },
+    {
+      "ep": "PATCH /api/orders/[id]",
+      "text": "unknown id returns 500 instead of 404"
+    },
+    {
+      "ep": "PATCH /api/orders/[id]",
+      "text": "a PATCH that sends only \"comments\" changed total_amount 10000 -> null (route writes total_amount: value || null for omitted fields)"
+    },
+    {
+      "ep": "POST /api/payments",
+      "text": "negative amount returns 500 instead of 400 (only the database check rejects it)"
+    },
+    {
+      "ep": "PATCH /api/payments/[id]",
+      "text": "editing a payment's amount (1500 -> 1600) does NOT update its ledger entry (still 1500); the ledger only catches up when sync-payments is run"
+    },
+    {
+      "ep": "POST /api/payments",
+      "text": "two identical concurrent submits both succeed (2 payments + 2 ledger rows): there is no server-side idempotency, so the UI must prevent double submits"
+    },
+    {
+      "ep": "DELETE /api/payments/[id]",
+      "text": "deleting a payment leaves its order_payment ledger entry behind until sync-payments is run (books keep counting money that was deleted)"
+    },
+    {
+      "ep": "POST /api/orders",
+      "text": "concurrent creates: one failed (201/500), consistent with a read-then-increment order number race"
+    },
+    {
+      "ep": "POST /api/measurements",
+      "text": "accepts an unauthenticated create (known open route)"
+    },
+    {
+      "ep": "GET /api/measurements",
+      "text": "ANY ?search= returns 500 (PostgREST PGRST100 \"failed to parse logic tree\": the route puts `customer.name.ilike` inside a flat .or()); same class of defect as the orders search fixed in f9f6eab. Measurement search in the UI cannot work."
+    },
+    {
+      "ep": "GET /api/measurements",
+      "text": "readable without authentication (known open route)"
+    },
+    {
+      "ep": "GET /api/customers/[id]/measurements",
+      "text": "readable without authentication (known open route)"
+    },
+    {
+      "ep": "PUT /api/measurements/[id]",
+      "text": "unknown id returns 500 instead of 404"
+    },
+    {
+      "ep": "DELETE /api/measurements/[id]",
+      "text": "deleting a nonexistent measurement returns 200 success instead of 404"
+    },
+    {
+      "ep": "GET /api/dashboard-stats",
+      "text": "returns revenue, ledger and order figures without authentication (known open route; the page itself is admin-only in the UI)"
+    },
+    {
+      "ep": "DELETE /api/orders/[id]",
+      "text": "deleting an order leaves its advance-payment ledger entry in the books (order_id becomes null; only sync-payments removes it)"
+    },
+    {
+      "ep": "DELETE /api/orders/[id]",
+      "text": "deleting a nonexistent order returns 200 success instead of 404"
+    },
+    {
+      "ep": "DELETE /api/customers/[id]",
+      "text": "deleting a nonexistent customer returns 200 success instead of 404"
+    },
+    {
+      "ep": "DELETE /api/vendors/[id]",
+      "text": "deleting a nonexistent vendor returns 200 success instead of 404"
+    }
+  ]
+}
