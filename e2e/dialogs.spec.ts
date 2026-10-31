@@ -56,6 +56,11 @@ for (const o of OPENERS) {
       expect(m.b, 'dialog bottom within the visible height').toBeLessThanOrEqual(m.vh + 1)
       expect(m.sw, `no horizontal overflow inside the dialog (${m.sw}>${m.cw})`).toBeLessThanOrEqual(m.cw + 1)
 
+      if (o.id.startsWith('order-new-') || o.id === 'order-edit') {
+        const fraction = v.width < 640 ? 1 : v.width < 768 ? 0.9 : v.width < 1024 ? 0.8 : 0.7
+        expect(Math.abs(m.r - m.l - v.width * fraction), 'order form uses its responsive width without the shared dialog cap').toBeLessThanOrEqual(2)
+      }
+
       // primary action reachable: scroll it into view; it must be on screen and not under the tab bar
       const primary = dlg.getByRole('button', { name: o.primary }).last()
       await primary.scrollIntoViewIfNeeded()
