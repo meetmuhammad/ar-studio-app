@@ -36,7 +36,7 @@ export function OrderDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
-        className="max-sm:w-full w-[95vw] max-w-none sm:w-[90vw] md:w-[80vw] lg:w-[70vw] max-h-[95vh] overflow-y-auto"
+        className="max-sm:w-full w-[95vw] max-w-none sm:max-w-none sm:w-[90vw] md:w-[80vw] lg:w-[70vw] max-h-[95vh] overflow-y-auto"
         onInteractOutside={(e) => e.preventDefault()}
       >
         <DialogHeader>
