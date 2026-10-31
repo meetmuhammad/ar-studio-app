@@ -43,6 +43,9 @@ export async function listLedgerEntries(f: LedgerFilters) {
     `, { count: 'exact' })
     .order('entry_date', { ascending: false })
     .order('created_at', { ascending: false })
+    // Imported rows share entry_date and created_at; id is the tie-break the
+    // database uses for the running balance, so each row sits next to its balance.
+    .order('id', { ascending: false })
 
   if (f.startDate) query = query.gte('entry_date', f.startDate)
   if (f.endDate) query = query.lte('entry_date', f.endDate)
