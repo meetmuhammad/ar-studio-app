@@ -2,7 +2,7 @@
 
 import { ErrorState } from '@/components/dashboard/error-state'
 import { useEffect, useState, useRef } from 'react'
-import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, RefreshCw, Edit, Search, Download, Trash2 } from 'lucide-react'
+import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, Edit, Search, Download, Trash2 } from 'lucide-react'
 import { RoleGuard } from '@/components/auth/role-guard'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -31,7 +31,7 @@ import {
 import type { GeneralLedgerWithRelations } from '@/lib/supabase-client'
 import { toast } from 'sonner'
 import { useBusiness, useBusinessLabel } from '@/contexts/business-context'
-import { useLedgerEntries, useLedgerStats, useCreateLedgerEntry, useUpdateLedgerEntry, useDeleteLedgerEntry, useSyncOrderPayments, useVendorCategories } from '@/hooks/use-api'
+import { useLedgerEntries, useLedgerStats, useDeleteLedgerEntry, useVendorCategories } from '@/hooks/use-api'
 
 // Sentinel for "no filter" -- Radix Select cannot use an empty string as an
 // item value.
@@ -71,7 +71,6 @@ export default function LedgerPage() {
   const { data: stats = { totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 }, refetch: refetchStats } =
     useLedgerStats({ startDate, endDate }, { enabled: dateRangeReady })
   const rangeActive = Boolean(startDate || endDate)
-  const syncMutation = useSyncOrderPayments()
   const deleteMutation = useDeleteLedgerEntry()
   
   // Balance column: the running balance within the selected date range (starts
@@ -99,11 +98,6 @@ export default function LedgerPage() {
   useEffect(() => {
     setCurrentPage(1)
   }, [startDate, endDate, categoryFilter])
-
-  const syncOrderPayments = async () => {
-    await syncMutation.mutateAsync()
-  }
-  const isSyncing = syncMutation.isPending
 
   const handleEdit = (entry: GeneralLedgerWithRelations) => {
     setEditingEntry(entry)

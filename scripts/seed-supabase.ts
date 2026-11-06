@@ -86,7 +86,7 @@ async function main() {
         measurements[field] = faker.number.float({ min: 30, max: 150, fractionDigits: 1 })
       })
 
-      const { data: order, error } = await supabase
+      const { error } = await supabase
         .from('orders')
         .insert({
           order_number: `AR-${orderNumber.toString().padStart(5, '0')}`,

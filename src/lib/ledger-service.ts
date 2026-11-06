@@ -189,8 +189,15 @@ export async function getLedgerTotals(
   }
 }
 
+/** A vendor as findVendors returns it. vendor_categories is a to-one embed (an object, not an array). */
+export interface VendorMatch {
+  id: string
+  name: string
+  vendor_categories: { name: string } | null
+}
+
 /** Vendors by name, for picking the one a vendor payment is for. */
-export async function findVendors(businessIds: string[], query: string, limit = 10) {
+export async function findVendors(businessIds: string[], query: string, limit = 10): Promise<VendorMatch[]> {
   const supabase = createAdminSupabaseClient()
   const { data, error } = await scoped(supabase
     .from('vendors')
@@ -199,5 +206,6 @@ export async function findVendors(businessIds: string[], query: string, limit = 
     .order('name')
     .limit(limit)
   if (error) throw new Error(`Failed to look up vendors: ${error.message}`)
-  return data ?? []
+  // The client has no generated schema, so it types the embed as an array.
+  return (data ?? []) as unknown as VendorMatch[]
 }

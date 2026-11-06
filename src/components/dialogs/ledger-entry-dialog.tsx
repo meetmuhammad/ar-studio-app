@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { LedgerEntryForm } from "@/components/forms/ledger-entry-form"
+import { LedgerEntryForm, type LedgerEntrySubmitData } from "@/components/forms/ledger-entry-form"
 import { authFetch } from "@/lib/auth-fetch"
 import type { GeneralLedger } from "@/lib/supabase-client"
 
@@ -24,7 +24,7 @@ export function LedgerEntryDialog({
   entry,
   onSuccess,
 }: LedgerEntryDialogProps) {
-  const handleSubmit = async (data: any) => {
+  const handleSubmit = async (data: LedgerEntrySubmitData) => {
     const url = entry ? `/api/general-ledger/${entry.id}` : '/api/general-ledger'
     const method = entry ? 'PUT' : 'POST'
     

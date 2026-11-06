@@ -12,7 +12,6 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
-  Row,
 } from "@tanstack/react-table"
 import { ChevronDown, Search } from "lucide-react"
 
@@ -75,7 +74,6 @@ export function DataTable<TData, TValue>({
   columns,
   data,
   searchPlaceholder = "Search...",
-  searchColumns,
   onRowClick,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([])

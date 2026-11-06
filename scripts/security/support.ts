@@ -81,7 +81,11 @@ export const TEST_CLIENT_ID = (process.env.LEDGER_MCP_ALLOWED_CLIENT_IDS ?? 'loc
 export async function mintOAuthToken(userId: string, o: { audience: string; clientId?: string; ttlSeconds?: number }): Promise<string> {
   const raw = process.env.LEDGER_MCP_LOCAL_SIGNING_JWK
     ?? JSON.parse(execFileSync('docker', ['exec', 'supabase_auth_ar-studio-app', 'printenv', 'GOTRUE_JWT_KEYS'], { encoding: 'utf8' }))[0]
-  const { key_ops: _ops, ext: _ext, use: _use, ...jwk } = typeof raw === 'string' ? JSON.parse(raw) : raw
+  // The key without its key_ops, ext and use fields.
+  const jwk = { ...(typeof raw === 'string' ? JSON.parse(raw) : raw) }
+  delete jwk.key_ops
+  delete jwk.ext
+  delete jwk.use
   const now = Math.floor(Date.now() / 1000)
   return new SignJWT({ sub: userId, role: 'authenticated', client_id: o.clientId ?? TEST_CLIENT_ID })
     .setProtectedHeader({ alg: 'ES256', kid: jwk.kid, typ: 'JWT' })

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ChevronLeft, ChevronRight, Check } from "lucide-react"
-import { CreateOrderSchema, CreateOrderInput } from "@/lib/validators"
+import { CreateOrderSchema, CreateOrderFormValues, CreateOrderInput } from "@/lib/validators"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
 import { OrderGeneralInfoStep } from "./order-steps/general-info-step"
 import { OrderMeasurementsStep } from "./order-steps/measurements-step"
@@ -33,8 +33,8 @@ export function OrderMultiStepForm({
   const [currentStep, setCurrentStep] = useState(1)
   const [completedSteps, setCompletedSteps] = useState<number[]>([])
 
-  const form = useForm<CreateOrderInput>({
-    resolver: zodResolver(CreateOrderSchema) as any,
+  const form = useForm<CreateOrderFormValues, unknown, CreateOrderInput>({
+    resolver: zodResolver(CreateOrderSchema),
     mode: "onSubmit", // Only validate on submit or manual trigger
     defaultValues: {
       customerId: order?.customer_id || "",
@@ -74,14 +74,14 @@ export function OrderMultiStepForm({
   // Calculate balance automatically
   useEffect(() => {
     if (totalAmount !== undefined && advancePaid !== undefined) {
-      const calculatedBalance = totalAmount - advancePaid
+      const calculatedBalance = Number(totalAmount) - Number(advancePaid)
       setValue("balance", calculatedBalance >= 0 ? calculatedBalance : 0)
     }
   }, [totalAmount, advancePaid, setValue])
 
   // Validate current step
   const validateCurrentStep = async () => {
-    let fieldsToValidate: (keyof CreateOrderInput)[] = []
+    let fieldsToValidate: (keyof CreateOrderFormValues)[] = []
 
     switch (currentStep) {
       case 1:

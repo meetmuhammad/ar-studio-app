@@ -4,14 +4,23 @@ import { authFetch } from '@/lib/auth-fetch'
 import type {
   Customer, 
   OrderWithCustomer, 
+  GeneralLedger,
   GeneralLedgerWithRelations,
   Vendor,
-  VendorWithLedger,
   VendorCategory,
   VendorWithCategory
 } from '@/lib/supabase-client'
 import { toast } from 'sonner'
 import type { PnlMode, PnlPreset, PnlResult } from '@/lib/pnl'
+import type { CreateCustomerInput, UpdateCustomerInput, CreateOrderInput, UpdateOrderInput } from '@/lib/validators'
+
+/** The fields /api/general-ledger reads from a create or update body. */
+export type LedgerEntryBody = Pick<GeneralLedger, 'entry_date' | 'entry_type'> &
+  Partial<Pick<GeneralLedger, 'particulars' | 'debit' | 'credit' | 'notes' | 'order_id' | 'vendor_id' | 'tag_id'>>
+
+/** The fields /api/vendors reads from a create or update body. */
+export type VendorBody = Pick<Vendor, 'name'> &
+  Partial<Pick<Vendor, 'contact_person' | 'phone' | 'email' | 'address' | 'notes' | 'category_id'>>
 
 // =============================================================================
 // DASHBOARD
@@ -129,7 +138,7 @@ export function useCreateCustomer() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: CreateCustomerInput) => {
       const response = await authFetch('/api/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -156,7 +165,7 @@ export function useUpdateCustomer() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+    mutationFn: async ({ id, data }: { id: string; data: UpdateCustomerInput }) => {
       const response = await authFetch(`/api/customers/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -243,7 +252,7 @@ export function useCreateOrder() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: CreateOrderInput) => {
       const response = await authFetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -271,7 +280,7 @@ export function useUpdateOrder() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+    mutationFn: async ({ id, data }: { id: string; data: UpdateOrderInput }) => {
       const response = await authFetch(`/api/orders/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -380,7 +389,7 @@ export function useCreateLedgerEntry() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: LedgerEntryBody) => {
       const response = await authFetch('/api/general-ledger', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -406,7 +415,7 @@ export function useUpdateLedgerEntry() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+    mutationFn: async ({ id, data }: { id: string; data: Partial<LedgerEntryBody> }) => {
       const response = await authFetch(`/api/general-ledger/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -504,7 +513,7 @@ export function useCreateVendor() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: VendorBody) => {
       const response = await authFetch('/api/vendors', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -530,7 +539,7 @@ export function useUpdateVendor() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+    mutationFn: async ({ id, data }: { id: string; data: Partial<VendorBody> }) => {
       const response = await authFetch(`/api/vendors/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

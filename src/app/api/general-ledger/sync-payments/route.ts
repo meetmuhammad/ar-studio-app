@@ -75,7 +75,8 @@ export async function POST(request: Request) {
 
     // Create entries for all additional payments
     for (const payment of payments || []) {
-      const order = payment.orders as any
+      // orders!inner is a to-one embed; the schema-less client types it as an array.
+      const order = payment.orders as unknown as { order_number: string } | null
       entriesToCreate.push({
         business_id: businessId,
         entry_date: payment.payment_date,

@@ -199,7 +199,7 @@ export function ThemeDemo() {
             <h3 className="font-medium">Implementation Note</h3>
             <p className="text-sm text-muted-foreground">
               You can now use these custom variants throughout your application.
-              Example: <code className="px-1 py-0.5 rounded bg-muted text-sm">&lt;Button variant="success"&gt;</code>
+              Example: <code className="px-1 py-0.5 rounded bg-muted text-sm">&lt;Button variant=&quot;success&quot;&gt;</code>
             </p>
           </div>
         </CardContent>

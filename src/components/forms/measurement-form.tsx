@@ -18,7 +18,7 @@ import {
   FormDescription,
 } from "@/components/ui/form";
 import { CustomerCombobox } from "@/components/combobox/customer-combobox";
-import { Measurement, measurementSchema, MeasurementFormValues, MEASUREMENT_FIELDS } from "@/types/measurements";
+import { Measurement, measurementSchema, MeasurementFormInput, MeasurementFormValues, MEASUREMENT_FIELDS } from "@/types/measurements";
 import { Customer } from "@/lib/supabase-client";
 import { toast } from "sonner";
 
@@ -41,8 +41,8 @@ export function MeasurementForm({
 }: MeasurementFormProps) {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
-  const form = useForm<MeasurementFormValues>({
-    resolver: zodResolver(measurementSchema) as any,
+  const form = useForm<MeasurementFormInput, unknown, MeasurementFormValues>({
+    resolver: zodResolver(measurementSchema),
     mode: "onTouched",
     defaultValues: {
       customer_id: measurement?.customer_id || "",
@@ -210,7 +210,7 @@ export function MeasurementForm({
                     key={field.key}
                     control={form.control}
                     name={field.key}
-                    render={({ fieldState, field: formField }) => (
+                    render={({ field: formField }) => (
                       <FormItem>
                         <FormLabel>{field.label}</FormLabel>
                         <FormControl>

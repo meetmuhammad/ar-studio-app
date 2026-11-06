@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getOrder, updateOrder, deleteOrder, updateOrderItems, belongsToBusiness } from '@/lib/database'
 import { UpdateOrderSchema } from '@/lib/validators'
 import { requireBusiness, requireBusinessRead } from '@/lib/business-context'
+import { omit } from '@/lib/utils'
 
 // GET /api/orders/[id] - Get order by ID
 export async function GET(
@@ -71,21 +72,22 @@ export async function PATCH(
       fitting_preferences: validatedData.fittingPreferences,
     }
 
-    // Remove the camelCase fields that were transformed
-    const {
-      customerId,
-      bookingDate,
-      deliveryDate,
-      totalAmount,
-      advancePaid,
-      balance,
-      paymentMethod,
-      measurementId,
-      fittingPreferences,
-      orderItems,
-      status: _status, // Remove to avoid conflict
-      ...finalUpdateData
-    } = updateData
+    const { orderItems } = updateData
+    // Remove the camelCase fields that were transformed, and status (re-added
+    // below). balance has the same name in both forms, so it is removed too.
+    const finalUpdateData = omit(updateData, [
+      'customerId',
+      'bookingDate',
+      'deliveryDate',
+      'totalAmount',
+      'advancePaid',
+      'balance',
+      'paymentMethod',
+      'measurementId',
+      'fittingPreferences',
+      'orderItems',
+      'status',
+    ])
     
     // Re-add status if provided
     const updateWithStatus = {

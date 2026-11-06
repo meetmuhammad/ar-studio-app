@@ -108,6 +108,8 @@ export const measurementSchema = z.object({
 });
 
 export type MeasurementFormValues = z.infer<typeof measurementSchema>;
+/** The form's values before the schema runs (is_default may still be unset). */
+export type MeasurementFormInput = z.input<typeof measurementSchema>;
 
 // Measurement fields definition for forms - organized by categories
 export const MEASUREMENT_FIELDS = [

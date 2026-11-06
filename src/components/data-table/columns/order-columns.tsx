@@ -1,7 +1,7 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, Edit, Eye, MoreHorizontal, Trash, Check, X } from "lucide-react"
+import { ArrowUpDown, Edit, Eye, MoreHorizontal, Trash } from "lucide-react"
 import { format } from "date-fns"
 
 import { Button } from "@/components/ui/button"
@@ -66,7 +66,6 @@ export function createOrderColumns({
   onView,
   onEdit,
   onDelete,
-  onRowClick,
 }: {
   onView: (order: OrderWithCustomer) => void
   onEdit: (order: OrderWithCustomer) => void

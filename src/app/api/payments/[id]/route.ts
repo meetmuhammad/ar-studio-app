@@ -31,7 +31,7 @@ export async function PATCH(
 
     // IMPORTANT: Prepare update data - ONLY update payments table fields
     // NEVER modify the orders table, especially advance_paid field
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (body.amount !== undefined) updateData.amount = parseFloat(body.amount);
     if (body.payment_method !== undefined) updateData.payment_method = body.payment_method;
     if (body.payment_date !== undefined) updateData.payment_date = body.payment_date;

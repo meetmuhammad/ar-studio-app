@@ -196,6 +196,10 @@ All-time on ATC (the whole staging book):
 
 Accrual suppresses 130,000 of payment credits and keeps 75,000 as payment-dated. Delivered revenue is 19 orders. In Process totals of 12,167,000 are excluded from accrual. There are no opening-balance rows, no transfer rows, no cancelled orders, and no refund table. The two vendors that had no category are now Uncategorized, which maps to Other.
 
-The Profit & Loss screen was not opened against staging. Staging has no `@arstudio.test` login, and no user was created and no session was minted to take one. The screenshots in `docs/pnl/screenshots/` remain local Docker fixtures.
+The staging screen was opened in a browser whose client bundle and network calls used only `ohgqgkraybpvnfdbgmvl.supabase.co`. A disposable admin, `pnl-disposable-admin-20261107@arstudio.test`, was created with `generateLink` type `invite` (the link was not emailed) and given Ahsan Tariq Couture and Techlink Co only. After the screenshots it was deleted: it had no payment, proposal, or audit rows. Auth users are back to the three that were already there. Those screenshots are in `docs/pnl/screenshots/staging/`. The earlier files in `docs/pnl/screenshots/` remain local Docker fixtures.
+
+On that staging screen, This Year for Ahsan Tariq Couture shows cash revenue PKR 522,000, staff PKR -30,000, net profit PKR 552,000, and accrual revenue PKR 400,000, staff PKR -30,000, net profit PKR 430,000. This Month and This Quarter are zero. Techlink This Year is zero in both bases. All businesses matches Ahsan Tariq Couture, because Techlink has no rows. A custom range from 1 Jan 2026 through 31 Aug 2026 matches This Year, because every 2026 row is in August. The same figures appear at 375px.
+
+`npm run lint` exits 0. The previous 33 errors and 65 warnings were removed without changing the lint rules. Staff are still refused by the existing test in `e2e/workflows.spec.ts`, which expects `GET /api/pnl` to answer 403. No second staging identity was created for that check.
 
 The amount rule in `scripts/pnl/reconcile.sql` was checked against a throwaway Postgres with the test fixtures (the staging shape, the March bill and April payment, and a partial settlement); its statement, monthly and excluded figures match `src/lib/pnl.ts`.

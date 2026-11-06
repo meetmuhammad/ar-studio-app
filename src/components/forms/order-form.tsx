@@ -15,7 +15,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Popover,
@@ -23,11 +22,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Calendar as CalendarComponent } from "@/components/ui/calendar"
-import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CustomerCombobox } from "@/components/combobox/customer-combobox"
 import { OrderItemsRepeater } from "@/components/forms/order-items-repeater"
-import { CreateOrderSchema, CreateOrderInput } from "@/lib/validators"
+import { CreateOrderSchema, CreateOrderFormValues, CreateOrderInput } from "@/lib/validators"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
 import { cn } from "@/lib/utils"
 
@@ -40,8 +38,8 @@ interface OrderFormProps {
 export function OrderForm({ order, onSubmit, onCancel }: OrderFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const form = useForm<CreateOrderInput>({
-    resolver: zodResolver(CreateOrderSchema) as any,
+  const form = useForm<CreateOrderFormValues, unknown, CreateOrderInput>({
+    resolver: zodResolver(CreateOrderSchema),
     mode: "onTouched", // Only validate after field is touched
     defaultValues: {
       customerId: order?.customer_id || "",
@@ -69,7 +67,7 @@ export function OrderForm({ order, onSubmit, onCancel }: OrderFormProps) {
     setIsSubmitting(true)
     try {
       await onSubmit(data)
-    } catch (error) {
+    } catch {
       // Error handling is done in the parent component
     } finally {
       setIsSubmitting(false)

@@ -1,5 +1,5 @@
 import { createAdminSupabaseClient } from './supabase'
-import type { Customer, Order, OrderWithCustomer, Counter, OrderItem } from './supabase-client'
+import type { Customer, Order, OrderWithCustomer, OrderItem } from './supabase-client'
 import { todayInBusinessZone } from './date-range'
 import type { Business } from './business-shared'
 
@@ -450,7 +450,12 @@ const ORDER_LIST_SELECT = `
       )
     `
 
-export async function getAllOrdersSimple(scope: Scope): Promise<any[]> {
+/** An order as getAllOrdersSimple returns it: the few fields a picker needs, with its customer. */
+export type OrderSummary = Pick<Order, 'id' | 'order_number' | 'customer_id' | 'booking_date' | 'total_amount' | 'advance_paid' | 'created_at'> & {
+  customers: Pick<Customer, 'id' | 'name' | 'phone'> | null
+}
+
+export async function getAllOrdersSimple(scope: Scope): Promise<OrderSummary[]> {
   const supabase = createAdminSupabaseClient()
 
   const { data, error } = await inBusinesses(supabase
@@ -476,7 +481,8 @@ export async function getAllOrdersSimple(scope: Scope): Promise<any[]> {
     throw new Error(`Failed to fetch orders: ${error.message}`)
   }
 
-  return data || []
+  // customers is a to-one embed; the client has no generated schema, so it types it as an array.
+  return (data || []) as unknown as OrderSummary[]
 }
 
 export async function getOrder(id: string, scope: Scope): Promise<OrderWithCustomer | null> {

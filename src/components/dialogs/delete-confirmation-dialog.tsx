@@ -35,7 +35,7 @@ export function DeleteConfirmationDialog({
     try {
       await onConfirm()
       onOpenChange(false)
-    } catch (error) {
+    } catch {
       // Error handling is done in parent component
     } finally {
       setIsDeleting(false)

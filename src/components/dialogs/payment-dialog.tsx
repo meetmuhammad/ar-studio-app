@@ -47,7 +47,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form"
-import { CreatePaymentSchema, CreatePaymentInput } from "@/lib/validators"
+import { CreatePaymentSchema, CreatePaymentFormValues, CreatePaymentInput } from "@/lib/validators"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import { Banknote, CreditCard, Wallet, DollarSign, Check, ChevronsUpDown, Edit, Trash2 } from "lucide-react"
@@ -81,14 +81,14 @@ export function PaymentDialog({
   const [selectedOrder, setSelectedOrder] = useState<OrderWithCustomer | null>(null)
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(false)
-  const [loadingPayments, setLoadingPayments] = useState(false)
+  const [, setLoadingPayments] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [orderSearchOpen, setOrderSearchOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null)
   const [paymentToDelete, setPaymentToDelete] = useState<string | null>(null)
 
-  const form = useForm<CreatePaymentInput>({
-    resolver: zodResolver(CreatePaymentSchema) as any,
+  const form = useForm<CreatePaymentFormValues, unknown, CreatePaymentInput>({
+    resolver: zodResolver(CreatePaymentSchema),
     mode: "onSubmit",
     defaultValues: {
       order_id: "",

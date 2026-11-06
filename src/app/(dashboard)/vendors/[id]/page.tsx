@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { ArrowLeft, Building2, Plus, Search, X } from 'lucide-react'
 import { RoleGuard } from '@/components/auth/role-guard'
@@ -18,7 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import type { VendorWithCategory, GeneralLedgerWithRelations } from '@/lib/supabase-client'
+import type { VendorWithCategory, VendorLedgerWithRelations } from '@/lib/supabase-client'
 import { toast } from 'sonner'
 import { VendorBillDialog } from '@/components/dialogs/vendor-bill-dialog'
 import { authFetch } from '@/lib/auth-fetch'
@@ -33,17 +33,13 @@ export default function VendorLedgerPage() {
   const vendorId = params.id as string
 
   const [vendor, setVendor] = useState<VendorWithCategory | null>(null)
-  const [entries, setEntries] = useState<any[]>([])
-  const [filteredEntries, setFilteredEntries] = useState<any[]>([])
+  const [entries, setEntries] = useState<VendorLedgerWithRelations[]>([])
+  const [filteredEntries, setFilteredEntries] = useState<VendorLedgerWithRelations[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
   const [isLoading, setIsLoading] = useState(true)
   const [billDialogOpen, setBillDialogOpen] = useState(false)
-
-  useEffect(() => {
-    fetchData()
-  }, [vendorId])
 
   useEffect(() => {
     // Filter entries based on search query and date range
@@ -84,7 +80,7 @@ export default function VendorLedgerPage() {
     setFilteredEntries(filtered)
   }, [searchQuery, dateFrom, dateTo, entries])
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [vendorRes, entriesRes] = await Promise.all([
         authFetch(`/api/vendors/${vendorId}`),
@@ -104,7 +100,11 @@ export default function VendorLedgerPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [vendorId])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-PK', {

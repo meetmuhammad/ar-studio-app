@@ -71,9 +71,20 @@ const LedgerEntrySchema = z.object({
 
 type LedgerEntryInput = z.infer<typeof LedgerEntrySchema>
 
+/** What the form submits: the entry with its amount on the debit or credit side. */
+export interface LedgerEntrySubmitData {
+  entry_date: string
+  particulars?: string
+  debit: number | null
+  credit: number | null
+  entry_type: LedgerEntryType
+  vendor_id: string | null
+  notes: string | null
+}
+
 interface LedgerEntryFormProps {
   entry?: GeneralLedger | null
-  onSubmit: (data: any) => Promise<void>
+  onSubmit: (data: LedgerEntrySubmitData) => Promise<void>
   onCancel: () => void
 }
 
@@ -127,7 +138,7 @@ export function LedgerEntryForm({ entry, onSubmit, onCancel }: LedgerEntryFormPr
     setIsSubmitting(true)
     try {
       const amount = parseFloat(data.amount)
-      const submitData = {
+      const submitData: LedgerEntrySubmitData = {
         entry_date: data.entry_date,
         particulars: data.particulars,
         debit: data.transaction_type === "debit" ? amount : null,
@@ -137,7 +148,7 @@ export function LedgerEntryForm({ entry, onSubmit, onCancel }: LedgerEntryFormPr
         notes: data.notes || null,
       }
       await onSubmit(submitData)
-    } catch (error) {
+    } catch {
       // Error handling is done in the parent component
     } finally {
       setIsSubmitting(false)

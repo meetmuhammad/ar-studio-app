@@ -23,7 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Printer, FileText, Edit, Save, X } from "lucide-react"
-import { openPrintPreview, openMeasurementPrintPreview } from "@/lib/print-utils"
+import { openPrintPreview } from "@/lib/print-utils"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
 import { Measurement } from "@/types/measurements"
 import { Input } from "@/components/ui/input"
