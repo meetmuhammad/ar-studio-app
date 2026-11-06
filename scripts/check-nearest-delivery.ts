@@ -9,6 +9,7 @@
  */
 import assert from 'node:assert'
 import { getOrders } from '../src/lib/database'
+import { atcScope } from './atc-scope'
 import { createAdminSupabaseClient } from '../src/lib/supabase'
 import { todayInBusinessZone } from '../src/lib/date-range'
 
@@ -39,7 +40,7 @@ async function check(today: string) {
   const got: Row[] = []
   let total = 0
   for (let page = 1; ; page++) {
-    const r = await getOrders({ page, pageSize, sortBy: 'delivery_date', sortDir: 'asc', today })
+    const r = await getOrders({ scope: await atcScope(), page, pageSize, sortBy: 'delivery_date', sortDir: 'asc', today })
     total = r.total
     got.push(...(r.data as unknown as Row[]))
     if (page >= r.pages) break
@@ -64,7 +65,7 @@ const main = async () => {
   for (const d of days.length ? days : [todayInBusinessZone()]) await check(d)
 
   // Other sorts are untouched: newest booking date stays a plain desc order.
-  const r = await getOrders({ pageSize: 100, sortBy: 'booking_date', sortDir: 'desc' })
+  const r = await getOrders({ scope: await atcScope(), pageSize: 100, sortBy: 'booking_date', sortDir: 'desc' })
   const dates = (r.data as unknown as { booking_date: string }[]).map((o) => o.booking_date)
   assert.deepEqual(dates, dates.slice().sort().reverse(), 'booking_date desc unchanged')
   console.log(`PASS: sortBy=booking_date desc still plain descending (${dates.length} rows)`)

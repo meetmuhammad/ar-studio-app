@@ -1,4 +1,6 @@
 import { supabase } from './supabase-client'
+import { ALL_BUSINESSES, BUSINESS_HEADER } from './business-shared'
+import { getActiveBusiness } from './business-store'
 
 /**
  * fetch() for this app's own `/api/*` routes, with the signed-in user's access
@@ -11,6 +13,10 @@ import { supabase } from './supabase-client'
  *   it can never be attached to a third-party URL by a careless call site.
  * - No session -> a synthetic 401 response, not an exception, so callers'
  *   existing `if (!response.ok)` handling runs exactly as for a server 401.
+ * - Once a business is selected (BusinessProvider), every call carries it as
+ *   `X-Business-Id`. In the admin combined view ("all") only reads carry it;
+ *   a write is refused here with a synthetic 400 rather than sent without the
+ *   header, because the server would then fall back to ATC.
  * - supabase-js refreshes an expired access token inside getSession(). If the
  *   server still answers 401 (token revoked or rotated mid-flight) the session
  *   is refreshed once and the request retried once.
@@ -28,14 +34,31 @@ function assertApiUrl(input: string): void {
   }
 }
 
+const COMBINED_VIEW_IS_READ_ONLY = () =>
+  new Response(
+    JSON.stringify({
+      error: 'All businesses is a read-only view. Switch to one business to make changes.',
+      code: 'BUSINESS_REQUIRED',
+    }),
+    { status: 400, headers: { 'Content-Type': 'application/json' } }
+  )
+
 function withToken(init: RequestInit, token: string): RequestInit {
   const headers = new Headers(init.headers)
   headers.set('Authorization', `Bearer ${token}`)
+  const business = getActiveBusiness()
+  if (business) headers.set(BUSINESS_HEADER, business)
   return { ...init, headers }
+}
+
+const isRead = (init: RequestInit) => {
+  const method = (init.method ?? 'GET').toUpperCase()
+  return method === 'GET' || method === 'HEAD'
 }
 
 export async function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
   assertApiUrl(input)
+  if (getActiveBusiness() === ALL_BUSINESSES && !isRead(init)) return COMBINED_VIEW_IS_READ_ONLY()
 
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return NOT_SIGNED_IN()

@@ -14,6 +14,7 @@
 import 'dotenv/config'
 import assert from 'node:assert'
 import { getOrders } from '../src/lib/database'
+import { atcScope } from './atc-scope'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 if (!/127\.0\.0\.1|localhost/.test(url)) {
@@ -23,11 +24,11 @@ if (!/127\.0\.0\.1|localhost/.test(url)) {
 const main = async () => {
   // A term every seeded order number contains, in the wrong case on purpose:
   // the old code used `like`, so lowercase found nothing.
-  const lower = await getOrders({ q: 'ar-0', pageSize: 100 })
+  const lower = await getOrders({ scope: await atcScope(), q: 'ar-0', pageSize: 100 })
   assert(lower.total > 0, 'lowercase order-number search must match (ilike, not like)')
 
   // Exact order number.
-  const exact = await getOrders({ q: 'AR-00001', pageSize: 100 })
+  const exact = await getOrders({ scope: await atcScope(), q: 'AR-00001', pageSize: 100 })
   assert(exact.total >= 1, 'exact order number must match')
   assert(
     exact.data.some((o: { order_number: string }) => o.order_number === 'AR-00001'),
@@ -38,21 +39,21 @@ const main = async () => {
   const first = (exact.data[0] as { customers?: { name?: string } })?.customers
   const name = first?.name
   assert(name, 'fixture problem: seeded order has no customer name')
-  const byName = await getOrders({ q: name.split(' ')[0], pageSize: 100 })
+  const byName = await getOrders({ scope: await atcScope(), q: name.split(' ')[0], pageSize: 100 })
   assert(byName.total > 0, `customer-name search must match (tried "${name.split(' ')[0]}")`)
 
   // A term containing the delimiter PostgREST uses. Must return cleanly, not throw.
-  const comma = await getOrders({ q: 'a,b', pageSize: 100 })
+  const comma = await getOrders({ scope: await atcScope(), q: 'a,b', pageSize: 100 })
   assert(typeof comma.total === 'number', 'a term containing a comma must not break the filter')
 
   // Parens and quotes are the other characters that terminate a logic tree.
   for (const nasty of ['a)b', 'a("b', '%', '*']) {
-    const r = await getOrders({ q: nasty, pageSize: 100 })
+    const r = await getOrders({ scope: await atcScope(), q: nasty, pageSize: 100 })
     assert(typeof r.total === 'number', `term ${JSON.stringify(nasty)} must not break the filter`)
   }
 
   // A term that matches nothing is an empty result, not an error.
-  const none = await getOrders({ q: 'zzz-no-such-order-zzz', pageSize: 100 })
+  const none = await getOrders({ scope: await atcScope(), q: 'zzz-no-such-order-zzz', pageSize: 100 })
   assert(none.total === 0, 'a non-matching search must return zero rows, not everything')
 
   console.log('order search OK:',

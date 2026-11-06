@@ -1,15 +1,41 @@
 import { createAdminSupabaseClient } from './supabase'
 import type { Customer, Order, OrderWithCustomer, Counter, OrderItem } from './supabase-client'
 import { todayInBusinessZone } from './date-range'
+import type { Business } from './business-shared'
 
-// Order number generation using a simpler approach
-export async function nextOrderNumber(): Promise<string> {
+/**
+ * Every function here takes the business it acts on (or, for reads, the list
+ * of businesses in scope -- see src/lib/business-context.ts). Callers resolve
+ * and authorize that scope first; these functions never decide it.
+ */
+type Scope = { businessIds: string[] }
+
+const inBusinesses = <Q>(query: Q, scope: Scope): Q => {
+  if (scope.businessIds.length === 0) throw new Error('Empty business scope')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const q = query as any
+  return (scope.businessIds.length === 1
+    ? q.eq('business_id', scope.businessIds[0])
+    : q.in('business_id', scope.businessIds)) as Q
+}
+
+const NOT_FOUND = 'PGRST116'
+
+/**
+ * Next order number WITHIN one business: `<code>-#####`, continuing that
+ * business's own sequence. Default (not specified by the client): ATC keeps
+ * AR-00001..., Techlink Co starts at TL-00001. Uniqueness is
+ * (business_id, order_number), so the sequences never collide.
+ */
+export async function nextOrderNumber(business: Pick<Business, 'id' | 'code'>): Promise<string> {
   const supabase = createAdminSupabaseClient()
+  const prefix = business.code || 'AR'
 
   // Get the latest order number to increment
   const { data: latestOrder, error } = await supabase
     .from('orders')
     .select('order_number')
+    .eq('business_id', business.id)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -22,14 +48,13 @@ export async function nextOrderNumber(): Promise<string> {
   let nextNumber = 1
   if (latestOrder?.order_number) {
     // Extract number from order_number (e.g., "AR-00001" -> 1)
-    const match = latestOrder.order_number.match(/AR-(\d+)/)
+    const match = latestOrder.order_number.match(/^[A-Z]+-(\d+)/)
     if (match) {
       nextNumber = parseInt(match[1]) + 1
     }
   }
 
-  const orderNumber = `AR-${nextNumber.toString().padStart(5, '0')}`
-  return orderNumber
+  return `${prefix}-${nextNumber.toString().padStart(5, '0')}`
 }
 
 // Customer operations
@@ -38,8 +63,10 @@ export async function getCustomers({
   page = 1,
   pageSize = 10,
   sortBy = 'created_at',
-  sortDir = 'desc'
+  sortDir = 'desc',
+  scope,
 }: {
+  scope: Scope
   q?: string
   page?: number
   pageSize?: number
@@ -49,9 +76,9 @@ export async function getCustomers({
   const supabase = createAdminSupabaseClient()
   const offset = (page - 1) * pageSize
 
-  let query = supabase
+  let query = inBusinesses(supabase
     .from('customers')
-    .select('*', { count: 'exact' })
+    .select('*', { count: 'exact' }), scope)
 
   // Add search filter
   if (q) {
@@ -76,10 +103,10 @@ export async function getCustomers({
     
     // Batch count queries — one per customer on the page (max ~10-20)
     const countPromises = customerIds.map(id =>
-      supabase
+      inBusinesses(supabase
         .from('orders')
         .select('*', { count: 'exact', head: true })
-        .eq('customer_id', id)
+        .eq('customer_id', id), scope)
     )
     const countResults = await Promise.all(countPromises)
     
@@ -107,13 +134,13 @@ export async function getCustomers({
   }
 }
 
-export async function getCustomer(id: string): Promise<Customer | null> {
+export async function getCustomer(id: string, scope: Scope): Promise<Customer | null> {
   const supabase = createAdminSupabaseClient()
-  
-  const { data, error } = await supabase
+
+  const { data, error } = await inBusinesses(supabase
     .from('customers')
     .select('*')
-    .eq('id', id)
+    .eq('id', id), scope)
     .single()
 
   if (error) {
@@ -124,12 +151,15 @@ export async function getCustomer(id: string): Promise<Customer | null> {
   return data
 }
 
-export async function createCustomer(customer: Omit<Customer, 'id' | 'created_at' | 'updated_at'>): Promise<Customer> {
+export async function createCustomer(
+  businessId: string,
+  customer: Omit<Customer, 'id' | 'created_at' | 'updated_at' | 'business_id'>
+): Promise<Customer> {
   const supabase = createAdminSupabaseClient()
 
   const { data, error } = await supabase
     .from('customers')
-    .insert([customer])
+    .insert([{ ...customer, business_id: businessId }])
     .select()
     .single()
 
@@ -143,17 +173,27 @@ export async function createCustomer(customer: Omit<Customer, 'id' | 'created_at
   return data
 }
 
-export async function updateCustomer(id: string, updates: Partial<Omit<Customer, 'id' | 'created_at' | 'updated_at'>>): Promise<Customer> {
+/** null when the customer is not in this business. */
+export async function updateCustomer(
+  id: string,
+  businessId: string,
+  updates: Partial<Omit<Customer, 'id' | 'created_at' | 'updated_at' | 'business_id'>>
+): Promise<Customer | null> {
   const supabase = createAdminSupabaseClient()
+  // business_id is never taken from the caller's update (and is immutable in the database).
+  const safe: Record<string, unknown> = { ...updates }
+  delete safe.business_id
 
   const { data, error } = await supabase
     .from('customers')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update({ ...safe, updated_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('business_id', businessId)
     .select()
     .single()
 
   if (error) {
+    if (error.code === NOT_FOUND) return null
     if (error.code === '23505') {
       throw new Error('Phone number already exists')
     }
@@ -163,14 +203,19 @@ export async function updateCustomer(id: string, updates: Partial<Omit<Customer,
   return data
 }
 
-export async function deleteCustomer(id: string): Promise<void> {
+/** false when the customer is not in this business. */
+export async function deleteCustomer(id: string, businessId: string): Promise<boolean> {
   const supabase = createAdminSupabaseClient()
+
+  const existing = await getCustomer(id, { businessIds: [businessId] })
+  if (!existing) return false
 
   // Check if customer has orders
   const { count } = await supabase
     .from('orders')
     .select('*', { count: 'exact', head: true })
     .eq('customer_id', id)
+    .eq('business_id', businessId)
 
   if (count && count > 0) {
     throw new Error('Customer has orders; reassign or delete orders first')
@@ -180,10 +225,12 @@ export async function deleteCustomer(id: string): Promise<void> {
     .from('customers')
     .delete()
     .eq('id', id)
+    .eq('business_id', businessId)
 
   if (error) {
     throw new Error(`Failed to delete customer: ${error.message}`)
   }
+  return true
 }
 
 // Order operations
@@ -204,7 +251,9 @@ export async function getOrders({
   sortBy = 'delivery_date',
   sortDir = 'asc',
   today = todayInBusinessZone(),
+  scope,
 }: {
+  scope: Scope
   q?: string
   customerId?: string
   from?: Date
@@ -232,9 +281,9 @@ export async function getOrders({
     // to return nothing at all rather than just missing those matches.
     // Resolving the customers first keeps the orders filter to columns orders
     // actually has.
-    const { data: matches } = await supabase
+    const { data: matches } = await inBusinesses(supabase
       .from('customers')
-      .select('id')
+      .select('id'), scope)
       .or(`name.ilike.${pgLiteral(`%${term}%`)},phone.ilike.${pgLiteral(`%${term}%`)}`)
       // ponytail: 1000 customers is far past this studio's book; raise it or
       // move the search into a Postgres function if that stops being true.
@@ -249,9 +298,11 @@ export async function getOrders({
 
   // One filtered query; `head` builds a count-only one.
   const filtered = (head = false) => {
-    let query = supabase
+    // Every segment of the nearest-delivery sort goes through here, so each
+    // one is scoped to the business.
+    let query = inBusinesses(supabase
       .from('orders')
-      .select(ORDER_LIST_SELECT, { count: 'exact', head })
+      .select(ORDER_LIST_SELECT, { count: 'exact', head }), scope)
     if (searchClauses) query = query.or(searchClauses)
     if (customerId) query = query.eq('customer_id', customerId)
     if (from) query = query.gte('booking_date', from.toISOString().split('T')[0])
@@ -369,6 +420,7 @@ async function getOrdersByNearestDelivery({
 
 const ORDER_LIST_SELECT = `
       id,
+      business_id,
       order_number,
       customer_id,
       booking_date,
@@ -398,10 +450,10 @@ const ORDER_LIST_SELECT = `
       )
     `
 
-export async function getAllOrdersSimple(): Promise<any[]> {
+export async function getAllOrdersSimple(scope: Scope): Promise<any[]> {
   const supabase = createAdminSupabaseClient()
-  
-  const { data, error } = await supabase
+
+  const { data, error } = await inBusinesses(supabase
     .from('orders')
     .select(`
       id,
@@ -416,7 +468,7 @@ export async function getAllOrdersSimple(): Promise<any[]> {
         name,
         phone
       )
-    `)
+    `), scope)
     .order('created_at', { ascending: false })
     .limit(1000)
 
@@ -427,10 +479,10 @@ export async function getAllOrdersSimple(): Promise<any[]> {
   return data || []
 }
 
-export async function getOrder(id: string): Promise<OrderWithCustomer | null> {
+export async function getOrder(id: string, scope: Scope): Promise<OrderWithCustomer | null> {
   const supabase = createAdminSupabaseClient()
-  
-  const { data, error } = await supabase
+
+  const { data, error } = await inBusinesses(supabase
     .from('orders')
     .select(`
       *,
@@ -448,7 +500,7 @@ export async function getOrder(id: string): Promise<OrderWithCustomer | null> {
         updated_at
       )
     `)
-    .eq('id', id)
+    .eq('id', id), scope)
     .single()
 
   if (error) {
@@ -509,51 +561,92 @@ export async function updateOrderItems(orderId: string, orderItems: { order_type
   }
 }
 
-export async function createOrder(order: Omit<Order, 'id' | 'order_number' | 'created_at' | 'updated_at'>): Promise<Order> {
+/**
+ * The customer (and measurement, if any) must already be in `business`; the
+ * route checks that so it can answer 404, and the database guard
+ * (enforce_business_scope) refuses a mismatch regardless.
+ */
+export async function createOrder(
+  business: Pick<Business, 'id' | 'code'>,
+  order: Omit<Order, 'id' | 'order_number' | 'created_at' | 'updated_at' | 'business_id'>
+): Promise<Order> {
   const supabase = createAdminSupabaseClient()
-  
-  // Generate order number
-  const orderNumber = await nextOrderNumber()
 
-  const { data, error } = await supabase
-    .from('orders')
-    .insert([{ ...order, order_number: orderNumber }])
-    .select()
-    .single()
+  // The number is read-then-insert, so two concurrent creates can pick the
+  // same one; the (business_id, order_number) unique turns that into 23505,
+  // and the next attempt reads the winner's number.
+  for (let attempt = 0; ; attempt++) {
+    const orderNumber = await nextOrderNumber(business)
+    const { data, error } = await supabase
+      .from('orders')
+      .insert([{ ...order, business_id: business.id, order_number: orderNumber }])
+      .select()
+      .single()
 
-  if (error) {
+    if (!error) return data
+    if (error.code === '23505' && attempt < 2) continue
     throw new Error(`Failed to create order: ${error.message}`)
   }
-
-  return data
 }
 
-export async function updateOrder(id: string, updates: Partial<Omit<Order, 'id' | 'order_number' | 'created_at' | 'updated_at'>>): Promise<Order> {
+/** null when the order is not in this business. */
+export async function updateOrder(
+  id: string,
+  businessId: string,
+  updates: Partial<Omit<Order, 'id' | 'order_number' | 'created_at' | 'updated_at' | 'business_id'>>
+): Promise<Order | null> {
   const supabase = createAdminSupabaseClient()
+  // business_id is never taken from the caller's update (and is immutable in the database).
+  const safe: Record<string, unknown> = { ...updates }
+  delete safe.business_id
 
   const { data, error } = await supabase
     .from('orders')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update({ ...safe, updated_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('business_id', businessId)
     .select()
     .single()
 
   if (error) {
+    if (error.code === NOT_FOUND) return null
     throw new Error(`Failed to update order: ${error.message}`)
   }
 
   return data
 }
 
-export async function deleteOrder(id: string): Promise<void> {
+/** false when the order is not in this business. */
+export async function deleteOrder(id: string, businessId: string): Promise<boolean> {
   const supabase = createAdminSupabaseClient()
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('orders')
     .delete()
     .eq('id', id)
+    .eq('business_id', businessId)
+    .select('id')
 
   if (error) {
     throw new Error(`Failed to delete order: ${error.message}`)
   }
+  return (data?.length ?? 0) > 0
+}
+
+/** True when every id given belongs to the business (nulls are ignored). */
+export async function belongsToBusiness(
+  table: 'customers' | 'measurements' | 'orders' | 'vendors',
+  ids: Array<string | null | undefined>,
+  businessId: string
+): Promise<boolean> {
+  const wanted = [...new Set(ids.filter((v): v is string => !!v))]
+  if (wanted.length === 0) return true
+  const supabase = createAdminSupabaseClient()
+  const { data, error } = await supabase
+    .from(table)
+    .select('id')
+    .in('id', wanted)
+    .eq('business_id', businessId)
+  if (error) throw new Error(`Failed to check ${table}: ${error.message}`)
+  return (data?.length ?? 0) === wanted.length
 }

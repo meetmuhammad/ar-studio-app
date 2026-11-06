@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
-import { requireAuth } from "@/lib/api-auth";
+import { requireBusiness } from "@/lib/business-context";
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAuth(request);
-  if (auth instanceof NextResponse) return auth;
+  const scope = await requireBusiness(request);
+  if (scope instanceof NextResponse) return scope;
 
   try {
     const body = await request.json();
@@ -19,6 +19,7 @@ export async function PATCH(
       .from("payments")
       .select("*")
       .eq("id", paymentId)
+      .eq("business_id", scope.businessId)
       .single();
 
     if (fetchError || !existingPayment) {
@@ -47,6 +48,7 @@ export async function PATCH(
       .from("payments")
       .update(updateData)
       .eq("id", paymentId)
+      .eq("business_id", scope.businessId)
       .select(`
         *,
         order:orders(
@@ -85,8 +87,8 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAuth(request);
-  if (auth instanceof NextResponse) return auth;
+  const scope = await requireBusiness(request);
+  if (scope instanceof NextResponse) return scope;
 
   try {
     const supabase = createAdminSupabaseClient();
@@ -97,6 +99,7 @@ export async function DELETE(
       .from("payments")
       .select("id")
       .eq("id", paymentId)
+      .eq("business_id", scope.businessId)
       .single();
 
     if (fetchError || !existingPayment) {
@@ -110,7 +113,8 @@ export async function DELETE(
     const { error: deleteError } = await supabase
       .from("payments")
       .delete()
-      .eq("id", paymentId);
+      .eq("id", paymentId)
+      .eq("business_id", scope.businessId);
 
     if (deleteError) {
       console.error("Error deleting payment:", deleteError);

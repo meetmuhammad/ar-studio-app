@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/select'
 import type { GeneralLedgerWithRelations } from '@/lib/supabase-client'
 import { toast } from 'sonner'
+import { useBusiness, useBusinessLabel } from '@/contexts/business-context'
 import { useLedgerEntries, useLedgerStats, useCreateLedgerEntry, useUpdateLedgerEntry, useDeleteLedgerEntry, useSyncOrderPayments, useVendorCategories } from '@/hooks/use-api'
 
 // Sentinel for "no filter" -- Radix Select cannot use an empty string as an
@@ -51,6 +52,11 @@ export default function LedgerPage() {
   const debounceTimer = useRef<NodeJS.Timeout | null>(null)
 
   const { data: categories = [] } = useVendorCategories()
+  // Each business has its own book. In the admin combined view the page is
+  // read-only and shows no running balance (one series across two books would
+  // be meaningless); rows are labelled with their business instead.
+  const { isAll } = useBusiness()
+  const businessLabel = useBusinessLabel()
 
   // React Query hooks
   const { data: entriesResult, isLoading, isError: loadFailed, error: loadError, refetch: fetchData } = useLedgerEntries({
@@ -120,7 +126,7 @@ export default function LedgerPage() {
   const exportToCSV = () => {
     try {
       // CSV headers
-      const headers = ['Date', 'Particulars', 'Type', 'Debit', 'Credit', 'Balance', 'Vendor', 'Vendor Category', 'Order Number', 'Notes']
+      const headers = ['Date', 'Particulars', 'Type', 'Debit', 'Credit', isAll ? 'Business' : 'Balance', 'Vendor', 'Vendor Category', 'Order Number', 'Notes']
       
       // Convert entries to CSV rows
       const rows = entries.map(entry => [
@@ -133,7 +139,9 @@ export default function LedgerPage() {
         entry.entry_type.replace('_', ' '),
         entry.debit || 0,
         entry.credit || 0,
-        entry.calculatedBalance ?? entry.balance,
+        isAll
+          ? (entry as GeneralLedgerWithRelations & { business_name?: string | null }).business_name ?? ''
+          : entry.calculatedBalance ?? entry.balance,
         entry.vendors?.name ? `"${entry.vendors.name.replace(/"/g, '""')}"` : '',
         // The vendor's CURRENT category, matching what the filter selects on.
         entry.vendor_id ? `"${(entry.vendors?.vendor_categories?.name || 'Uncategorized').replace(/"/g, '""')}"` : '',
@@ -214,7 +222,8 @@ export default function LedgerPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold sm:text-3xl">General Ledger</h1>
           <p className="text-muted-foreground mt-1">
-            Track all financial transactions and balances
+            <span className="font-medium text-foreground">{businessLabel}</span>
+            {' · '}Track all financial transactions and balances
           </p>
         </div>
         <div className="flex gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
@@ -226,7 +235,7 @@ export default function LedgerPage() {
             <Download className="h-4 w-4 mr-2" />
             Export CSV
           </Button>
-          <Button onClick={() => setDialogOpen(true)}>
+          <Button onClick={() => setDialogOpen(true)} disabled={isAll}>
             <Plus className="h-4 w-4 mr-2" />
             Add Entry
           </Button>
@@ -289,7 +298,7 @@ export default function LedgerPage() {
 
         <Card className="gap-2 py-4 sm:gap-6 sm:py-6">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0 sm:pb-2">
-            <CardTitle className="text-sm font-medium">Current Balance</CardTitle>
+            <CardTitle className="text-sm font-medium">{isAll ? 'Net, all businesses' : 'Current Balance'}</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -334,7 +343,7 @@ export default function LedgerPage() {
                 <TableHead>Type</TableHead>
                 <TableHead className="text-right">Debit</TableHead>
                 <TableHead className="text-right">Credit</TableHead>
-                <TableHead className="text-right">Balance</TableHead>
+                {isAll ? <TableHead>Business</TableHead> : <TableHead className="text-right">Balance</TableHead>}
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -367,11 +376,17 @@ export default function LedgerPage() {
                   <TableCell data-label="Credit" className="text-right text-red-600">
                     {entry.credit ? formatCurrency(entry.credit) : '-'}
                   </TableCell>
-                  <TableCell data-label="Balance" className="text-right font-medium">
-                    {formatCurrency(entry.calculatedBalance ?? entry.balance)}
-                  </TableCell>
+                  {isAll ? (
+                    <TableCell data-label="Business">
+                      {(entry as GeneralLedgerWithRelations & { business_name?: string | null }).business_name ?? '-'}
+                    </TableCell>
+                  ) : (
+                    <TableCell data-label="Balance" className="text-right font-medium">
+                      {formatCurrency(entry.calculatedBalance ?? entry.balance)}
+                    </TableCell>
+                  )}
                   <TableCell data-label="Actions" className="text-right">
-                    {entry.entry_type !== 'order_payment' && (
+                    {entry.entry_type !== 'order_payment' && !isAll && (
                       <div className="flex justify-end gap-2">
                         <Button
                           variant="ghost"

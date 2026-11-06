@@ -3,6 +3,19 @@ import * as z from 'zod/v4'
 import { findVendors, getLedgerTotals, listLedgerEntries } from '@/lib/ledger-service'
 import { businessToday, centsToDecimal, CURRENCY, formatMoney, isRealDate, toCents } from './normalize'
 import { commitEntry, prepareEntry } from './proposals'
+import { defaultBusiness, getMemberships } from '@/lib/business-context'
+
+/**
+ * The MCP endpoint has no business selector, so it acts on Ahsan Tariq Couture
+ * only -- the same fallback (and the same membership check) as an API request
+ * without X-Business-Id. The feature is off by default (LEDGER_MCP_ENABLED);
+ * Techlink is deliberately unreachable from it.
+ */
+async function mcpBusinessId(userId: string): Promise<string> {
+  const business = defaultBusiness(await getMemberships(userId))
+  if (!business) throw new Error('MCP user has no access to the default business')
+  return business.id
+}
 
 /**
  * The ledger-only MCP server. One instance is built per request, already bound
@@ -62,7 +75,9 @@ export function buildLedgerMcpServer(userId: string): McpServer {
       for (const [k, v] of [['start_date', a.start_date], ['end_date', a.end_date]] as const) {
         if (v && !isRealDate(v)) return fail(`${k} "${v}" is not a real calendar date in YYYY-MM-DD form`)
       }
+      const businessId = await mcpBusinessId(userId)
       const { entries, count } = await listLedgerEntries({
+        businessIds: [businessId],
         startDate: a.start_date, endDate: a.end_date, entryType: a.entry_type,
         vendorId: a.vendor_id, search: a.search, page: a.page, pageSize: a.page_size,
       })
@@ -106,7 +121,8 @@ export function buildLedgerMcpServer(userId: string): McpServer {
       const today = businessToday(process.env.BUSINESS_TIMEZONE)
       const date = a.date ?? today
       if (!isRealDate(date)) return fail(`date "${date}" is not a real calendar date in YYYY-MM-DD form`)
-      const [day, all] = await Promise.all([getLedgerTotals({ date }), getLedgerTotals()])
+      const businessIds = [await mcpBusinessId(userId)]
+      const [day, all] = await Promise.all([getLedgerTotals({ businessIds, date }), getLedgerTotals({ businessIds })])
       const dayNet = centsToDecimal(toCents(day.totalDebit) - toCents(day.totalCredit))
       return text(
         `Ledger summary (${CURRENCY}). Business date today: ${today}.\n` +
@@ -133,7 +149,7 @@ export function buildLedgerMcpServer(userId: string): McpServer {
       annotations: { title: 'Find vendors', readOnlyHint: true, openWorldHint: false },
     },
     async (a) => guarded(async () => {
-      const rows = (await findVendors(a.query)).map((v: any) => ({ id: v.id, name: v.name, category: v.vendor_categories?.name ?? null }))
+      const rows = (await findVendors([await mcpBusinessId(userId)], a.query)).map((v: any) => ({ id: v.id, name: v.name, category: v.vendor_categories?.name ?? null }))
       if (!rows.length) return text(`No vendor matches "${a.query}".`, { vendors: [] })
       return text(
         `${rows.length} vendor${rows.length === 1 ? '' : 's'} match "${a.query}"${rows.length > 1 ? ' (ambiguous: ask the user which one)' : ''}:\n` +
@@ -174,7 +190,7 @@ export function buildLedgerMcpServer(userId: string): McpServer {
       annotations: { title: 'Prepare a ledger entry', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async (a) => guarded(async () => {
-      const r = await prepareEntry(userId, a, a.idempotency_key)
+      const r = await prepareEntry(userId, await mcpBusinessId(userId), a, a.idempotency_key)
       if (!r.ok) {
         return fail(`Not prepared. Fix or ask the user about:\n${r.problems.map((p) => `- ${p}`).join('\n')}\nNothing was saved.`)
       }

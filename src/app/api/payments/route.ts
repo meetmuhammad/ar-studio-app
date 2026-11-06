@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
-import { requireAuth } from "@/lib/api-auth";
+import { inScope, requireBusiness, requireBusinessRead } from "@/lib/business-context";
 
 export async function GET(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (auth instanceof NextResponse) return auth;
+  const scope = await requireBusinessRead(request);
+  if (scope instanceof NextResponse) return scope;
 
   try {
     const supabase = createAdminSupabaseClient();
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     const orderId = searchParams.get("order_id");
     const customerId = searchParams.get("customer_id");
 
-    let query = supabase
+    let query = inScope(supabase
       .from("payments")
       .select(`
         *,
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
           booking_date,
           customer:customers(id, name, phone)
         )
-      `)
+      `), scope)
       .order("payment_date", { ascending: false });
 
     // Filter by order if provided
@@ -63,8 +63,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   // Staff record payments, and this handler writes the matching ledger row
   // server-side, so staff never need the ledger endpoints themselves.
-  const auth = await requireAuth(request);
-  if (auth instanceof NextResponse) return auth;
+  const scope = await requireBusiness(request);
+  if (scope instanceof NextResponse) return scope;
 
   try {
     const body = await request.json();
@@ -86,6 +86,8 @@ export async function POST(request: NextRequest) {
       .select("id, customer_id, booking_date, total_amount, advance_paid, balance")
       .eq("id", order_id)
       .eq("customer_id", customer_id)
+      // An order of another business is not found.
+      .eq("business_id", scope.businessId)
       .single();
 
     if (orderError || !order) {
@@ -102,6 +104,8 @@ export async function POST(request: NextRequest) {
 
     // Create the payment
     const paymentData = {
+      // From the verified context, never the body; must equal the order's.
+      business_id: scope.businessId,
       order_id,
       customer_id,
       amount: parseFloat(amount),
@@ -136,6 +140,7 @@ export async function POST(request: NextRequest) {
 
     // Create ledger entry for this payment
     const { error: ledgerError } = await supabase.from('general_ledger').insert({
+      business_id: scope.businessId,
       entry_date: paymentData.payment_date,
       particulars: `Payment for Order #${payment.order.order_number}`,
       debit: paymentData.amount,

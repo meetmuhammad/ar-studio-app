@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-auth'
+import { businessNames, requireBusiness, requireBusinessRead } from '@/lib/business-context'
+import { belongsToBusiness } from '@/lib/database'
 import { getRangeRunningBalances, listLedgerEntries } from '@/lib/ledger-service'
 
 // GET /api/general-ledger - List entries with filters and pagination
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusinessRead(request, { roles: ['admin'] })
+  if (scope instanceof NextResponse) return scope
 
   try {
     const { searchParams } = new URL(request.url)
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
     const startDate = searchParams.get('start_date')
     const endDate = searchParams.get('end_date')
     const { entries, count } = await listLedgerEntries({
+      businessIds: scope.businessIds,
       startDate,
       endDate,
       entryType: searchParams.get('entry_type'),
@@ -34,6 +36,28 @@ export async function GET(request: Request) {
       pageSize,
     })
 
+    // Admin combined view (X-Business-Id: all): read-only, and with NO running
+    // balance. Each business is its own book, so one balance column walking
+    // through both would be meaningless; `balance` and `range_balance` are
+    // null and every row says which business it belongs to.
+    if (!scope.business) {
+      const names = businessNames(scope)
+      const combined = entries.map((e: { business_id?: string }) => ({
+        ...e,
+        balance: null,
+        range_balance: null,
+        business_name: names.get(e.business_id ?? '') ?? null,
+      }))
+      if (page > 0) {
+        return NextResponse.json({
+          data: combined,
+          combined: true,
+          pagination: { page, pageSize, total: count, pages: Math.ceil(count / pageSize) },
+        })
+      }
+      return NextResponse.json(combined)
+    }
+
     // If paginated, return with pagination info
     if (page > 0) {
       // range_balance: the running balance within the selected date range
@@ -43,6 +67,7 @@ export async function GET(request: Request) {
       // pages and search/category filters do not change it. `balance` stays the
       // stored all-time running balance.
       const rangeBalances = await getRangeRunningBalances(
+        scope.business.id,
         entries.map((e: { id: string }) => e.id),
         { startDate: startDate || null, endDate: endDate || null },
       )
@@ -74,8 +99,8 @@ export async function GET(request: Request) {
 
 // POST /api/general-ledger - Create new entry
 export async function POST(request: Request) {
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusiness(request, { roles: ['admin'] })
+  if (scope instanceof NextResponse) return scope
 
   try {
     const supabase = createAdminSupabaseClient()
@@ -109,9 +134,27 @@ export async function POST(request: Request) {
       )
     }
 
+    // Linked vendor / order / tag must be in this business: not found otherwise.
+    if (
+      !(await belongsToBusiness('vendors', [vendor_id], scope.businessId)) ||
+      !(await belongsToBusiness('orders', [order_id], scope.businessId))
+    ) {
+      return NextResponse.json({ error: 'Vendor or order not found' }, { status: 404 })
+    }
+    if (tag_id) {
+      const { data: tag } = await supabase
+        .from('vendor_tags')
+        .select('id, vendors!inner(business_id)')
+        .eq('id', tag_id)
+        .eq('vendors.business_id', scope.businessId)
+        .maybeSingle()
+      if (!tag) return NextResponse.json({ error: 'Tag not found' }, { status: 404 })
+    }
+
     const { data: entry, error } = await supabase
       .from('general_ledger')
       .insert({
+        business_id: scope.businessId,
         entry_date,
         particulars: particulars.trim(),
         debit: debit || null,

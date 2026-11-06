@@ -16,6 +16,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // Database types
 export interface Customer {
   id: string
+  /** Owning business (businesses.id). Set by the API from the request's business, never by the client. */
+  business_id?: string
   name: string
   phone: string
   address?: string | null
@@ -38,6 +40,8 @@ export interface OrderItem {
 
 export interface Order {
   id: string
+  /** Owning business (businesses.id). Set by the API from the request's business, never by the client. */
+  business_id?: string
   order_number: string
   customer_id: string
   booking_date: string
@@ -83,6 +87,8 @@ export type LedgerEntryType = 'opening_balance' | 'order_payment' | 'vendor_paym
 
 export interface Vendor {
   id: string
+  /** Owning business (businesses.id). Set by the API from the request's business, never by the client. */
+  business_id?: string
   name: string
   contact_person?: string | null
   phone?: string | null
@@ -119,6 +125,8 @@ export interface VendorWithCategory extends Vendor {
 
 export interface GeneralLedger {
   id: string
+  /** Owning business (businesses.id). Set by the API from the request's business, never by the client. */
+  business_id?: string
   entry_date: string
   particulars: string
   debit?: number | null
@@ -153,6 +161,8 @@ export interface GeneralLedgerWithRelations extends GeneralLedger {
 
 export interface VendorLedger {
   id: string
+  /** Owning business (businesses.id). Set by the API from the request's business, never by the client. */
+  business_id?: string
   vendor_id: string
   general_ledger_id: string
   entry_date: string

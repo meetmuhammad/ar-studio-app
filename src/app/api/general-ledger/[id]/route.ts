@@ -1,20 +1,21 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-auth'
+import { inScope, requireBusiness, requireBusinessRead } from '@/lib/business-context'
+import { belongsToBusiness } from '@/lib/database'
 
 // GET /api/general-ledger/[id] - Get single entry
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusinessRead(request, { roles: ['admin'] })
+  if (scope instanceof NextResponse) return scope
 
   try {
     const supabase = createAdminSupabaseClient()
     const { id } = await params
 
-    const { data: entry, error } = await supabase
+    const { data: entry, error } = await inScope(supabase
       .from('general_ledger')
       .select(`
         *,
@@ -22,7 +23,7 @@ export async function GET(
         orders (id, order_number),
         vendor_tags (id, tag_name)
       `)
-      .eq('id', id)
+      .eq('id', id), scope)
       .single()
 
     if (error) {
@@ -54,8 +55,8 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusiness(request, { roles: ['admin'] })
+  if (scope instanceof NextResponse) return scope
 
   try {
     const supabase = createAdminSupabaseClient()
@@ -88,6 +89,10 @@ export async function PUT(
       )
     }
 
+    if (!(await belongsToBusiness('vendors', [vendor_id], scope.businessId))) {
+      return NextResponse.json({ error: 'Vendor not found' }, { status: 404 })
+    }
+
     const { data: entry, error } = await supabase
       .from('general_ledger')
       .update({
@@ -101,6 +106,7 @@ export async function PUT(
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
+      .eq('business_id', scope.businessId)
       .select(`
         *,
         vendors (id, name),
@@ -129,12 +135,14 @@ export async function PUT(
       .from('vendor_ledger')
       .delete()
       .eq('general_ledger_id', id)
+      .eq('business_id', scope.businessId)
 
     // If vendor_id is provided, create new vendor_ledger entry with reversed debit/credit
     if (vendor_id) {
       const { error: vendorLedgerError } = await supabase
         .from('vendor_ledger')
         .insert({
+          business_id: scope.businessId,
           vendor_id,
           general_ledger_id: id,
           entry_date,
@@ -164,18 +172,30 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusiness(request, { roles: ['admin'] })
+  if (scope instanceof NextResponse) return scope
 
   try {
     const supabase = createAdminSupabaseClient()
     const { id } = await params
+
+    // An entry of another business is not found, and nothing of it is touched.
+    const { data: existing } = await supabase
+      .from('general_ledger')
+      .select('id')
+      .eq('id', id)
+      .eq('business_id', scope.businessId)
+      .maybeSingle()
+    if (!existing) {
+      return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
+    }
 
     // First, explicitly delete any vendor_ledger entries linked to this general ledger entry
     const { error: vendorLedgerError } = await supabase
       .from('vendor_ledger')
       .delete()
       .eq('general_ledger_id', id)
+      .eq('business_id', scope.businessId)
 
     if (vendorLedgerError) {
       console.error('Error deleting vendor ledger entries:', vendorLedgerError)
@@ -187,6 +207,7 @@ export async function DELETE(
       .from('general_ledger')
       .delete()
       .eq('id', id)
+      .eq('business_id', scope.businessId)
 
     if (error) {
       console.error('Error deleting ledger entry:', error)

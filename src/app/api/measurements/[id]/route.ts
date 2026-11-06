@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { measurementSchema } from "@/types/measurements";
-import { requireAuth } from "@/lib/api-auth";
+import { inScope, requireBusiness, requireBusinessRead } from "@/lib/business-context";
+import { belongsToBusiness } from "@/lib/database";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -11,20 +12,20 @@ export async function GET(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const auth = await requireAuth(request);
-  if (auth instanceof NextResponse) return auth;
+  const scope = await requireBusinessRead(request);
+  if (scope instanceof NextResponse) return scope;
 
   try {
     const { id } = await params;
     const supabase = createAdminSupabaseClient();
 
-    const { data: measurement, error } = await supabase
+    const { data: measurement, error } = await inScope(supabase
       .from("measurements")
       .select(`
         *,
         customer:customers(id, name, phone)
       `)
-      .eq("id", id)
+      .eq("id", id), scope)
       .single();
 
     if (error) {
@@ -49,8 +50,8 @@ export async function PUT(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const auth = await requireAuth(request);
-  if (auth instanceof NextResponse) return auth;
+  const scope = await requireBusiness(request);
+  if (scope instanceof NextResponse) return scope;
 
   try {
     const { id } = await params;
@@ -87,12 +88,22 @@ export async function PUT(
       turban_size: validatedData.turban_size === "" ? null : validatedData.turban_size,
     };
 
+    // Both the measurement and its (possibly new) customer must be in this
+    // business; anything else is not found.
+    if (
+      !(await belongsToBusiness("measurements", [id], scope.businessId)) ||
+      !(await belongsToBusiness("customers", [measurementData.customer_id], scope.businessId))
+    ) {
+      return NextResponse.json({ error: "Measurement not found" }, { status: 404 });
+    }
+
     // If this is set as default, unset other defaults for the same customer
     if (measurementData.is_default) {
       await supabase
         .from("measurements")
         .update({ is_default: false })
         .eq("customer_id", measurementData.customer_id)
+        .eq("business_id", scope.businessId)
         .neq("id", id);
     }
 
@@ -100,6 +111,7 @@ export async function PUT(
       .from("measurements")
       .update(measurementData)
       .eq("id", id)
+      .eq("business_id", scope.businessId)
       .select(`
         *,
         customer:customers(id, name, phone)
@@ -131,17 +143,23 @@ export async function DELETE(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const auth = await requireAuth(request);
-  if (auth instanceof NextResponse) return auth;
+  const scope = await requireBusiness(request);
+  if (scope instanceof NextResponse) return scope;
 
   try {
     const { id } = await params;
     const supabase = createAdminSupabaseClient();
 
-    const { error } = await supabase
+    const { data: deleted, error } = await supabase
       .from("measurements")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .eq("business_id", scope.businessId)
+      .select("id");
+
+    if (!error && (deleted?.length ?? 0) === 0) {
+      return NextResponse.json({ error: "Measurement not found" }, { status: 404 });
+    }
 
     if (error) {
       console.error("Error deleting measurement:", error);
