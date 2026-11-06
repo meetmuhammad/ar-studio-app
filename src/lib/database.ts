@@ -1,5 +1,6 @@
 import { createAdminSupabaseClient } from './supabase'
 import type { Customer, Order, OrderWithCustomer, Counter, OrderItem } from './supabase-client'
+import { todayInBusinessZone } from './date-range'
 
 // Order number generation using a simpler approach
 export async function nextOrderNumber(): Promise<string> {
@@ -201,7 +202,8 @@ export async function getOrders({
   page = 1,
   pageSize = 10,
   sortBy = 'delivery_date',
-  sortDir = 'asc'
+  sortDir = 'asc',
+  today = todayInBusinessZone(),
 }: {
   q?: string
   customerId?: string
@@ -212,13 +214,160 @@ export async function getOrders({
   pageSize?: number
   sortBy?: string
   sortDir?: 'asc' | 'desc'
+  /** YYYY-MM-DD splitting upcoming from past-due deliveries; tests pin it. */
+  today?: string
 }) {
   const supabase = createAdminSupabaseClient()
   const offset = (page - 1) * pageSize
 
-  let query = supabase
-    .from('orders')
-    .select(`
+  // Resolve the search's customer matches once, up front, so every query below
+  // (the nearest-delivery sort runs several) filters the same set of orders.
+  let searchClauses: string | null = null
+  if (q?.trim()) {
+    const term = q.trim()
+
+    // Customer name and phone live on an embedded table, and PostgREST cannot
+    // reference an embedded column from a top-level or() -- it fails to parse
+    // the logic tree and the whole request 400s, which is why searching used
+    // to return nothing at all rather than just missing those matches.
+    // Resolving the customers first keeps the orders filter to columns orders
+    // actually has.
+    const { data: matches } = await supabase
+      .from('customers')
+      .select('id')
+      .or(`name.ilike.${pgLiteral(`%${term}%`)},phone.ilike.${pgLiteral(`%${term}%`)}`)
+      // ponytail: 1000 customers is far past this studio's book; raise it or
+      // move the search into a Postgres function if that stops being true.
+      .limit(1000)
+
+    const clauses = [`order_number.ilike.${pgLiteral(`%${term}%`)}`]
+    if (matches?.length) {
+      clauses.push(`customer_id.in.(${matches.map((c) => c.id).join(',')})`)
+    }
+    searchClauses = clauses.join(',')
+  }
+
+  // One filtered query; `head` builds a count-only one.
+  const filtered = (head = false) => {
+    let query = supabase
+      .from('orders')
+      .select(ORDER_LIST_SELECT, { count: 'exact', head })
+    if (searchClauses) query = query.or(searchClauses)
+    if (customerId) query = query.eq('customer_id', customerId)
+    if (from) query = query.gte('booking_date', from.toISOString().split('T')[0])
+    if (to) query = query.lte('booking_date', to.toISOString().split('T')[0])
+    if (status) query = query.eq('status', status)
+    return query
+  }
+
+  // Many orders share a booking/delivery date, so break ties on newest-created
+  // then id: without a total order, rows can repeat or vanish between pages.
+  const tieBreak = <T extends ReturnType<typeof filtered>>(query: T, column: string) => {
+    let ordered = query
+    if (column !== 'created_at') ordered = ordered.order('created_at', { ascending: false }) as T
+    return ordered.order('id', { ascending: true }) as T
+  }
+
+  if (sortBy === 'delivery_date' && sortDir === 'asc') {
+    type OrderListRow = NonNullable<Awaited<ReturnType<typeof filtered>>['data']>[number]
+    const result = await getOrdersByNearestDelivery({ filtered, tieBreak, today, offset, page, pageSize })
+    return { ...result, data: result.data as OrderListRow[] }
+  }
+
+  let query = filtered().order(sortBy, { ascending: sortDir === 'asc' })
+  query = tieBreak(query, sortBy)
+  query = query.range(offset, offset + pageSize - 1)
+
+  const { data: orders, error, count } = await query
+
+  if (error) {
+    throw new Error(`Failed to fetch orders: ${error.message}`)
+  }
+
+  return {
+    data: orders || [],
+    total: count || 0,
+    page,
+    pageSize,
+    pages: Math.ceil((count || 0) / pageSize)
+  }
+}
+
+/**
+ * "Nearest delivery": orders still to deliver (delivery_date >= today in the
+ * studio's zone) soonest first, then the past-due ones oldest first, then
+ * orders with no delivery date. A plain `delivery_date asc` puts every past-due
+ * order ahead of the upcoming ones.
+ *
+ * PostgREST cannot order by an expression, so the list is treated as three
+ * segments, each a filtered query in delivery_date order. Their counts place
+ * each segment in the overall list, and the requested page is read from
+ * whichever segments it overlaps, so paging stays a single total order.
+ */
+async function getOrdersByNearestDelivery({
+  filtered,
+  tieBreak,
+  today,
+  offset,
+  page,
+  pageSize,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  filtered: (head?: boolean) => any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tieBreak: (query: any, column: string) => any
+  today: string
+  offset: number
+  page: number
+  pageSize: number
+}) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const segments: Array<(query: any) => any> = [
+    (query) => query.gte('delivery_date', today),
+    (query) => query.lt('delivery_date', today),
+    (query) => query.is('delivery_date', null),
+  ]
+
+  const counts = await Promise.all(
+    segments.map(async (seg) => {
+      const { count, error } = await seg(filtered(true))
+      if (error) throw new Error(`Failed to fetch orders: ${error.message}`)
+      return count || 0
+    })
+  )
+  const total = counts.reduce((a, b) => a + b, 0)
+
+  const end = offset + pageSize // exclusive
+  const reads: Promise<unknown[]>[] = []
+  let segStart = 0
+  segments.forEach((seg, i) => {
+    const segEnd = segStart + counts[i]
+    const lo = Math.max(offset, segStart)
+    const hi = Math.min(end, segEnd)
+    if (lo < hi) {
+      const query = tieBreak(seg(filtered()).order('delivery_date', { ascending: true }), 'delivery_date')
+        .range(lo - segStart, hi - segStart - 1)
+      reads.push(
+        query.then(({ data, error }: { data: unknown[] | null; error: { message: string } | null }) => {
+          if (error) throw new Error(`Failed to fetch orders: ${error.message}`)
+          return data || []
+        })
+      )
+    }
+    segStart = segEnd
+  })
+
+  const data = (await Promise.all(reads)).flat()
+  return {
+    data,
+    total,
+    page,
+    pageSize,
+    pages: Math.ceil(total / pageSize),
+  }
+}
+
+const ORDER_LIST_SELECT = `
       id,
       order_number,
       customer_id,
@@ -247,73 +396,7 @@ export async function getOrders({
         created_at,
         updated_at
       )
-    `, { count: 'exact' })
-
-  // Add filters
-  if (q?.trim()) {
-    const term = q.trim()
-
-    // Customer name and phone live on an embedded table, and PostgREST cannot
-    // reference an embedded column from a top-level or() -- it fails to parse
-    // the logic tree and the whole request 400s, which is why searching used
-    // to return nothing at all rather than just missing those matches.
-    // Resolving the customers first keeps the orders filter to columns orders
-    // actually has.
-    const { data: matches } = await supabase
-      .from('customers')
-      .select('id')
-      .or(`name.ilike.${pgLiteral(`%${term}%`)},phone.ilike.${pgLiteral(`%${term}%`)}`)
-      // ponytail: 1000 customers is far past this studio's book; raise it or
-      // move the search into a Postgres function if that stops being true.
-      .limit(1000)
-
-    const clauses = [`order_number.ilike.${pgLiteral(`%${term}%`)}`]
-    if (matches?.length) {
-      clauses.push(`customer_id.in.(${matches.map((c) => c.id).join(',')})`)
-    }
-    query = query.or(clauses.join(','))
-  }
-
-  if (customerId) {
-    query = query.eq('customer_id', customerId)
-  }
-
-  if (from) {
-    query = query.gte('booking_date', from.toISOString().split('T')[0])
-  }
-
-  if (to) {
-    query = query.lte('booking_date', to.toISOString().split('T')[0])
-  }
-
-  if (status) {
-    query = query.eq('status', status)
-  }
-
-  // Add sorting. Many orders share a booking/delivery date, so break ties on
-  // newest-created then id: without a total order, rows can repeat or vanish
-  // between pages.
-  query = query.order(sortBy, { ascending: sortDir === 'asc' })
-  if (sortBy !== 'created_at') query = query.order('created_at', { ascending: false })
-  query = query.order('id', { ascending: true })
-
-  // Add pagination
-  query = query.range(offset, offset + pageSize - 1)
-
-  const { data: orders, error, count } = await query
-
-  if (error) {
-    throw new Error(`Failed to fetch orders: ${error.message}`)
-  }
-
-  return {
-    data: orders || [],
-    total: count || 0,
-    page,
-    pageSize,
-    pages: Math.ceil((count || 0) / pageSize)
-  }
-}
+    `
 
 export async function getAllOrdersSimple(): Promise<any[]> {
   const supabase = createAdminSupabaseClient()
