@@ -1,25 +1,33 @@
 -- Running-balance behaviour of public.general_ledger after
--- supabase/migrations/20261101000000_ledger_running_balance_integrity.sql.
+-- supabase/migrations/20261101000000_ledger_running_balance_integrity.sql and
+-- 20261106000000_multi_business_techlink.sql (balances partitioned by business).
 --
--- MUTATES DATA. Run only against an empty local/test database -- never staging
--- with real-looking data, never production. It refuses to start if
--- general_ledger has any rows, inserts synthetic rows, and always rolls back.
+-- LOCAL/TEST ONLY, never staging or production. Everything runs in ONE
+-- transaction that always rolls back. The synthetic rows go into a throwaway
+-- business created inside that transaction, so the test also proves that a
+-- write in one business never changes another business's stored balances.
 --
---   docker exec -i supabase_db_ar-studio-app psql -U postgres -d <test-db> \
+--   docker exec -i supabase_db_ar-studio-app psql -U postgres -d <db> \
 --     -v ON_ERROR_STOP=1 < scripts/ledger-balance/running-balance.test.sql
 
 begin;
 
-do $$
-begin
-  if exists (select 1 from public.general_ledger) then
-    raise exception 'general_ledger is not empty: refusing to run a mutating test here';
-  end if;
-end;
+insert into public.businesses (name, slug, code) values ('Ledger test', 'zz-ledger-test', 'ZZ');
+create function pg_temp.tb() returns uuid language sql stable as $$
+  select id from public.businesses where slug = 'zz-ledger-test'
 $$;
+-- Rows below omit business_id; inside this rolled-back transaction they land in
+-- the test business.
+do $$ begin
+  execute format('alter table public.general_ledger alter column business_id set default %L', pg_temp.tb());
+end $$;
+
+-- Every OTHER business's stored series, to compare at the end.
+create temp table other_books as
+  select id, balance from public.general_ledger where business_id <> pg_temp.tb();
 
 -- Fails the test unless every stored balance equals the cumulative sum in
--- (entry_date, created_at, id) order.
+-- (entry_date, created_at, id) order WITHIN its business (all businesses).
 create function pg_temp.assert_chain(label text) returns void language plpgsql as $$
 declare
   v_bad integer;
@@ -27,7 +35,7 @@ begin
   select count(*) into v_bad from (
     select balance,
            sum(coalesce(debit, 0) - coalesce(credit, 0))
-             over (order by entry_date, created_at, id) as expected
+             over (partition by business_id order by entry_date, created_at, id) as expected
       from public.general_ledger
   ) t where balance is distinct from expected;
   if v_bad > 0 then
@@ -38,7 +46,7 @@ end;
 $$;
 
 create function pg_temp.bal(p_particulars text) returns numeric language sql as $$
-  select balance from public.general_ledger where particulars = p_particulars
+  select balance from public.general_ledger where particulars = p_particulars and business_id = pg_temp.tb()
 $$;
 
 create function pg_temp.eq(label text, got numeric, want numeric) returns void language plpgsql as $$
@@ -84,29 +92,35 @@ values ('2026-10-20', '2026-10-20 00:00+05', 'tie 4', 5, 'miscellaneous');
 select pg_temp.assert_chain('insert into a tie group');
 
 -- 4. Date-only edit, both directions.
-update public.general_ledger set entry_date = '2026-10-02' where particulars = 'receipt oct31';
+update public.general_ledger set entry_date = '2026-10-02' where particulars = 'receipt oct31' and business_id = pg_temp.tb();
 select pg_temp.assert_chain('date edit moved earlier');
-update public.general_ledger set entry_date = '2026-11-01' where particulars = 'receipt oct31';
+update public.general_ledger set entry_date = '2026-11-01' where particulars = 'receipt oct31' and business_id = pg_temp.tb();
 select pg_temp.assert_chain('date edit moved later');
 
 -- 5. Amount edit.
-update public.general_ledger set debit = 70000 where particulars = 'backdated receipt';
+update public.general_ledger set debit = 70000 where particulars = 'backdated receipt' and business_id = pg_temp.tb();
 select pg_temp.assert_chain('amount edit');
 
 -- Non-ledger-affecting edit leaves balances alone and does not recurse.
-update public.general_ledger set notes = 'n' where particulars = 'opening';
+update public.general_ledger set notes = 'n' where particulars = 'opening' and business_id = pg_temp.tb();
 select pg_temp.assert_chain('notes-only edit');
 
 -- 6. Deletion, including a whole tie group.
-delete from public.general_ledger where particulars = 'payment oct29';
+delete from public.general_ledger where particulars = 'payment oct29' and business_id = pg_temp.tb();
 select pg_temp.assert_chain('single delete');
-delete from public.general_ledger where particulars like 'tie %';
+delete from public.general_ledger where particulars like 'tie %' and business_id = pg_temp.tb();
 select pg_temp.assert_chain('multi-row delete');
 
 -- Final net equals the latest balance.
 select pg_temp.eq('net = latest balance',
-  (select balance from public.general_ledger order by entry_date desc, created_at desc, id desc limit 1),
-  (select sum(coalesce(debit, 0) - coalesce(credit, 0)) from public.general_ledger));
+  (select balance from public.general_ledger where business_id = pg_temp.tb()
+    order by entry_date desc, created_at desc, id desc limit 1),
+  (select sum(coalesce(debit, 0) - coalesce(credit, 0)) from public.general_ledger where business_id = pg_temp.tb()));
+
+-- No other business's stored balance moved.
+select pg_temp.eq('other businesses untouched',
+  (select count(*) from other_books o join public.general_ledger gl on gl.id = o.id
+    where gl.balance is distinct from o.balance), 0);
 
 -- The recursion flag is released after every statement.
 select pg_temp.eq('recursion flag released',
@@ -115,7 +129,11 @@ select pg_temp.eq('recursion flag released',
 -- Not callable by client roles over PostgREST.
 select pg_temp.eq('anon cannot execute rebuild',
   (case when has_function_privilege('anon', 'public.rebuild_general_ledger_balances()', 'execute') then 1 else 0 end), 0);
+select pg_temp.eq('anon cannot execute per-business rebuild',
+  (case when has_function_privilege('anon', 'public.rebuild_general_ledger_balances(uuid)', 'execute') then 1 else 0 end), 0);
 select pg_temp.eq('authenticated cannot execute recalc',
-  (case when has_function_privilege('authenticated', 'public.recalculate_ledger_balances_from(date, timestamptz, uuid)', 'execute') then 1 else 0 end), 0);
+  (case when has_function_privilege('authenticated', 'public.recalculate_ledger_balances_from(uuid, date, timestamptz, uuid)', 'execute') then 1 else 0 end), 0);
+select pg_temp.eq('old global recalc is gone',
+  (select count(*) from pg_proc where proname = 'recalculate_ledger_balances_from' and pronargs = 3), 0);
 
 rollback;
