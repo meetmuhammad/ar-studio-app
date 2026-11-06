@@ -130,7 +130,12 @@ export const CustomerQuerySchema = PaginationSchema.extend({
   q: z.string().optional() // Search query for name/phone
 })
 
+// Columns the orders list may be sorted by. The value goes straight into
+// PostgREST's order=, so it is a closed list rather than any string.
+export const ORDER_SORT_COLUMNS = ['delivery_date', 'booking_date', 'created_at'] as const
+
 export const OrderQuerySchema = PaginationSchema.extend({
+  sortBy: z.enum(ORDER_SORT_COLUMNS).optional(),
   q: z.string().optional(), // Search query for order number or customer name/phone
   customerId: z.string().uuid().optional(),
   from: z.string().transform(val => val ? new Date(val) : undefined).optional(),

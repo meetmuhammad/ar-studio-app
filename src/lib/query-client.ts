@@ -44,7 +44,7 @@ export const queryKeys = {
   },
   orders: {
     all: ['orders'] as const,
-    list: (params?: { page?: number; pageSize?: number; status?: string; q?: string; sortDir?: string }) => 
+    list: (params?: { page?: number; pageSize?: number; status?: string; q?: string; sortBy?: string; sortDir?: string }) => 
       ['orders', 'list', params] as const,
     detail: (id: string) => ['orders', 'detail', id] as const,
   },
@@ -62,7 +62,7 @@ export const queryKeys = {
     all: ['ledger'] as const,
     entries: (params?: { page?: number; pageSize?: number; search?: string; startDate?: string; endDate?: string; vendorCategoryId?: string }) => 
       ['ledger', 'entries', params] as const,
-    stats: ['ledger', 'stats'] as const,
+    stats: (range?: { startDate?: string; endDate?: string }) => ['ledger', 'stats', range ?? {}] as const,
   },
   vendors: {
     all: ['vendors'] as const,

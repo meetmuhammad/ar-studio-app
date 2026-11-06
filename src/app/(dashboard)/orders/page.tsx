@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Eye, Pencil, Trash2, ArrowUpAZ, ArrowDownZA, Search } from 'lucide-react'
+import { Eye, Pencil, Trash2, Search } from 'lucide-react'
 
 import { OrderDialog } from '@/components/dialogs/order-dialog'
 import { OrderDetailsDialog } from '@/components/dialogs/order-details-dialog'
@@ -33,9 +33,17 @@ import { CreateOrderInput } from '@/lib/validators'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { OrderWithCustomer } from '@/lib/supabase-client'
 
+// The two orderings staff asked for. Each maps to a column + direction the
+// orders API accepts (see ORDER_SORT_COLUMNS in src/lib/validators.ts).
+const ORDER_SORTS = {
+  nearest_delivery: { label: 'Nearest delivery', sortBy: 'delivery_date', sortDir: 'asc' },
+  newest_order: { label: 'Newest order date', sortBy: 'booking_date', sortDir: 'desc' },
+} as const
+type OrderSort = keyof typeof ORDER_SORTS
+
 export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState<string>('In Process')
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [sort, setSort] = useState<OrderSort>('nearest_delivery')
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -47,7 +55,8 @@ export default function OrdersPage() {
     pageSize: itemsPerPage,
     status: statusFilter,
     q: debouncedSearch,
-    sortDir: sortDirection,
+    sortBy: ORDER_SORTS[sort].sortBy,
+    sortDir: ORDER_SORTS[sort].sortDir,
   })
   const createOrder = useCreateOrder()
   const updateOrder = useUpdateOrder()
@@ -152,7 +161,7 @@ export default function OrdersPage() {
   // Reset to first page when status or sort change (search is handled in debounce)
   useEffect(() => {
     setCurrentPage(1)
-  }, [statusFilter, sortDirection])
+  }, [statusFilter, sort])
 
   if (loading && orders.length === 0) {
     return (
@@ -226,27 +235,18 @@ export default function OrdersPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex items-center gap-2">
-                <Label htmlFor="sort-direction" className="text-sm font-normal whitespace-nowrap">Sort:</Label>
-                <Button
-                  id="sort-direction"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
-                  className="gap-2"
-                >
-                  {sortDirection === 'asc' ? (
-                    <>
-                      <ArrowUpAZ className="h-4 w-4" />
-                      Oldest First
-                    </>
-                  ) : (
-                    <>
-                      <ArrowDownZA className="h-4 w-4" />
-                      Newest First
-                    </>
-                  )}
-                </Button>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Label htmlFor="order-sort" className="text-sm font-normal whitespace-nowrap">Sort:</Label>
+                <Select value={sort} onValueChange={(v) => setSort(v as OrderSort)}>
+                  <SelectTrigger id="order-sort" className="w-full sm:w-[190px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(ORDER_SORTS) as OrderSort[]).map((key) => (
+                      <SelectItem key={key} value={key}>{ORDER_SORTS[key].label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>

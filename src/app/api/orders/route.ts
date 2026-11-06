@@ -44,6 +44,14 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
+    // Bad query params (an unknown sortBy, a non-uuid customerId, ...) are the
+    // caller's mistake: 400, not 500.
+    if (error instanceof Error && error.name === 'ZodError') {
+      return NextResponse.json(
+        { error: 'Invalid query parameters', details: error.message },
+        { status: 400 }
+      )
+    }
     console.error('GET /api/orders error:', error)
     return NextResponse.json(
       { error: 'Failed to fetch orders' },

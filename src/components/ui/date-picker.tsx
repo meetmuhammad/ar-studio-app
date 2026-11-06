@@ -53,6 +53,10 @@ export function DatePicker({
         <Calendar
           mode="single"
           selected={date}
+          // Open on the picked date's month, not today's. The popover content
+          // remounts on every open, so defaultMonth is re-read each time. With
+          // no date yet, a bound (the other side of a range) is the next best.
+          defaultMonth={date ?? minDate ?? maxDate}
           onSelect={(selectedDate) => {
             onDateChange?.(selectedDate)
             setOpen(false)

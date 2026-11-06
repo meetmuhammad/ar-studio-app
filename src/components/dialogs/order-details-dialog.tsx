@@ -97,7 +97,7 @@ export function OrderDetailsDialog({
   const fetchMeasurement = async (measurementId: string) => {
     try {
       setLoadingMeasurement(true)
-      const response = await fetch(`/api/measurements/${measurementId}`)
+      const response = await authFetch(`/api/measurements/${measurementId}`)
       if (!response.ok) throw new Error('Failed to fetch measurement')
       
       const data = await response.json()
@@ -112,7 +112,7 @@ export function OrderDetailsDialog({
 
   const fetchAllMeasurements = async (customerId: string) => {
     try {
-      const response = await fetch(`/api/measurements?customer_id=${customerId}`)
+      const response = await authFetch(`/api/measurements?customer_id=${customerId}`)
       if (!response.ok) throw new Error('Failed to fetch measurements')
       
       const data = await response.json()

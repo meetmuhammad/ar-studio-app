@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
+import { requireAdmin } from '@/lib/api-auth'
 
 // GET /api/vendors - List all vendors
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const supabase = createAdminSupabaseClient()
 
@@ -34,6 +38,9 @@ export async function GET() {
 
 // POST /api/vendors - Create new vendor
 export async function POST(request: Request) {
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const supabase = createAdminSupabaseClient()
     const body = await request.json()

@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
+import { requireAdmin } from '@/lib/api-auth'
 
 // GET /api/dashboard-stats - Lightweight dashboard stats using SQL aggregates
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const supabase = createAdminSupabaseClient()
 

@@ -83,7 +83,7 @@ export default function VendorLedgerPage() {
   const fetchData = async () => {
     try {
       const [vendorRes, entriesRes] = await Promise.all([
-        fetch(`/api/vendors/${vendorId}`),
+        authFetch(`/api/vendors/${vendorId}`),
         authFetch(`/api/vendor-ledger?vendor_id=${vendorId}`),
       ])
 

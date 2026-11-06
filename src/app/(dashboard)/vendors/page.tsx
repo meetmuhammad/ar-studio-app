@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, Eye, Edit, Trash2, Search, Tags } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { RoleGuard } from '@/components/auth/role-guard'
@@ -21,12 +21,27 @@ import { toast } from 'sonner'
 import { VendorDialog } from '@/components/dialogs/vendor-dialog'
 import { VendorCategoriesDialog } from '@/components/dialogs/vendor-categories-dialog'
 import { DeleteConfirmationDialog } from '@/components/dialogs/delete-confirmation-dialog'
+import { authFetch } from '@/lib/auth-fetch'
+import { ALL_VENDOR_CATEGORIES, filterVendors } from '@/lib/vendor-filter'
+import { useVendorCategories } from '@/hooks/use-api'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 export default function VendorsPage() {
   const router = useRouter()
   const [vendors, setVendors] = useState<VendorWithCategory[]>([])
-  const [filteredVendors, setFilteredVendors] = useState<VendorWithCategory[]>([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState(ALL_VENDOR_CATEGORIES)
+  const { data: categories = [] } = useVendorCategories()
+  // Search matches every category name, archived and empty ones included, so
+  // typing a category's name always gives the same vendors as choosing it.
+  const { data: allCategories = [] } = useVendorCategories(true)
   const [isLoading, setIsLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingVendor, setEditingVendor] = useState<VendorWithCategory | null>(null)
@@ -37,25 +52,14 @@ export default function VendorsPage() {
     fetchVendors()
   }, [])
 
-  useEffect(() => {
-    // Filter vendors based on search query
-    if (!searchQuery.trim()) {
-      setFilteredVendors(vendors)
-    } else {
-      const query = searchQuery.toLowerCase()
-      const filtered = vendors.filter(vendor => 
-        vendor.name.toLowerCase().includes(query) ||
-        (vendor.notes && vendor.notes.toLowerCase().includes(query)) ||
-        (vendor.contact_person && vendor.contact_person.toLowerCase().includes(query)) ||
-        (vendor.phone && vendor.phone.toLowerCase().includes(query))
-      )
-      setFilteredVendors(filtered)
-    }
-  }, [searchQuery, vendors])
+  const filteredVendors = useMemo(
+    () => filterVendors(vendors, { categoryId: categoryFilter, search: searchQuery, categories: allCategories }),
+    [vendors, categoryFilter, searchQuery, allCategories]
+  )
 
   const fetchVendors = async () => {
     try {
-      const response = await fetch('/api/vendors')
+      const response = await authFetch('/api/vendors')
       if (!response.ok) throw new Error('Failed to fetch vendors')
       const data = await response.json()
       setVendors(data)
@@ -80,7 +84,7 @@ export default function VendorsPage() {
     if (!vendor) return
 
     try {
-      const response = await fetch(`/api/vendors/${vendor.id}`, {
+      const response = await authFetch(`/api/vendors/${vendor.id}`, {
         method: 'DELETE',
       })
 
@@ -134,15 +138,33 @@ export default function VendorsPage() {
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search vendors by name, notes, contact, or phone..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
+      {/* Search + Category filter */}
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-[1fr_auto]">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search vendors by name, category, notes, contact, or phone..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+          <Label htmlFor="vendor-category-filter" className="text-sm text-muted-foreground whitespace-nowrap">Category</Label>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger id="vendor-category-filter" className="w-full sm:w-[200px]">
+              <SelectValue placeholder="All" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_VENDOR_CATEGORIES}>All</SelectItem>
+              {categories.map((category) => (
+                <SelectItem key={category.id} value={category.id}>
+                  {category.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Card>

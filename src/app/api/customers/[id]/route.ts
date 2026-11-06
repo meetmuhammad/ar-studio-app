@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCustomer, updateCustomer, deleteCustomer } from '@/lib/database'
 import { UpdateCustomerSchema } from '@/lib/validators'
+import { requireAuth } from '@/lib/api-auth'
 
 // GET /api/customers/[id] - Get customer by ID
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const { id } = await params
     const customer = await getCustomer(id)
@@ -33,6 +37,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -63,6 +70,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const { id } = await params
     await deleteCustomer(id)

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/api-auth'
-import { listLedgerEntries } from '@/lib/ledger-service'
+import { getRangeRunningBalances, listLedgerEntries } from '@/lib/ledger-service'
 
 // GET /api/general-ledger - List entries with filters and pagination
 export async function GET(request: Request) {
@@ -21,9 +21,11 @@ export async function GET(request: Request) {
 
     // The query itself lives in the shared ledger service so the MCP server
     // reads the ledger through exactly the same code.
+    const startDate = searchParams.get('start_date')
+    const endDate = searchParams.get('end_date')
     const { entries, count } = await listLedgerEntries({
-      startDate: searchParams.get('start_date'),
-      endDate: searchParams.get('end_date'),
+      startDate,
+      endDate,
       entryType: searchParams.get('entry_type'),
       vendorId: searchParams.get('vendor_id'),
       vendorCategoryId: searchParams.get('vendor_category_id'),
@@ -34,8 +36,22 @@ export async function GET(request: Request) {
 
     // If paginated, return with pagination info
     if (page > 0) {
+      // range_balance: the running balance within the selected date range
+      // (starts at 0, debit - credit in ledger order), so the newest in-range
+      // entry equals the stats route's currentBalance for the same range. It is
+      // computed over every entry in the range, not just this page, so later
+      // pages and search/category filters do not change it. `balance` stays the
+      // stored all-time running balance.
+      const rangeBalances = await getRangeRunningBalances(
+        entries.map((e: { id: string }) => e.id),
+        { startDate: startDate || null, endDate: endDate || null },
+      )
+      const withRangeBalance = entries.map((e: { id: string }) => {
+        const b = rangeBalances.get(e.id)
+        return { ...e, range_balance: b === undefined ? null : Number(b) }
+      })
       return NextResponse.json({
-        data: entries,
+        data: withRangeBalance,
         pagination: {
           page,
           pageSize,
