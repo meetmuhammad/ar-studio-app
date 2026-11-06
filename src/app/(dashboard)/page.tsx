@@ -25,6 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { RoleGuard } from '@/components/auth/role-guard'
 import { PageHeader } from '@/components/dashboard/page-header'
+import { useBusinessLabel } from '@/contexts/business-context'
 import { StatCard } from '@/components/dashboard/stat-card'
 import { StatSparkline } from '@/components/dashboard/stat-sparkline'
 import { EmptyState } from '@/components/dashboard/empty-state'
@@ -49,6 +50,7 @@ import {
 } from '@/lib/format'
 
 export default function DashboardPage() {
+  const businessLabel = useBusinessLabel()
   const {
     data: stats,
     isPending,
@@ -73,8 +75,8 @@ export default function DashboardPage() {
           title="Dashboard"
           description={
             isPending || !dataUpdatedAt
-              ? undefined
-              : `Last updated ${format(new Date(dataUpdatedAt), 'HH:mm')}`
+              ? businessLabel
+              : `${businessLabel} · Last updated ${format(new Date(dataUpdatedAt), 'HH:mm')}`
           }
         />
 

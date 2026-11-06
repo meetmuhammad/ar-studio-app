@@ -24,6 +24,7 @@ import { DeleteConfirmationDialog } from '@/components/dialogs/delete-confirmati
 import { authFetch } from '@/lib/auth-fetch'
 import { ALL_VENDOR_CATEGORIES, filterVendors } from '@/lib/vendor-filter'
 import { useVendorCategories } from '@/hooks/use-api'
+import { useBusiness, useBusinessLabel } from '@/contexts/business-context'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -34,6 +35,10 @@ import {
 } from '@/components/ui/select'
 
 export default function VendorsPage() {
+  // Vendors belong to one business; the combined view is read-only.
+  const { isAll, businesses } = useBusiness()
+  const businessLabel = useBusinessLabel()
+  const businessName = (id?: string) => businesses.find((b) => b.id === id)?.name
   const router = useRouter()
   const [vendors, setVendors] = useState<VendorWithCategory[]>([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -123,15 +128,16 @@ export default function VendorsPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold sm:text-3xl">Vendors</h1>
           <p className="text-muted-foreground mt-1">
-            Manage your vendors and supplier relationships
+            <span className="font-medium text-foreground">{businessLabel}</span>
+            {' · '}Manage your vendors and supplier relationships
           </p>
         </div>
         <div className="flex gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
-          <Button variant="outline" onClick={() => setCategoriesDialogOpen(true)}>
+          <Button variant="outline" onClick={() => setCategoriesDialogOpen(true)} disabled={isAll}>
             <Tags className="h-4 w-4 mr-2" />
             Manage Categories
           </Button>
-          <Button onClick={() => setDialogOpen(true)}>
+          <Button onClick={() => setDialogOpen(true)} disabled={isAll}>
             <Plus className="h-4 w-4 mr-2" />
             Add Vendor
           </Button>
@@ -184,7 +190,12 @@ export default function VendorsPage() {
             <TableBody>
               {filteredVendors.map((vendor) => (
                 <TableRow key={vendor.id}>
-                  <TableCell data-label="Name" className="font-medium">{vendor.name}</TableCell>
+                  <TableCell data-label="Name" className="font-medium">
+                    {vendor.name}
+                    {isAll && (
+                      <div className="text-xs font-normal text-muted-foreground">{businessName(vendor.business_id)}</div>
+                    )}
+                  </TableCell>
                   <TableCell data-label="Category">
                     {vendor.vendor_categories ? (
                       <Badge variant="secondary">{vendor.vendor_categories.name}</Badge>
@@ -203,6 +214,7 @@ export default function VendorsPage() {
                         <Eye className="h-4 w-4 mr-2" />
                         View Ledger
                       </Button>
+                      {!isAll && (<>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -219,6 +231,7 @@ export default function VendorsPage() {
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
+                      </>)}
                     </div>
                   </TableCell>
                 </TableRow>

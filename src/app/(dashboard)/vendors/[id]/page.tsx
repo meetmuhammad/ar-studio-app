@@ -22,8 +22,12 @@ import type { VendorWithCategory, GeneralLedgerWithRelations } from '@/lib/supab
 import { toast } from 'sonner'
 import { VendorBillDialog } from '@/components/dialogs/vendor-bill-dialog'
 import { authFetch } from '@/lib/auth-fetch'
+import { useBusiness } from '@/contexts/business-context'
 
 export default function VendorLedgerPage() {
+  // The sub-ledger is one vendor's book in one business. Read-only in the
+  // admin combined view.
+  const { isAll, businesses } = useBusiness()
   const router = useRouter()
   const params = useParams()
   const vendorId = params.id as string
@@ -177,10 +181,15 @@ export default function VendorLedgerPage() {
                 <Badge variant="secondary">{vendor.vendor_categories.name}</Badge>
               )}
             </div>
-            <p className="text-muted-foreground mt-1">Vendor Ledger</p>
+            <p className="text-muted-foreground mt-1">
+              <span className="font-medium text-foreground">
+                {businesses.find((b) => b.id === vendor.business_id)?.name ?? ''}
+              </span>
+              {' · '}Vendor Ledger
+            </p>
           </div>
         </div>
-        <Button onClick={() => setBillDialogOpen(true)} className="w-full sm:w-auto">
+        <Button onClick={() => setBillDialogOpen(true)} className="w-full sm:w-auto" disabled={isAll}>
           <Plus className="h-4 w-4 mr-2" />
           Create Bill
         </Button>

@@ -11,6 +11,43 @@ import { CreateOrderInput } from '@/lib/validators'
 import { DashboardActionsProvider } from '@/contexts/dashboard-actions'
 import { toast } from 'sonner'
 import { authFetch } from '@/lib/auth-fetch'
+import { BusinessProvider, useBusiness } from '@/contexts/business-context'
+
+/**
+ * Page content for the selected business. Keyed by the switch generation, so
+ * switching business remounts the page (and the global dialogs) and every
+ * fetch runs again for the new business. Nothing renders until a business is
+ * chosen, so no request goes out on the ATC fallback by accident.
+ */
+function BusinessScoped({ children, quiet = false }: { children: React.ReactNode; quiet?: boolean }) {
+  const { ready, noAccess, isAll, generation } = useBusiness()
+
+  // Global dialogs: nothing until a business is chosen, no banner.
+  if (quiet) return ready && !noAccess ? <div key={generation} className="contents">{children}</div> : null
+
+  if (noAccess) {
+    return (
+      <div className="mx-auto max-w-md py-16 text-center text-sm text-muted-foreground">
+        Your account has not been given access to any business yet. Ask an administrator.
+      </div>
+    )
+  }
+  if (!ready) {
+    return <div className="animate-pulse py-16 text-center text-sm text-muted-foreground">Loading…</div>
+  }
+
+  return (
+    <div key={generation} className="contents">
+      {isAll && (
+        <div role="status" className="mb-4 rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">All businesses</span> — combined, read-only view. Each
+          business keeps its own books, so there is no shared running balance. Switch to one business to add or edit.
+        </div>
+      )}
+      {children}
+    </div>
+  )
+}
 
 export default function DashboardLayout({
   children,
@@ -72,6 +109,7 @@ export default function DashboardLayout({
 
   return (
     <RouteGuard requireAuth={true} requiredRoles={['admin', 'staff']}>
+      <BusinessProvider>
       <DashboardActionsProvider value={dashboardActions}>
       {/* h-dvh, not h-screen: on phones 100vh is taller than the visible area
           while the browser toolbar is showing, which pushes the bottom of the
@@ -90,12 +128,14 @@ export default function DashboardLayout({
               Bottom padding on phones clears the fixed tab bar plus the home
               indicator, so the last row is never covered. */}
           <main className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain bg-background p-3 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:p-4 sm:pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:p-6">
-            {children}
+            <BusinessScoped>{children}</BusinessScoped>
           </main>
         </div>
 
         <BottomNav />
 
+        {/* Global dialogs, inside BusinessScoped so a switch remounts them too. */}
+        <BusinessScoped quiet>
         {/* Global Order Dialog */}
         <OrderDialog
           open={orderDialog.open}
@@ -110,8 +150,10 @@ export default function DashboardLayout({
           onOpenChange={(open) => setPaymentDialog({ open })}
           onSuccess={handlePaymentSuccess}
         />
+        </BusinessScoped>
       </div>
       </DashboardActionsProvider>
+      </BusinessProvider>
     </RouteGuard>
   )
 }
