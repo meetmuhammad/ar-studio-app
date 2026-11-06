@@ -185,7 +185,7 @@ interface OrderQueryParams {
 export function useOrders(params: OrderQueryParams = {}) {
   const { page = 1, pageSize = 20, status, q, sortBy = 'delivery_date', sortDir = 'asc' } = params
   return useQuery({
-    queryKey: queryKeys.orders.list({ page, pageSize, status, q, sortDir }),
+    queryKey: queryKeys.orders.list({ page, pageSize, status, q, sortBy, sortDir }),
     queryFn: async () => {
       const searchParams = new URLSearchParams({
         page: page.toString(),

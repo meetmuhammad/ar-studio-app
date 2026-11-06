@@ -290,8 +290,12 @@ export async function getOrders({
     query = query.eq('status', status)
   }
 
-  // Add sorting
+  // Add sorting. Many orders share a booking/delivery date, so break ties on
+  // newest-created then id: without a total order, rows can repeat or vanish
+  // between pages.
   query = query.order(sortBy, { ascending: sortDir === 'asc' })
+  if (sortBy !== 'created_at') query = query.order('created_at', { ascending: false })
+  query = query.order('id', { ascending: true })
 
   // Add pagination
   query = query.range(offset, offset + pageSize - 1)

@@ -44,7 +44,7 @@ export const queryKeys = {
   },
   orders: {
     all: ['orders'] as const,
-    list: (params?: { page?: number; pageSize?: number; status?: string; q?: string; sortDir?: string }) => 
+    list: (params?: { page?: number; pageSize?: number; status?: string; q?: string; sortBy?: string; sortDir?: string }) => 
       ['orders', 'list', params] as const,
     detail: (id: string) => ['orders', 'detail', id] as const,
   },
