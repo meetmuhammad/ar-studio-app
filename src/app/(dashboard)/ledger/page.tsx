@@ -2,12 +2,13 @@
 
 import { ErrorState } from '@/components/dashboard/error-state'
 import { useEffect, useState, useRef } from 'react'
-import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, RefreshCw, Edit, Search, Download, Trash2, X } from 'lucide-react'
+import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, RefreshCw, Edit, Search, Download, Trash2 } from 'lucide-react'
 import { RoleGuard } from '@/components/auth/role-guard'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { DatePicker } from '@/components/ui/date-picker'
+import { DateRangeFilter } from '@/components/filters/date-range-filter'
+import { useDateRangePreference } from '@/hooks/use-date-range-preference'
 import { Label } from '@/components/ui/label'
 import { LedgerEntryDialog } from '@/components/dialogs/ledger-entry-dialog'
 import { DeleteConfirmationDialog } from '@/components/dialogs/delete-confirmation-dialog'
@@ -41,8 +42,9 @@ export default function LedgerPage() {
   const [deleteTarget, setDeleteTarget] = useState<GeneralLedgerWithRelations | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
-  const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
+  // Remembered per user across sign-out (Supabase Auth user_metadata).
+  const { selection: dateRange, setSelection: setDateRange, ready: dateRangeReady, start: startDate, end: endDate } =
+    useDateRangePreference('ledgerDateRange', { preset: 'all_time' })
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 20
@@ -55,11 +57,14 @@ export default function LedgerPage() {
     page: currentPage,
     pageSize: itemsPerPage,
     search: debouncedSearch,
-    startDate: dateFrom?.toISOString().split('T')[0],
-    endDate: dateTo?.toISOString().split('T')[0],
+    startDate,
+    endDate,
     vendorCategoryId: categoryFilter === ALL_CATEGORIES ? undefined : categoryFilter,
-  })
-  const { data: stats = { totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 }, refetch: refetchStats } = useLedgerStats()
+  }, { enabled: dateRangeReady })
+  // Debit/credit/count follow the selected date range, like the table.
+  const { data: stats = { totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 }, refetch: refetchStats } =
+    useLedgerStats({ startDate, endDate }, { enabled: dateRangeReady })
+  const rangeActive = Boolean(startDate || endDate)
   const syncMutation = useSyncOrderPayments()
   const deleteMutation = useDeleteLedgerEntry()
   
@@ -83,7 +88,7 @@ export default function LedgerPage() {
   // Reset page when date or category filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [dateFrom, dateTo, categoryFilter])
+  }, [startDate, endDate, categoryFilter])
 
   const syncOrderPayments = async () => {
     await syncMutation.mutateAsync()
@@ -187,7 +192,7 @@ export default function LedgerPage() {
     return <Badge variant={variants[type] || 'default'}>{type.replace('_', ' ')}</Badge>
   }
 
-  if (isLoading) {
+  if (isLoading || !dateRangeReady) {
     return (
       <RoleGuard allowedRoles={['admin']}>
       <div className="space-y-6">
@@ -225,7 +230,7 @@ export default function LedgerPage() {
       </div>
 
       {/* Search, Category, and Date Range Filters */}
-      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_auto_auto_auto]">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_auto_auto]">
         <div className="relative sm:col-span-2 lg:col-span-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -251,50 +256,7 @@ export default function LedgerPage() {
             </SelectContent>
           </Select>
         </div>
-        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-          <Label className="text-sm text-muted-foreground whitespace-nowrap">From Date</Label>
-          <div className="flex min-w-0 items-center gap-2">
-            <DatePicker
-              date={dateFrom}
-              onDateChange={setDateFrom}
-              placeholder="From date"
-              className="w-full sm:w-[160px]"
-              maxDate={dateTo || undefined}
-            />
-            {dateFrom && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setDateFrom(undefined)}
-                className="h-10 w-10 flex-shrink-0 pointer-coarse:h-11 pointer-coarse:w-11"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-          <Label className="text-sm text-muted-foreground whitespace-nowrap">To Date</Label>
-          <div className="flex min-w-0 items-center gap-2">
-            <DatePicker
-              date={dateTo}
-              onDateChange={setDateTo}
-              placeholder="To date"
-              className="w-full sm:w-[160px]"
-              minDate={dateFrom || undefined}
-            />
-            {dateTo && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setDateTo(undefined)}
-                className="h-10 w-10 flex-shrink-0 pointer-coarse:h-11 pointer-coarse:w-11"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        </div>
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
       </div>
 
       {/* Stats Cards */}
@@ -306,7 +268,7 @@ export default function LedgerPage() {
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold tabular-nums sm:text-2xl">{formatCurrency(stats.totalDebit)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Money in</p>
+            <p className="text-xs text-muted-foreground mt-1">Money in{rangeActive ? ' · selected dates' : ''}</p>
           </CardContent>
         </Card>
 
@@ -317,7 +279,7 @@ export default function LedgerPage() {
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold tabular-nums sm:text-2xl">{formatCurrency(stats.totalCredit)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Money out</p>
+            <p className="text-xs text-muted-foreground mt-1">Money out{rangeActive ? ' · selected dates' : ''}</p>
           </CardContent>
         </Card>
 
@@ -339,7 +301,7 @@ export default function LedgerPage() {
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold tabular-nums sm:text-2xl">{stats.entryCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">All transactions</p>
+            <p className="text-xs text-muted-foreground mt-1">{rangeActive ? 'In selected dates' : 'All transactions'}</p>
           </CardContent>
         </Card>
       </div>

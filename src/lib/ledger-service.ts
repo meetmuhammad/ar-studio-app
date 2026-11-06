@@ -76,14 +76,16 @@ export interface LedgerTotals {
 /**
  * Totals as the app defines them (GET /api/general-ledger/stats): the sum of
  * every debit, the sum of every credit, and balance = debit - credit. Optionally
- * limited to one entry_date.
+ * limited to one entry_date, or to an inclusive entry_date range.
  *
  * Pages through the table: PostgREST caps a single response (1,000 rows by
  * default), and the stats route used to read one response, so past 1,000 entries
  * its totals would have silently stopped counting. Sums are done in integer
  * cents rather than as floats.
  */
-export async function getLedgerTotals(opts: { date?: string } = {}): Promise<LedgerTotals> {
+export async function getLedgerTotals(
+  opts: { date?: string; startDate?: string | null; endDate?: string | null } = {}
+): Promise<LedgerTotals> {
   const supabase = createAdminSupabaseClient()
   const PAGE = 1000
   let debit = 0
@@ -97,6 +99,8 @@ export async function getLedgerTotals(opts: { date?: string } = {}): Promise<Led
       .order('id') // a stable order, so paging neither skips nor repeats rows
       .range(from, from + PAGE - 1)
     if (opts.date) q = q.eq('entry_date', opts.date)
+    if (opts.startDate) q = q.gte('entry_date', opts.startDate)
+    if (opts.endDate) q = q.lte('entry_date', opts.endDate)
 
     const { data, error } = await q
     if (error) throw new Error(`Failed to fetch ledger totals: ${error.message}`)

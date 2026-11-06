@@ -62,7 +62,7 @@ export const queryKeys = {
     all: ['ledger'] as const,
     entries: (params?: { page?: number; pageSize?: number; search?: string; startDate?: string; endDate?: string; vendorCategoryId?: string }) => 
       ['ledger', 'entries', params] as const,
-    stats: ['ledger', 'stats'] as const,
+    stats: (range?: { startDate?: string; endDate?: string }) => ['ledger', 'stats', range ?? {}] as const,
   },
   vendors: {
     all: ['vendors'] as const,

@@ -295,9 +295,10 @@ interface LedgerQueryParams {
   vendorCategoryId?: string
 }
 
-export function useLedgerEntries(params: LedgerQueryParams = {}) {
+export function useLedgerEntries(params: LedgerQueryParams = {}, options: { enabled?: boolean } = {}) {
   const { page = 1, pageSize = 20, search, startDate, endDate, vendorCategoryId } = params
   return useQuery({
+    enabled: options.enabled ?? true,
     queryKey: queryKeys.ledger.entries({ page, pageSize, search, startDate, endDate, vendorCategoryId }),
     queryFn: async () => {
       const searchParams = new URLSearchParams({
@@ -317,11 +318,17 @@ export function useLedgerEntries(params: LedgerQueryParams = {}) {
   })
 }
 
-export function useLedgerStats() {
+/** Totals for an inclusive entry_date range (either side optional). currentBalance is always all-time. */
+export function useLedgerStats(range: { startDate?: string; endDate?: string } = {}, options: { enabled?: boolean } = {}) {
   return useQuery({
-    queryKey: queryKeys.ledger.stats,
+    enabled: options.enabled ?? true,
+    queryKey: queryKeys.ledger.stats(range),
     queryFn: async () => {
-      const response = await authFetch('/api/general-ledger/stats')
+      const params = new URLSearchParams()
+      if (range.startDate) params.set('start_date', range.startDate)
+      if (range.endDate) params.set('end_date', range.endDate)
+      const qs = params.toString()
+      const response = await authFetch(`/api/general-ledger/stats${qs ? `?${qs}` : ''}`)
       if (!response.ok) throw new Error('Failed to fetch ledger stats')
       return response.json() as Promise<{
         totalDebit: number
