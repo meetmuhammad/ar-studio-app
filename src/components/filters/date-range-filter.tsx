@@ -85,7 +85,7 @@ function BoundPicker({ label, date, minDate, maxDate, onChange }: {
           date={date}
           onDateChange={onChange}
           placeholder={`${label} date`}
-          className="w-full sm:w-[160px]"
+          className="w-full sm:w-[200px]"
           minDate={minDate}
           maxDate={maxDate}
         />

@@ -230,8 +230,8 @@ export default function LedgerPage() {
       </div>
 
       {/* Search, Category, and Date Range Filters */}
-      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_auto_auto]">
-        <div className="relative sm:col-span-2 lg:col-span-1">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
+        <div className="relative sm:min-w-[240px] sm:flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
           placeholder="Search by particulars..."
