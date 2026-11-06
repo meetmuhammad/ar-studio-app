@@ -111,10 +111,16 @@ function ensure(c: unknown, m: string): asserts c { if (!c) throw new Error(m) }
 
 // ------------------------------------------------------------------ http
 interface Res { status: number; json: any; headers: Headers; text: string }
+// Token sent when a call names none. null until the auth-guard and MCP sections
+// have run (they rely on "no token"); then the admin's, so the functional checks
+// of the customers/measurements/vendors routes run as a signed-in user. Pass
+// `token: null` to send no Authorization header regardless.
+let defaultToken: string | null = null
 async function api(method: string, path: string, o: { token?: string | null; body?: unknown; headers?: Record<string, string> } = {}): Promise<Res> {
   const headers: Record<string, string> = { ...(o.headers ?? {}) }
+  const token = o.token === undefined ? defaultToken : o.token
   callStats.total++
-  if (o.token) headers.Authorization = `Bearer ${o.token}`; else callStats.noToken++
+  if (token) headers.Authorization = `Bearer ${token}`; else callStats.noToken++
   if (o.body !== undefined) headers['Content-Type'] = 'application/json'
   const r = await fetch(`${BASE}${path}`, { method, headers, body: o.body === undefined ? undefined : JSON.stringify(o.body), signal: AbortSignal.timeout(30000) })
   const text = await r.text()
@@ -244,6 +250,19 @@ async function main() {
     { ep: 'POST /api/general-ledger/sync-payments', method: 'POST', path: '/api/general-ledger/sync-payments', body: {} },
     { ep: 'GET /api/vendor-ledger', method: 'GET', path: `/api/vendor-ledger?vendor_id=${UUID0}` },
     { ep: 'POST /api/vendor-ledger', method: 'POST', path: '/api/vendor-ledger', body: {} },
+    { ep: 'GET /api/dashboard-stats', method: 'GET', path: '/api/dashboard-stats' },
+    { ep: 'GET /api/vendors', method: 'GET', path: '/api/vendors' },
+    { ep: 'POST /api/vendors', method: 'POST', path: '/api/vendors', body: {} },
+    { ep: 'GET /api/vendors/[id]', method: 'GET', path: `/api/vendors/${UUID0}` },
+    { ep: 'PUT /api/vendors/[id]', method: 'PUT', path: `/api/vendors/${UUID0}`, body: {} },
+    { ep: 'DELETE /api/vendors/[id]', method: 'DELETE', path: `/api/vendors/${UUID0}` },
+    { ep: 'GET /api/vendor-categories', method: 'GET', path: '/api/vendor-categories' },
+    { ep: 'POST /api/vendor-categories', method: 'POST', path: '/api/vendor-categories', body: {} },
+    { ep: 'PATCH /api/vendor-categories/[id]', method: 'PATCH', path: `/api/vendor-categories/${UUID0}`, body: {} },
+    { ep: 'DELETE /api/vendor-categories/[id]', method: 'DELETE', path: `/api/vendor-categories/${UUID0}` },
+    { ep: 'GET /api/vendor-tags', method: 'GET', path: `/api/vendor-tags?vendor_id=${UUID0}` },
+    { ep: 'POST /api/vendor-tags', method: 'POST', path: '/api/vendor-tags', body: {} },
+    { ep: 'DELETE /api/vendor-tags/[id]', method: 'DELETE', path: `/api/vendor-tags/${UUID0}` },
   ]
   const shared: typeof guarded = [
     { ep: 'GET /api/orders', method: 'GET', path: '/api/orders' },
@@ -256,6 +275,17 @@ async function main() {
     { ep: 'POST /api/payments', method: 'POST', path: '/api/payments', body: {} },
     { ep: 'PATCH /api/payments/[id]', method: 'PATCH', path: `/api/payments/${UUID0}`, body: {} },
     { ep: 'DELETE /api/payments/[id]', method: 'DELETE', path: `/api/payments/${UUID0}` },
+    { ep: 'GET /api/customers', method: 'GET', path: '/api/customers?pageSize=1' },
+    { ep: 'POST /api/customers', method: 'POST', path: '/api/customers', body: {} },
+    { ep: 'GET /api/customers/[id]', method: 'GET', path: `/api/customers/${UUID0}` },
+    { ep: 'PATCH /api/customers/[id]', method: 'PATCH', path: `/api/customers/${UUID0}`, body: {} },
+    { ep: 'DELETE /api/customers/[id]', method: 'DELETE', path: `/api/customers/${UUID0}` },
+    { ep: 'GET /api/customers/[id]/measurements', method: 'GET', path: `/api/customers/${UUID0}/measurements` },
+    { ep: 'GET /api/measurements', method: 'GET', path: '/api/measurements?limit=1' },
+    { ep: 'POST /api/measurements', method: 'POST', path: '/api/measurements', body: {} },
+    { ep: 'GET /api/measurements/[id]', method: 'GET', path: `/api/measurements/${UUID0}` },
+    { ep: 'PUT /api/measurements/[id]', method: 'PUT', path: `/api/measurements/${UUID0}`, body: {} },
+    { ep: 'DELETE /api/measurements/[id]', method: 'DELETE', path: `/api/measurements/${UUID0}` },
   ]
   for (const g of [...guarded, ...shared]) {
     // Requests use nonexistent ids and empty bodies: even a broken guard cannot change a real row.
@@ -271,8 +301,8 @@ async function main() {
     await check(g.ep, 'staff', 'staff allowed (not 401/403)', async () => { const r = await api(g.method, g.path, { token: staff, body: g.body }); ensure(r.status !== 401 && r.status !== 403, `got ${r.status}`) })
   }
 
-  // ================================================================ open routes: unauthenticated access is accepted
-  // Recorded as a FINDING per route (known, docs/LEDGER-MCP.md blocker 8), exercised below with real calls.
+  // Customers, measurements, vendors and dashboard-stats were open routes until
+  // ARAPP-001; they are now in the guarded/shared lists above.
 
   // ================================================================ MCP smoke (read-only)
   const mcpBody = { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }
@@ -296,6 +326,9 @@ async function main() {
   await check('POST /api/mcp', 'admin', 'ordinary admin web-session token (aud=authenticated) is refused -> 401', async () => { const r = await api('POST', '/api/mcp', { token: admin, body: mcpBody, headers: mcpHeaders }); ensure(r.status === 401, `got ${r.status}`) })
   await check('POST /api/mcp', 'staff', 'staff web-session token is refused -> 401', async () => { const r = await api('POST', '/api/mcp', { token: staff, body: mcpBody, headers: mcpHeaders }); ensure(r.status === 401, `got ${r.status}`) })
 
+  // Everything below exercises behaviour as a signed-in admin unless a call says otherwise.
+  defaultToken = admin
+
   // ================================================================ customers (open routes)
   let cust: any
   await check('POST /api/customers', 'admin', 'create returns 201 with the record', async () => {
@@ -305,11 +338,12 @@ async function main() {
     ensure(cust.name === tag('Customer'), 'name round-trip')
   })
   if (!cust) throw new Error('cannot continue: customer fixture failed')
-  await check('POST /api/customers', 'unauth', 'unauthenticated create is accepted (OPEN)', async () => {
-    const r = await api('POST', '/api/customers', { body: { name: tag('Open'), phone: phone() } })
-    ensure(r.status === 201, `status ${r.status}`)
-    made.customers.add(r.json.id)
-    finding('POST /api/customers', 'accepts an unauthenticated create (no auth guard; known open route)')
+  await check('POST /api/customers', 'unauth', 'unauthenticated create -> 401, nothing written', async () => {
+    const before = (await service.from('customers').select('*', { count: 'exact', head: true })).count
+    const r = await api('POST', '/api/customers', { token: null, body: { name: tag('Open'), phone: phone() } })
+    ensure(r.status === 401, `status ${r.status}`)
+    if (r.json?.id) made.customers.add(r.json.id)
+    ensure((await service.from('customers').select('*', { count: 'exact', head: true })).count === before, 'row written')
   })
   await check('POST /api/customers', 'persist', 'persisted: GET by id returns the same data', async () => {
     const r = await api('GET', `/api/customers/${cust.id}`); ensure(r.status === 200 && r.json.phone === cust.phone, `status ${r.status}`)
@@ -327,15 +361,18 @@ async function main() {
     const list = await api('GET', `/api/customers?q=abc`); ensure(!list.json.data.some((c: any) => c.phone === 'abc'), 'invalid row persisted')
   })
   await check('GET /api/customers', 'admin', 'list shape + pagination + search', async () => {
+    // Two tagged customers are needed to page; the second used to come from the
+    // then-open unauthenticated create, which is now refused.
+    const second = await api('POST', '/api/customers', { body: { name: tag('Customer 2'), phone: phone() } })
+    ensure(second.status === 201, `second customer ${second.status}`); made.customers.add(second.json.id)
     const r = await api('GET', `/api/customers?q=${encodeURIComponent(RUN)}&pageSize=1&page=1`, { token: admin })
     ensure(r.status === 200 && Array.isArray(r.json.data) && r.json.pagination, 'shape')
     ensure(r.json.data.length === 1 && r.json.pagination.pageSize === 1 && r.json.pagination.total >= 2 && r.json.pagination.pages >= 2, JSON.stringify(r.json.pagination))
     const p2 = await api('GET', `/api/customers?q=${encodeURIComponent(RUN)}&pageSize=1&page=2`)
     ensure(p2.json.data[0].id !== r.json.data[0].id, 'page 2 repeats page 1')
   })
-  await check('GET /api/customers', 'unauth', 'unauthenticated list is accepted (OPEN, returns customer PII)', async () => {
-    const r = await api('GET', '/api/customers?pageSize=1'); ensure(r.status === 200, `status ${r.status}`)
-    finding('GET /api/customers', 'returns customer names/phones without authentication (known open route)')
+  await check('GET /api/customers', 'unauth', 'unauthenticated list -> 401 (no customer PII)', async () => {
+    const r = await api('GET', '/api/customers?pageSize=1', { token: null }); ensure(r.status === 401, `status ${r.status}`)
   })
   await check('GET /api/customers', 'invalid', 'bad paging params are tolerated or rejected without a crash', async () => {
     const r = await api('GET', '/api/customers?page=0&pageSize=9999&sortDir=sideways'); ensure(r.status < 600, 'no response')
@@ -346,9 +383,8 @@ async function main() {
     const r = await api('GET', '/api/customers/not-a-uuid'); ensure(isRejected(r.status), `status ${r.status}`)
     if (r.status >= 500) finding('GET /api/customers/[id]', `non-uuid id returns ${r.status} instead of 400/404`)
   })
-  await check('GET /api/customers/[id]', 'unauth', 'unauthenticated read is accepted (OPEN)', async () => {
-    const r = await api('GET', `/api/customers/${cust.id}`); ensure(r.status === 200, `status ${r.status}`)
-    finding('GET /api/customers/[id]', 'readable without authentication (known open route)')
+  await check('GET /api/customers/[id]', 'unauth', 'unauthenticated read -> 401', async () => {
+    const r = await api('GET', `/api/customers/${cust.id}`, { token: null }); ensure(r.status === 401, `status ${r.status}`)
   })
   await check('PATCH /api/customers/[id]', 'persist', 'update persists (re-read)', async () => {
     const r = await api('PATCH', `/api/customers/${cust.id}`, { body: { name: tag('Customer edited') } }); ensure(r.status === 200, `status ${r.status}`)
@@ -381,7 +417,7 @@ async function main() {
     ensure((await api('GET', '/api/vendor-categories?include_archived=1')).json.some((c: any) => c.id === cat.id), 'include_archived missing it')
     await api('PATCH', `/api/vendor-categories/${cat.id}`, { body: { archived: false } })
   })
-  await check('GET /api/vendor-categories', 'unauth', 'unauthenticated read accepted (OPEN)', async () => { ensure((await api('GET', '/api/vendor-categories')).status === 200, 'not 200'); finding('GET /api/vendor-categories', 'readable without authentication (known open route)') })
+  await check('GET /api/vendor-categories', 'unauth', 'unauthenticated read -> 401', async () => { ensure((await api('GET', '/api/vendor-categories', { token: null })).status === 401, 'not 401') })
   await check('PATCH /api/vendor-categories/[id]', 'persist', 'rename persists', async () => {
     ensure((await api('PATCH', `/api/vendor-categories/${cat.id}`, { body: { name: tag('Cat renamed') } })).status === 200, 'rename failed')
     ensure((await api('GET', '/api/vendor-categories')).json.find((c: any) => c.id === cat.id)?.name === tag('Cat renamed'), 'not persisted')
@@ -400,7 +436,7 @@ async function main() {
     ensure((await api('POST', '/api/vendors', { body: { name: '  ' } })).status === 400, 'blank not 400')
     ensure((await api('POST', '/api/vendors', { body: {} })).status >= 400, 'empty accepted')
   })
-  await check('POST /api/vendors', 'unauth', 'unauthenticated create accepted (OPEN)', async () => { const r = await api('POST', '/api/vendors', { body: { name: tag('Open vendor') } }); ensure(r.status === 201, `status ${r.status}`); made.vendors.add(r.json.id); finding('POST /api/vendors', 'accepts an unauthenticated create (known open route)') })
+  await check('POST /api/vendors', 'unauth', 'unauthenticated create -> 401', async () => { const r = await api('POST', '/api/vendors', { token: null, body: { name: tag('Open vendor') } }); if (r.json?.id) made.vendors.add(r.json.id); ensure(r.status === 401, `status ${r.status}`) })
   await check('GET /api/vendors', 'persist', 'list includes vendor with its category object', async () => {
     const r = await api('GET', '/api/vendors'); ensure(r.status === 200, `status ${r.status}`)
     const v = r.json.find((x: any) => x.id === vendor.id); ensure(v && v.vendor_categories?.id === cat.id, 'vendor/category join missing')
@@ -729,7 +765,7 @@ async function main() {
     if (s.status >= 500) finding('GET /api/measurements', 'ANY ?search= returns 500 (PostgREST PGRST100 "failed to parse logic tree": the route puts `customer.name.ilike` inside a flat .or()); same class of defect as the orders search fixed in f9f6eab. Measurement search in the UI cannot work.')
     ensure(s.status === 200, `search status ${s.status}`)
   })
-  await check('GET /api/measurements', 'unauth', 'unauthenticated read accepted (OPEN)', async () => { ensure((await api('GET', '/api/measurements?limit=1')).status === 200, 'not 200'); finding('GET /api/measurements', 'readable without authentication (known open route)') })
+  await check('GET /api/measurements', 'unauth', 'unauthenticated read -> 401', async () => { ensure((await api('GET', '/api/measurements?limit=1', { token: null })).status === 401, 'not 401') })
   await check('GET /api/measurements/[id]', 'persist', 'reads back; unknown id -> 404', async () => {
     const r = await api('GET', `/api/measurements/${m1.id}`); ensure(r.status === 200 && r.json.measurement.id === m1.id, 'read')
     ensure((await api('GET', `/api/measurements/${UUID0}`)).status === 404, 'not 404')
@@ -764,9 +800,8 @@ async function main() {
     const dbCount = (await service.from('customers').select('*', { count: 'exact', head: true })).count
     const flat = JSON.stringify(r.json); ensure(flat.includes(String(dbCount)), `customer count ${dbCount} not found in the response`)
   })
-  await check('GET /api/dashboard-stats', 'unauth', 'unauthenticated read accepted (OPEN, returns revenue and ledger totals)', async () => {
-    const r = await api('GET', '/api/dashboard-stats'); ensure(r.status === 200, `status ${r.status}`)
-    finding('GET /api/dashboard-stats', 'returns revenue, ledger and order figures without authentication (known open route; the page itself is admin-only in the UI)')
+  await check('GET /api/dashboard-stats', 'unauth', 'unauthenticated read -> 401 (no revenue or ledger totals)', async () => {
+    const r = await api('GET', '/api/dashboard-stats', { token: null }); ensure(r.status === 401, `status ${r.status}`)
   })
   await check('DELETE /api/customers/[id]', 'invalid', 'customer with orders cannot be deleted -> 400 and it survives', async () => {
     const r = await api('DELETE', `/api/customers/${cust.id}`); ensure(r.status === 400, `status ${r.status}`)
