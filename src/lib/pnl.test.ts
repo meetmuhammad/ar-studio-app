@@ -106,7 +106,7 @@ test('3. a vendor payment and its linked vendor-ledger mirror count once', () =>
 })
 
 // 4 ---------------------------------------------------------------------------
-test('4. vendor with a bill and a payment: cash = payment, accrual = bill, payment reported as suppressed', () => {
+test('4. payment credit above the bill credit stays in accrual, payment-dated; only the covered part is suppressed', () => {
   const i = input({
     vendors,
     ledger: [gl({ entry_type: 'vendor_payment', vendor_id: 'v-purch', credit: rs(40000) })],
@@ -115,13 +115,129 @@ test('4. vendor with a bill and a payment: cash = payment, accrual = bill, payme
   const cash = run(i, 'cash')
   const accrual = run(i, 'accrual')
   assert.equal(cash.statement.costOfSalesCents, 40000)
-  assert.equal(accrual.statement.costOfSalesCents, 25000)
-  assert.equal(accrual.suppressedVendorPaymentsCents, 40000)
-  assert.equal(accrual.statement.netProfitCents, -25000) // suppressed is not added back
+  // bill 25,000 + (40,000 - 25,000 covered) = 40,000; the 15,000 above the bill is not dropped
+  assert.equal(accrual.statement.costOfSalesCents, 40000)
+  assert.equal(accrual.suppressedVendorPaymentsCents, 25000)
+  assert.equal(accrual.paymentDatedVendorCostsCents, 15000)
+  assert.equal(accrual.statement.netProfitCents, -40000) // suppressed is not added back
   assert.equal(cash.suppressedVendorPaymentsCents, 0)
   assert.notEqual(cash.statement.costOfSalesCents, 65000)
   assert.notEqual(accrual.statement.costOfSalesCents, 65000)
+  assert.notEqual(accrual.statement.costOfSalesCents, 25000) // the old "bill replaces every payment" answer
   assert.ok(accrual.limitations.some((l) => /left out/.test(l)))
+  assert.ok(accrual.limitations.some((l) => /dated on the day it was paid/.test(l)))
+})
+
+test('4a. partial settlement: bill 10,000, payment 4,000, same month -> cash 4,000, accrual 10,000, suppressed 4,000', () => {
+  const i = input({
+    vendors,
+    ledger: [gl({ entry_type: 'vendor_payment', vendor_id: 'v-purch', entry_date: '2026-05-20', credit: rs(4000) })],
+    vendorLedger: [{ business_id: A, vendor_id: 'v-purch', entry_date: '2026-05-05', debit: null, credit: rs(10000), general_ledger_id: null }],
+  })
+  const cash = run(i, 'cash')
+  const accrual = run(i, 'accrual')
+  assert.equal(cash.statement.costOfSalesCents, 4000)
+  assert.equal(accrual.statement.costOfSalesCents, 10000)
+  assert.notEqual(accrual.statement.costOfSalesCents, 14000)
+  assert.equal(accrual.suppressedVendorPaymentsCents, 4000)
+  assert.equal(accrual.paymentDatedVendorCostsCents, 0)
+  assert.equal(accrual.monthly[0].costOfSalesCents, 10000)
+})
+
+test('4c. staging shape, sign arithmetic only (not why the debit exists): equal bill and payment credit plus a later debit -> staff -3,000,000 in both bases, net above revenue', () => {
+  const YEAR = { start: '2026-01-01', end: '2026-12-31' }
+  const i = input({
+    vendors,
+    payments: [{ business_id: A, payment_date: '2026-08-26', amount: rs(52200000) }],
+    ledger: [
+      gl({ entry_type: 'vendor_payment', vendor_id: 'v-staff', entry_date: '2026-08-17', credit: rs(2000000) }),
+      gl({ entry_type: 'vendor_payment', vendor_id: 'v-staff', entry_date: '2026-08-18', debit: rs(5000000) }),
+    ],
+    vendorLedger: [{ business_id: A, vendor_id: 'v-staff', entry_date: '2026-08-17', debit: null, credit: rs(2000000), general_ledger_id: null }],
+  })
+  const cash = run(i, 'cash', YEAR)
+  const accrual = run(i, 'accrual', YEAR)
+  assert.equal(cash.statement.staffCents, -3000000)
+  assert.equal(accrual.statement.staffCents, -3000000) // the 5,000,000 debit is not dropped
+  assert.equal(accrual.suppressedVendorPaymentsCents, 2000000)
+  assert.equal(accrual.paymentDatedVendorCostsCents, -5000000)
+  assert.equal(cash.suppressedVendorPaymentsCents, 0)
+  assert.equal(cash.statement.revenueCents, 52200000)
+  // revenue - (negative staff) = net above revenue
+  assert.equal(cash.statement.netProfitCents, 55200000)
+  const aug = accrual.monthly.find((m) => m.month === '2026-08')!
+  assert.equal(aug.staffCents, -3000000)
+  assert.ok(accrual.limitations.some((l) => /never covered by a bill/.test(l)))
+})
+
+test('4d. date boundary: a March bill and an April payment count once in the year and separately in each month', () => {
+  const i = input({
+    vendors,
+    ledger: [gl({ entry_type: 'vendor_payment', vendor_id: 'v-purch', entry_date: '2026-04-01', credit: rs(10000) })],
+    vendorLedger: [{ business_id: A, vendor_id: 'v-purch', entry_date: '2026-03-01', debit: null, credit: rs(10000), general_ledger_id: null }],
+  })
+  const YEAR = { start: '2026-01-01', end: '2026-12-31' }
+  const MARCH = { start: '2026-03-01', end: '2026-03-31' }
+  const APRIL = { start: '2026-04-01', end: '2026-04-30' }
+
+  const yearAccrual = run(i, 'accrual', YEAR)
+  assert.equal(yearAccrual.statement.costOfSalesCents, 10000)
+  assert.notEqual(yearAccrual.statement.costOfSalesCents, 20000)
+  assert.equal(yearAccrual.suppressedVendorPaymentsCents, 10000)
+  assert.equal(run(i, 'cash', YEAR).statement.costOfSalesCents, 10000)
+  // inside the year, each month column is settled on its own: the March bill does not suppress the April payment
+  const col = (m: string) => yearAccrual.monthly.find((x) => x.month === m)!.costOfSalesCents
+  assert.equal(col('2026-03'), 10000)
+  assert.equal(col('2026-04'), 10000)
+  assert.ok(yearAccrual.limitations.some((l) => /do not add up/.test(l)))
+
+  const march = run(i, 'accrual', MARCH)
+  assert.equal(march.statement.costOfSalesCents, 10000)
+  assert.equal(run(i, 'cash', MARCH).statement.costOfSalesCents, 0)
+
+  const april = run(i, 'accrual', APRIL)
+  assert.equal(april.statement.costOfSalesCents, 10000)
+  assert.equal(april.suppressedVendorPaymentsCents, 0)
+  assert.equal(april.paymentDatedVendorCostsCents, 10000)
+  assert.equal(run(i, 'cash', APRIL).statement.costOfSalesCents, 10000)
+})
+
+test('4e. a bill for vendor A does not cover vendor B; a row for business A does not change business B', () => {
+  const two = input({
+    vendors,
+    ledger: [
+      gl({ entry_type: 'vendor_payment', vendor_id: 'v-purch', credit: rs(4000) }),
+      gl({ entry_type: 'vendor_payment', vendor_id: 'v-fixed', credit: rs(6000) }),
+    ],
+    vendorLedger: [{ business_id: A, vendor_id: 'v-purch', entry_date: '2026-05-05', debit: null, credit: rs(10000), general_ledger_id: null }],
+  })
+  const r = run(two, 'accrual')
+  assert.equal(r.statement.costOfSalesCents, 10000)
+  assert.equal(r.statement.overheadsCents, 6000) // v-fixed has no bill: unchanged
+  assert.equal(r.suppressedVendorPaymentsCents, 4000)
+  assert.equal(r.paymentDatedVendorCostsCents, 6000)
+
+  // Business B carries a bill for the same vendor id as business A's payment.
+  const BV = { id: 'v-b-purch', business_id: B, category_name: 'Purchases' }
+  const books = input({
+    vendors: [...vendors, BV],
+    ledger: [gl({ entry_type: 'vendor_payment', vendor_id: 'v-purch', credit: rs(4000) })],
+    vendorLedger: [
+      { business_id: B, vendor_id: 'v-purch', entry_date: '2026-05-05', debit: null, credit: rs(9000), general_ledger_id: null },
+      { business_id: B, vendor_id: 'v-b-purch', entry_date: '2026-05-06', debit: null, credit: rs(1000), general_ledger_id: null },
+    ],
+  })
+  const a = run(books, 'accrual', MAY, [A])
+  const b = run(books, 'accrual', MAY, [B])
+  const both = run(books, 'accrual', MAY, [A, B])
+  assert.equal(a.statement.costOfSalesCents, 4000)
+  assert.equal(a.suppressedVendorPaymentsCents, 0)
+  assert.equal(b.statement.otherExpenseCents + b.statement.costOfSalesCents, 10000)
+  assert.equal(b.suppressedVendorPaymentsCents, 0)
+  // combined: A's payment is not covered by B's bill
+  assert.equal(both.suppressedVendorPaymentsCents, 0)
+  assert.equal(both.statement.costOfSalesCents, 4000 + 9000 + 1000)
+  assert.equal(both.paymentDatedVendorCostsCents, 4000)
 })
 
 test('4b. a zero-amount or out-of-range bill does not suppress the payment', () => {

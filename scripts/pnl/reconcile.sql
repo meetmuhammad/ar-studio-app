@@ -19,6 +19,14 @@
 --                            suppressed_vendor_payments (accrual),
 --                            payment_dated_vendor_costs (accrual)
 --
+-- Accrual vendor rule, per business and vendor, settled once over the whole
+-- period (statement, excluded) and again inside each calendar month (monthly):
+--   bill_credit = unlinked vendor-ledger credits; bill_net = credit - debit
+--   covered     = least(payment credits, bill_credit)
+--   cost        = bill_net + (payment credits - covered) - payment debits
+-- So monthly accrual net need not add up to the accrual statement when a bill
+-- and a payment for the same vendor fall in different months.
+--
 -- Amounts are PKR as exact numeric (no floats). The app shows the same figures
 -- in whole rupees and returns them from /api/pnl as integer cents.
 --
@@ -57,7 +65,7 @@ vendor_line AS (
 -- General-ledger rows the report reads. order_payment is a mirror of
 -- advances + payments and is never read.
 gl AS (
-  SELECT g.entry_date, g.entry_type, g.vendor_id,
+  SELECT g.business_id, g.entry_date, g.entry_type, g.vendor_id,
          coalesce(g.debit, 0) AS debit, coalesce(g.credit, 0) AS credit,
          (coalesce(g.particulars, '') ~* '\mtransfer\M' OR coalesce(g.notes, '') ~* '\mtransfer\M') AS is_transfer
   FROM general_ledger g, params p
@@ -72,60 +80,90 @@ gl_counted AS (
 -- Bills: vendor-ledger rows NOT linked to a general-ledger payment (linked
 -- rows are that payment's mirror), with a non-zero amount.
 bills AS (
-  SELECT vl.vendor_id, vl.entry_date, coalesce(vl.credit, 0) - coalesce(vl.debit, 0) AS amount
+  SELECT vl.business_id, vl.vendor_id, vl.entry_date,
+         coalesce(vl.credit, 0) AS credit, coalesce(vl.debit, 0) AS debit
   FROM vendor_ledger vl, params p
   WHERE vl.general_ledger_id IS NULL
     AND vl.entry_date BETWEEN p.s AND p.e
     AND (p.b IS NULL OR vl.business_id = p.b)
     AND (coalesce(vl.debit, 0) <> 0 OR coalesce(vl.credit, 0) <> 0)
 ),
-billed_vendors AS (SELECT DISTINCT vendor_id FROM bills),
 
--- Every amount that lands on a line: (mode, date, line, amount).
+-- Bills and vendor payments side by side, per business and vendor.
+vendor_rows AS (
+  SELECT b.business_id, b.vendor_id, b.entry_date,
+         b.credit AS bill_credit, b.credit - b.debit AS bill_net,
+         0::numeric AS pay_credit, 0::numeric AS pay_debit
+  FROM bills b
+  UNION ALL
+  SELECT g.business_id, g.vendor_id, g.entry_date, 0, 0, g.credit, g.debit
+  FROM gl_counted g
+  WHERE g.entry_type = 'vendor_payment'
+),
+
+-- The accrual vendor rule, once per window: 'period' (the whole range) and
+-- each YYYY-MM month. A payment debit is never covered by a bill.
+settled AS (
+  SELECT win, business_id, vendor_id, d, pay_credit, pay_debit,
+         least(pay_credit, bill_credit) AS covered,
+         bill_net + (pay_credit - least(pay_credit, bill_credit)) - pay_debit AS cost
+  FROM (
+    SELECT w.win, r.business_id, r.vendor_id,
+           min(r.entry_date)  AS d,  -- a date inside the window, for the monthly join
+           sum(r.bill_credit) AS bill_credit,
+           sum(r.bill_net)    AS bill_net,
+           sum(r.pay_credit)  AS pay_credit,
+           sum(r.pay_debit)   AS pay_debit
+    FROM vendor_rows r
+    CROSS JOIN LATERAL (VALUES ('period'), (to_char(r.entry_date, 'YYYY-MM'))) w(win)
+    GROUP BY w.win, r.business_id, r.vendor_id
+  ) t
+),
+
+-- Every amount that lands on a line: (mode, date, line, amount, scope).
+-- scope 'both' counts in the statement and its month; 'total' only in the
+-- statement; 'month' only in the monthly net.
 events AS (
   -- cash revenue: advances by booking_date (every status), later payments by payment_date
-  SELECT 'cash' AS mode, o.booking_date AS d, 'revenue' AS line, coalesce(o.advance_paid, 0) AS amount
+  SELECT 'cash' AS mode, o.booking_date AS d, 'revenue' AS line, coalesce(o.advance_paid, 0) AS amount, 'both' AS scope
   FROM orders o, params p
   WHERE o.booking_date BETWEEN p.s AND p.e AND (p.b IS NULL OR o.business_id = p.b)
   UNION ALL
-  SELECT 'cash', pm.payment_date, 'revenue', pm.amount
+  SELECT 'cash', pm.payment_date, 'revenue', pm.amount, 'both'
   FROM payments pm, params p
   WHERE pm.payment_date BETWEEN p.s AND p.e AND (p.b IS NULL OR pm.business_id = p.b)
   UNION ALL
   -- accrual revenue: delivered orders at full value by delivery_date
-  SELECT 'accrual', o.delivery_date, 'revenue', coalesce(o.total_amount, 0)
+  SELECT 'accrual', o.delivery_date, 'revenue', coalesce(o.total_amount, 0), 'both'
   FROM orders o, params p
   WHERE o.status = 'Delivered' AND o.delivery_date BETWEEN p.s AND p.e AND (p.b IS NULL OR o.business_id = p.b)
   UNION ALL
   -- miscellaneous, both modes: no vendor -> debit is other income, credit other expense
-  SELECT m.mode, g.entry_date, 'other_income', g.debit
+  SELECT m.mode, g.entry_date, 'other_income', g.debit, 'both'
   FROM gl_counted g CROSS JOIN (VALUES ('cash'), ('accrual')) m(mode)
   WHERE g.entry_type = 'miscellaneous' AND g.vendor_id IS NULL
   UNION ALL
-  SELECT m.mode, g.entry_date, 'other_expense', g.credit
+  SELECT m.mode, g.entry_date, 'other_expense', g.credit, 'both'
   FROM gl_counted g CROSS JOIN (VALUES ('cash'), ('accrual')) m(mode)
   WHERE g.entry_type = 'miscellaneous' AND g.vendor_id IS NULL
   UNION ALL
   -- miscellaneous with a vendor, both modes: the vendor's category, credit - debit
-  SELECT m.mode, g.entry_date, coalesce(vl.line, 'other_expense'), g.credit - g.debit
+  SELECT m.mode, g.entry_date, coalesce(vl.line, 'other_expense'), g.credit - g.debit, 'both'
   FROM gl_counted g CROSS JOIN (VALUES ('cash'), ('accrual')) m(mode)
   LEFT JOIN vendor_line vl ON vl.vendor_id = g.vendor_id
   WHERE g.entry_type = 'miscellaneous' AND g.vendor_id IS NOT NULL
   UNION ALL
   -- cash vendor costs: every vendor_payment, credit - debit
-  SELECT 'cash', g.entry_date, coalesce(vl.line, 'other_expense'), g.credit - g.debit
+  SELECT 'cash', g.entry_date, coalesce(vl.line, 'other_expense'), g.credit - g.debit, 'both'
   FROM gl_counted g LEFT JOIN vendor_line vl ON vl.vendor_id = g.vendor_id
   WHERE g.entry_type = 'vendor_payment'
   UNION ALL
-  -- accrual vendor costs: bills where the vendor has any in range ...
-  SELECT 'accrual', b.entry_date, coalesce(vl.line, 'other_expense'), b.amount
-  FROM bills b LEFT JOIN vendor_line vl ON vl.vendor_id = b.vendor_id
-  UNION ALL
-  -- ... otherwise that vendor's payments, dated when paid
-  SELECT 'accrual', g.entry_date, coalesce(vl.line, 'other_expense'), g.credit - g.debit
-  FROM gl_counted g LEFT JOIN vendor_line vl ON vl.vendor_id = g.vendor_id
-  WHERE g.entry_type = 'vendor_payment'
-    AND (g.vendor_id IS NULL OR NOT EXISTS (SELECT 1 FROM billed_vendors bv WHERE bv.vendor_id = g.vendor_id))
+  -- accrual vendor costs: bills plus the payment credits they do not cover,
+  -- minus payment debits; the period settlement for the statement, each
+  -- month's own settlement for the monthly net
+  SELECT 'accrual', s.d, coalesce(vl.line, 'other_expense'), s.cost,
+         CASE WHEN s.win = 'period' THEN 'total' ELSE 'month' END
+  FROM settled s LEFT JOIN vendor_line vl ON vl.vendor_id = s.vendor_id
 ),
 
 modes AS (SELECT * FROM (VALUES ('cash', 1), ('accrual', 2)) m(mode, ord)),
@@ -139,7 +177,7 @@ totals AS (
          coalesce(sum(e.amount) FILTER (WHERE e.line = 'other_expense'), 0) AS other_expense,
          coalesce(sum(e.amount) FILTER (WHERE e.line = 'other_income'), 0)  AS other_income,
          coalesce(sum(e.amount) FILTER (WHERE e.line = 'drawings'), 0)      AS drawings
-  FROM modes m LEFT JOIN events e ON e.mode = m.mode
+  FROM modes m LEFT JOIN events e ON e.mode = m.mode AND e.scope IN ('both', 'total')
   GROUP BY m.mode, m.ord
 ),
 
@@ -160,7 +198,7 @@ monthly AS (
                         ELSE 0
                       END), 0) AS net
   FROM modes m CROSS JOIN months mo
-  LEFT JOIN events e ON e.mode = m.mode AND to_char(e.d, 'YYYY-MM') = mo.month
+  LEFT JOIN events e ON e.mode = m.mode AND e.scope IN ('both', 'month') AND to_char(e.d, 'YYYY-MM') = mo.month
   GROUP BY m.mode, m.ord, mo.month
 ),
 
@@ -170,14 +208,13 @@ excluded AS (
     (SELECT count(*) FROM gl WHERE entry_type <> 'opening_balance' AND is_transfer)        AS transfers_count,
     (SELECT coalesce(sum(debit), 0) FROM gl WHERE entry_type <> 'opening_balance' AND is_transfer)  AS transfers_in,
     (SELECT coalesce(sum(credit), 0) FROM gl WHERE entry_type <> 'opening_balance' AND is_transfer) AS transfers_out,
-    (SELECT coalesce(sum(g.credit - g.debit), 0) FROM gl_counted g
-       WHERE g.entry_type = 'vendor_payment'
-         AND EXISTS (SELECT 1 FROM billed_vendors bv WHERE bv.vendor_id = g.vendor_id)) AS suppressed,
-    (SELECT coalesce(sum(g.credit - g.debit), 0) FROM gl_counted g
-       LEFT JOIN vendor_line vl ON vl.vendor_id = g.vendor_id
-       WHERE g.entry_type = 'vendor_payment'
-         AND coalesce(vl.line, 'other_expense') <> 'drawings'
-         AND (g.vendor_id IS NULL OR NOT EXISTS (SELECT 1 FROM billed_vendors bv WHERE bv.vendor_id = g.vendor_id))) AS payment_dated
+    -- covered payment credit only, over the whole period
+    (SELECT coalesce(sum(s.covered), 0) FROM settled s WHERE s.win = 'period') AS suppressed,
+    -- uncovered payment credit minus every payment debit, Owner Withdrawal excluded
+    (SELECT coalesce(sum(s.pay_credit - s.covered - s.pay_debit), 0) FROM settled s
+       LEFT JOIN vendor_line vl ON vl.vendor_id = s.vendor_id
+       WHERE s.win = 'period'
+         AND coalesce(vl.line, 'other_expense') <> 'drawings') AS payment_dated
 )
 
 SELECT section, mode, item, amount_pkr

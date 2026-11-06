@@ -229,9 +229,17 @@ export interface PnlResult {
     /** Ledger rows whose particulars/notes say "transfer". */
     transfers: { count: number; moneyInCents: number; moneyOutCents: number }
   }
-  /** Accrual only: vendor_payment net dropped because that vendor has an in-range bill. */
+  /**
+   * Accrual only: the part of vendor_payment credits left out because the same
+   * vendor's in-range bill credits cover it (min(payment credits, bill credits)
+   * per vendor over the whole period). Never the payment debits.
+   */
   suppressedVendorPaymentsCents: number
-  /** Accrual only: vendor costs dated on the payment because the vendor has no bill. */
+  /**
+   * Accrual only: vendor payment money counted on the day it was paid, because
+   * no bill in the period covers it: uncovered payment credits minus every
+   * payment debit, per vendor, Owner Withdrawal excluded.
+   */
   paymentDatedVendorCostsCents: number
   /** Category names not in PNL_CATEGORY_MAP that contributed to this result. */
   unknownCategories: string[]
@@ -274,6 +282,62 @@ export const NO_REFUND_TABLE =
   'The books have no refund or credit-note table, so nothing is subtracted for refunds or returns.'
 const CANCELLED_ADVANCES = 'An advance on an order that was later cancelled stays in cash revenue.'
 
+// ---------------------------------------------------------------- accrual vendor settlement
+
+export interface VendorSettlement {
+  key: string
+  vendorId: string | null
+  billNetCents: number
+  billCreditCents: number
+  payCreditCents: number
+  payDebitCents: number
+  /** min(payment credits, bill credits): the payment money the bills replace. */
+  coveredCents: number
+  /** bill net + uncovered payment credits - payment debits. */
+  costCents: number
+}
+
+/**
+ * The accrual vendor rule, over whatever window the rows were already cut to
+ * (the whole period, or one calendar month). Per business and vendor:
+ *
+ *   bill_credit = sum of unlinked vendor-ledger credits; bill_net = credit - debit
+ *   covered     = min(pay_credit, bill_credit)
+ *   cost        = bill_net + (pay_credit - covered) - pay_debit
+ *
+ * A payment debit is never covered by a bill. Bills and payments are not linked
+ * one to one; this only caps how much payment credit the bills can replace.
+ * `bills` must already exclude linked rows; `payments` are vendor_payment rows.
+ */
+export function settleVendors(bills: readonly PnlVendorLedgerRow[], payments: readonly PnlLedgerRow[]): VendorSettlement[] {
+  const byKey = new Map<string, VendorSettlement>()
+  const get = (businessId: string, vendorId: string | null) => {
+    const key = `${businessId}|${vendorId ?? ''}`
+    let s = byKey.get(key)
+    if (!s) {
+      s = { key, vendorId, billNetCents: 0, billCreditCents: 0, payCreditCents: 0, payDebitCents: 0, coveredCents: 0, costCents: 0 }
+      byKey.set(key, s)
+    }
+    return s
+  }
+  for (const b of bills) {
+    const s = get(b.business_id, b.vendor_id)
+    const credit = toCents(b.credit)
+    s.billCreditCents += credit
+    s.billNetCents += credit - toCents(b.debit)
+  }
+  for (const g of payments) {
+    const s = get(g.business_id, g.vendor_id)
+    s.payCreditCents += toCents(g.credit)
+    s.payDebitCents += toCents(g.debit)
+  }
+  for (const s of byKey.values()) {
+    s.coveredCents = Math.min(s.payCreditCents, s.billCreditCents)
+    s.costCents = s.billNetCents + (s.payCreditCents - s.coveredCents) - s.payDebitCents
+  }
+  return [...byKey.values()]
+}
+
 // ---------------------------------------------------------------- the calculation
 
 export function computePnl(
@@ -304,11 +368,14 @@ export function computePnl(
   let suppressedVendorPaymentsCents = 0
   let paymentDatedVendorCostsCents = 0
   let paymentDatedVendors = 0
+  let paymentDatedHasDebits = false
   let accrualMiscRows = 0
+
+  const lineOf = (vendorId: string | null) => classifyCategory(vendorId ? vendorCategory.get(vendorId) ?? null : null)
 
   /** A vendor-attributed cost (credit - debit) onto its category's line. */
   const addVendorCost = (vendorId: string | null, date: string, cents: number) => {
-    const { line, unknown: name } = classifyCategory(vendorId ? vendorCategory.get(vendorId) ?? null : null)
+    const { line, unknown: name } = lineOf(vendorId)
     if (line === 'drawings') {
       excluded.ownerWithdrawalCents += cents
       return
@@ -381,37 +448,51 @@ export function computePnl(
     else vendorPayments.push(g)
   }
 
-  // ---- accrual vendor costs: bills where the vendor has them, else payments
+  // ---- accrual vendor costs: per vendor, bills plus whatever of the payments
+  // the bills do not cover. Settled over the whole period for the statement,
+  // and again inside each calendar month for that month's column.
   if (mode === 'accrual') {
-    const bills = new Map<string, PnlVendorLedgerRow[]>()
+    const bills: PnlVendorLedgerRow[] = []
     for (const v of input.vendorLedger) {
       // Linked rows mirror a general-ledger payment: ignored in both modes.
       if (v.general_ledger_id) continue
       if (!inRange(v.entry_date, range)) continue
       if (toCents(v.debit) === 0 && toCents(v.credit) === 0) continue
-      const list = bills.get(v.vendor_id) ?? []
-      list.push(v)
-      bills.set(v.vendor_id, list)
-    }
-
-    for (const [vendorId, rows] of bills) {
-      for (const b of rows) addVendorCost(vendorId, b.entry_date, toCents(b.credit) - toCents(b.debit))
+      bills.push(v)
     }
 
     const fallbackVendors = new Set<string>()
-    for (const g of vendorPayments) {
-      const net = toCents(g.credit) - toCents(g.debit)
-      if (g.vendor_id && bills.has(g.vendor_id)) {
-        suppressedVendorPaymentsCents += net
+    let paymentDatedDebitCents = 0
+    for (const s of settleVendors(bills, vendorPayments)) {
+      const { line, unknown: name } = lineOf(s.vendorId)
+      suppressedVendorPaymentsCents += s.coveredCents
+      if (line === 'drawings') {
+        excluded.ownerWithdrawalCents += s.costCents
         continue
       }
-      addVendorCost(g.vendor_id, g.entry_date, net)
-      if (classifyCategory(g.vendor_id ? vendorCategory.get(g.vendor_id) ?? null : null).line !== 'drawings') {
-        paymentDatedVendorCostsCents += net
-        fallbackVendors.add(g.vendor_id ?? '')
+      if (name && s.costCents !== 0) unknown.add(name)
+      total[LINE_FIELD[line]] += s.costCents
+      const paymentDated = s.payCreditCents - s.coveredCents - s.payDebitCents
+      if (paymentDated !== 0) {
+        paymentDatedVendorCostsCents += paymentDated
+        paymentDatedDebitCents += s.payDebitCents
+        fallbackVendors.add(s.key)
       }
     }
     paymentDatedVendors = fallbackVendors.size
+    paymentDatedHasDebits = paymentDatedDebitCents !== 0
+
+    const monthOf = <T>(rows: T[], date: (r: T) => string, month: string) => rows.filter((r) => date(r).slice(0, 7) === month)
+    for (const [month, bucket] of byMonth) {
+      const monthBills = monthOf(bills, (b) => b.entry_date, month)
+      const monthPayments = monthOf(vendorPayments, (g) => g.entry_date, month)
+      for (const s of settleVendors(monthBills, monthPayments)) {
+        const { line, unknown: name } = lineOf(s.vendorId)
+        if (line === 'drawings') continue
+        if (name && s.costCents !== 0) unknown.add(name)
+        bucket[LINE_FIELD[line]] += s.costCents
+      }
+    }
   }
 
   // ---- limitations that apply to THIS result
@@ -421,13 +502,22 @@ export function computePnl(
       limitations.push(
         `${formatPKR(paymentDatedVendorCostsCents / 100)} of vendor costs (${paymentDatedVendors} ` +
           `${paymentDatedVendors === 1 ? 'vendor' : 'vendors'}) is dated on the day it was paid, ` +
-          'because the books have no bill for it in this period.'
+          'because no bill from that vendor in this period covers it.' +
+          (paymentDatedHasDebits ? ' Money back from a vendor (a debit) is never covered by a bill, so it is always counted this way.' : '')
       )
     }
     if (suppressedVendorPaymentsCents !== 0) {
       limitations.push(
         `${formatPKR(suppressedVendorPaymentsCents / 100)} of vendor payments in this period is left out, ` +
-          'because the same vendors have bills in this period and the bills are counted instead.'
+          'because bills from the same vendors in this period cover that much and the bills are counted instead. ' +
+          'Bills and payments are not linked, so this does not say which payment settled which bill.'
+      )
+    }
+    const monthlyNet = months.reduce((sum, m) => sum + finish(byMonth.get(m)!).netProfitCents, 0)
+    if (monthlyNet !== finish(total).netProfitCents) {
+      limitations.push(
+        'The monthly figures match bills and payments inside each month, so a bill and a payment for the same vendor ' +
+          'in different months each show in their own month. The period total matches them once, so the months do not add up to it.'
       )
     }
     if (accrualMiscRows > 0) {

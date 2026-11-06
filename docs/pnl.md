@@ -2,6 +2,8 @@
 
 The **Profit & Loss** page (`/pnl`, sidebar item under More on a phone) shows, for the business you have selected, what came in, what went out, and the profit in between, for a period you choose. It is admin-only, like the Dashboard and the Ledger. Staff are sent to Customers, and the API (`GET /api/pnl`) answers a staff token with 403.
 
+Staff cannot open Profit & Loss. The ledger, vendors, and dashboard are already admin-only. Staff membership is ATC only, which limits which shop they belong to, not a grant to read the books. This page uses that same admin gate and does not add a staff view.
+
 You choose a basis (cash or accrual) and a period. The page writes nothing.
 
 With **All businesses** selected in the switcher, the report adds together every business your login belongs to. That view is read-only, like the rest of the combined view.
@@ -38,9 +40,16 @@ Cash basis counts money when it actually moved.
 Accrual basis counts a sale when it is delivered, and a cost when it is billed.
 
 - **Revenue** is the full **total** (`orders.total_amount`) of every order whose status is **Delivered** and whose **delivery date** is in the period. In Process and Cancelled orders count nothing. Advances and payments are never counted in accrual basis.
-- **Vendor costs** are worked out vendor by vendor:
-  - If the vendor has **any bill** in the period (a vendor-ledger entry made with "Add Bill", i.e. one not linked to a general-ledger payment, with a non-zero amount), the report counts **only those bills**. That vendor's payments in the same period are **not** counted as well. The total of payments left out this way is shown as **Vendor payments replaced by bills**, and it is never added into profit.
-  - Otherwise the report counts that vendor's **payments** in the period. They are dated on the day they were paid, because the books have no bill to date them by, and the report says so under "Read this with the figures".
+- **Vendor costs** are worked out vendor by vendor, by amount:
+  - A **bill** is a vendor-ledger entry made with "Add Bill", i.e. one not linked to a general-ledger payment, with a non-zero amount. The report counts every bill in the period at its `credit − debit`.
+  - The vendor's **payment credits** in the period (money paid out) are left out **up to the total of that vendor's bill credits** in the same period, because the bills already count that money. The amount left out is shown as **Vendor payments replaced by bills**, and it is never added into profit.
+  - Payment credits **above** the bill credits still count. They are dated on the day they were paid, and the report says so under "Read this with the figures".
+  - Payment **debits** (money that came back from the vendor) are never covered by a bill. They always count, dated on the day they were entered.
+  - A vendor with **no bill** in the period has nothing to cover, so all of its payments count, dated on the day they were paid.
+
+  As a formula, per vendor in the period: `bills (credit − debit) + (payment credits − covered) − payment debits`, where `covered` is the smaller of the payment credits and the bill credits. For example, a bill of 10,000 and a payment of 4,000 in the same month is a cost of 10,000 (4,000 replaced by the bill), not 14,000. A bill of 25,000 and a payment of 40,000 is a cost of 40,000: the bill, plus the 15,000 paid above it.
+- Cash basis does not change: it counts the vendor's payments (`credit − debit`) and never adds bills.
+- **Each month is worked out on its own.** The monthly chart applies the same rule inside each calendar month, using only that month's bills and payments. The period total applies it once over the whole period. So a bill on 1 March and a payment of the same amount on 1 April show as a cost in March **and** in April on the chart (in April there is no bill to cover the payment), while the year total counts the cost once. In that case the months do not add up to the total, and the report says so.
 - **Miscellaneous** general-ledger entries are counted the same way as in cash basis, dated on their entry date, because nothing else in the books records when they were incurred.
 
 ## The statement
@@ -94,7 +103,7 @@ Each of these is locked by a test in `src/lib/pnl.test.ts`:
 1. A customer's money is counted once. Advances (`orders.advance_paid`) and later payments (`payments`) are separate records and both count in cash basis. The general ledger's `order_payment` entries are a copy of those same two records, so the report never reads them. (On the local books that copy is empty while advances and payments are not, so reading it would also give the wrong answer.)
 2. A delivered order counts its total in accrual and its advance plus payments in cash, never both in either.
 3. Recording a vendor payment also writes a mirror line in that vendor's own ledger. The report ignores those mirror lines in both bases, so a payment of 40,000 is 40,000, not 80,000.
-4. In accrual, a vendor with a bill in the period counts the bill and not the payment; the payment is reported separately and not added to profit. In cash, the payment counts and the bill does not.
+4. In accrual, a vendor's bills count, and its payment credits are left out only up to its bill credits in the same period (and the same month, on the monthly chart). Payment credits above the bills, and every payment debit, still count. The part left out is reported separately and not added to profit. In cash, the payments count and the bills do not. A bill for one vendor never covers another vendor's payment, and one business's bill never covers another business's payment, even in the combined view.
 5. A vendor payment with no bill counts in both bases; in accrual the report says it is dated on the day it was paid.
 6. Opening balances and Owner Withdrawal never reach revenue, costs or net profit.
 7. Each business's rows are kept separate; the combined view is the sum of exactly the businesses you belong to.
@@ -114,13 +123,14 @@ The page lists, under "Read this with the figures", only the ones that apply to 
 
 - **No refund table.** The books have no refund, credit-note or returns table, so nothing is ever subtracted for a refund. In cash basis an advance on an order later cancelled stays in revenue. (Always shown.)
 - **Payment-dated vendor costs** (accrual). A vendor cost with no bill is dated on the day it was paid, which may be a different month from when the work was done.
-- **Suppressed payments** (accrual). Payments to a vendor that has bills in the period are left out; if a bill was never entered for some of that work, that part of the cost is missing from the accrual figure.
+- **Suppressed payments** (accrual). Payment credits to a vendor are left out up to that vendor's bill credits in the period. If a bill was entered for one job and a payment was for a different job with no bill, the payment is still covered by the first bill, so that part of the cost is missing from the accrual figure.
+- **Months do not add up** (accrual). Shown when a bill and a payment for the same vendor fall in different months: each month counts its own, the period total counts them once.
 - **Miscellaneous dated on entry date** (accrual). Miscellaneous entries are dated on the day they were entered in the ledger.
 
 Also worth knowing:
 
 - Costs follow each vendor's **current** category, so reclassifying a vendor changes past reports.
-- A bill and a payment are matched by **vendor and period**, not one to one. A bill in March paid in April shows the bill in March (accrual) and the payment in April (cash). In an accrual report covering only April, that payment is counted, dated when paid, because the vendor has no bill in April.
+- A bill and a payment are not linked. The report covers payment credits only up to the bill credits in the same period. It does not decide which payment belongs to which bill. A bill in March paid in April shows the bill in March (accrual) and the payment in April (cash). In an accrual report covering only April, that payment is counted, dated when paid, because the vendor has no bill in April.
 - Cost of sales is whatever is in the Purchases category. The books have no stock records, so materials bought for orders not yet delivered are still a cost in the month they are billed or paid.
 
 ## Reconciling outside the app
@@ -148,20 +158,44 @@ The rules were written against the app's code and the schema of the **local Dock
 
 Opening balances of 991,000 are excluded in both. The accrual year totals are the ones on the local Profit & Loss screen for Ahsan Tariq Couture (the only local business with orders). They are fixture figures, not staging and not the live books. The screen, at desktop width and at 375px, is in `docs/pnl/screenshots/`.
 
-**Staging** is the project named AR studio dummy database (`ohgqgkraybpvnfdbgmvl`). It was read, not written. It has no `public.businesses` table and no `business_id` columns. Its migration history stops at `20260818110000`, so `20261106000000_multi_business_techlink` is not applied. `scripts/pnl/reconcile.sql` cannot run there, because it filters `business_id`. Per-business and combined-versus-single were therefore not executed on staging. That migration was not applied as part of this report.
+**Staging** is the project named AR studio dummy database (`ohgqgkraybpvnfdbgmvl`). At the start of this check it was already `ACTIVE_HEALTHY`: it had been resumed from a pause earlier, and it was not restored from a backup. Before any migration, every public table was copied into schema `baseline_pnl_20261107` (69 customers, 70 orders, 11 payments, 86 general-ledger rows, 13 vendor-ledger rows, 3 vendors). The general-ledger money checksum was `6c2cdab67033405506cb8b961a5c05d0` and was the same after the migration, so debit, credit and balance did not move.
 
-Independent SQL using the same formulas, on that single staging book, for 2026-01-01 to 2026-12-31 (PKR):
+Reviewed migrations applied, in one transaction, after a rolled-back rehearsal: `20260827000300` (Uncategorized), `20261024000000` (close client writes to roles and the ledger), `20261024000100` and `20261024000200` (ledger MCP tables and the audience hook, which is not turned on), and `20261106000000` (two businesses). `20261101000000` was not applied again: staging already had the running-balance triggers and a consistent series (0 mismatches), and Change 4 replaces that function with the per-business one. Existing rows were backfilled to Ahsan Tariq Couture. Techlink Co started empty. The one admin belongs to both. Neither staff user belongs to Techlink.
 
-| | Cash | Accrual |
-|---|---:|---:|
-| Revenue | 522,000 | 400,000 |
-| Staff | −30,000 | 20,000 |
-| Net profit | 552,000 | 380,000 |
+Cash revenue for 2026 is advances 502,000 plus later payments 20,000. Accrual revenue is one Delivered order of 400,000.
 
-Cash revenue is advances 502,000 plus later payments 20,000. Accrual revenue is one Delivered order of 400,000. Accrual staff is the unlinked bill of 20,000; the same vendor's payments net to −30,000 and are reported as suppressed, not added. Payment-dated vendor costs are 0. Every one of those rows is in August 2026. The later payment of 20,000 is dated 2026-08-26, so it is inside August and outside September (September payments are 0). November 2026, which is "This Month" in Asia/Karachi on 2026-11-07, has 0 orders, 0 payments, 0 delivered revenue and 0 ledger rows. 2026 Q4 delivered revenue is 0.
+Cash staff of −30,000 on the 2026 staging book is `20,000 credit − 50,000 debit` on Employees vendor payments dated 2026-08-17 and 2026-08-18. Negative staff raises net profit above revenue by that amount. The books do not say why the debit was entered, so the report does not call it a refund.
+
+Accrual staff is also −30,000: the unlinked Employees bill of 20,000 (2026-08-17), plus payment credits of 20,000 less the 20,000 the bill covers, minus the payment debit of 50,000. The 20,000 covered is reported as **Vendor payments replaced by bills**. The 50,000 debit is not covered by the bill, so it stays in, dated 2026-08-18, and payment-dated vendor costs are −50,000. Under the old rule the bill replaced every payment, which dropped that debit and gave accrual staff 20,000 and accrual net 380,000.
+
+Every one of those rows is in August 2026, so the August column equals the year. The later payment of 20,000 is dated 2026-08-26, so it is inside August and outside September (September payments are 0). November 2026, which is "This Month" in Asia/Karachi on 2026-11-07, has 0 orders, 0 payments, 0 delivered revenue and 0 ledger rows. 2026 Q4 delivered revenue is 0.
 
 Staging `order_payment` debits for 2026 are 522,001, one rupee above cash receipts, from one `order_payment` debit of 1 with no matching advance or payment. All-time cash receipts are advances 10,656,000 plus payments 904,000 = 11,560,000, against `order_payment` debits of 11,560,001. Those mirror rows are not added.
 
-All-time staging accrual revenue (Delivered) is 4,168,000 from 19 orders. In Process totals of 12,167,000 are excluded from accrual. Unlinked bills are 150,000 (staff 50,000, other 100,000). Cash vendor-payment net is staff −20,000 and other 225,000. Accrual suppresses staff −20,000 and other 100,000 of those payments, because those vendors have bills, and keeps other 125,000 as payment-dated. Miscellaneous debits are 20,100 of other income. There are no opening-balance rows, no transfer rows, no cancelled orders, and no refund table. Two of three vendors have no category. The Uncategorized category row is not on staging. A missing category maps to Other.
+The same function the API uses, run on every staging row for 2025-01-01 to 2026-12-31, and an independent SQL query for the 2026 cost lines, agree. Techlink is zero in both bases, and the combined view equals Ahsan Tariq Couture, so nothing crosses between them.
 
-The Profit & Loss screen was opened against the local Docker database, not against staging. Staging has no `business_id`, so the page's API cannot query it until the multi-business migration is applied.
+| 2026-01-01 to 2026-12-31, ATC | Cash | Accrual |
+|---|---:|---:|
+| Revenue | 522,000 | 400,000 |
+| Staff | −30,000 | −30,000 |
+| Net profit | 552,000 | 430,000 |
+| Payment credits replaced by bills | 0 | 20,000 |
+| Payment-dated vendor costs | 0 | −50,000 |
+
+August 2026 equals that year. November 2026 and 2026 Q4 are zero in both bases. Techlink over the same year is zero.
+
+All-time on ATC (the whole staging book):
+
+| | Cash | Accrual |
+|---|---:|---:|
+| Revenue | 11,560,000 | 4,168,000 |
+| Staff | −20,000 | 0 |
+| Other expenses | 225,000 | 225,000 |
+| Other income | 20,100 | 20,100 |
+| Net profit | 11,375,100 | 3,963,100 |
+
+Accrual suppresses 130,000 of payment credits and keeps 75,000 as payment-dated. Delivered revenue is 19 orders. In Process totals of 12,167,000 are excluded from accrual. There are no opening-balance rows, no transfer rows, no cancelled orders, and no refund table. The two vendors that had no category are now Uncategorized, which maps to Other.
+
+The Profit & Loss screen was not opened against staging. Staging has no `@arstudio.test` login, and no user was created and no session was minted to take one. The screenshots in `docs/pnl/screenshots/` remain local Docker fixtures.
+
+The amount rule in `scripts/pnl/reconcile.sql` was checked against a throwaway Postgres with the test fixtures (the staging shape, the March bill and April payment, and a partial settlement); its statement, monthly and excluded figures match `src/lib/pnl.ts`.
