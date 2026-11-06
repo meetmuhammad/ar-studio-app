@@ -318,7 +318,7 @@ export function useLedgerEntries(params: LedgerQueryParams = {}, options: { enab
   })
 }
 
-/** Totals for an inclusive entry_date range (either side optional). currentBalance is always all-time. */
+/** Totals for an inclusive entry_date range (either side optional); currentBalance is debit - credit over that same range. */
 export function useLedgerStats(range: { startDate?: string; endDate?: string } = {}, options: { enabled?: boolean } = {}) {
   return useQuery({
     enabled: options.enabled ?? true,

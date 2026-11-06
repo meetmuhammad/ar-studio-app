@@ -290,7 +290,9 @@ export default function LedgerPage() {
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold tabular-nums sm:text-2xl">{formatCurrency(stats.currentBalance)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Net position</p>
+            <p className="text-xs text-muted-foreground mt-1" title="Total debit minus total credit for the dates shown">
+              {rangeActive ? 'Debit − credit · selected dates' : 'Debit − credit · all time'}
+            </p>
           </CardContent>
         </Card>
 
