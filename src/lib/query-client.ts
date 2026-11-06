@@ -36,6 +36,12 @@ export const queryKeys = {
   dashboard: {
     stats: ['dashboard', 'stats'] as const,
   },
+  pnl: {
+    all: ['pnl'] as const,
+    // The business is not in the key: authFetch sends it as X-Business-Id and
+    // the dashboard layout remounts the page on every switch.
+    report: (params: { mode: string; start: string; end: string }) => ['pnl', 'report', params] as const,
+  },
   customers: {
     all: ['customers'] as const,
     list: (params?: { page?: number; pageSize?: number; q?: string }) => 

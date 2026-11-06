@@ -97,6 +97,18 @@ export function resolvePreset(preset: DateRangePreset, today: string = todayInBu
   }
 }
 
+/**
+ * The whole calendar quarter containing `today` (Jan-Mar, Apr-Jun, Jul-Sep,
+ * Oct-Dec), inclusive. Not one of the ledger presets above; the Profit & Loss
+ * report uses it (src/lib/pnl.ts).
+ */
+export function quarterOf(today: string = todayInBusinessZone()): DateRange {
+  const [y, m] = splitDate(today)
+  const first = Math.floor((m - 1) / 3) * 3 + 1
+  const last = first + 2
+  return { start: joinDate(y, first, 1), end: joinDate(y, last, daysInMonth(y, last)) }
+}
+
 /** A Date picked in the browser -> its local calendar date (not the UTC one). */
 export function toDateString(date: Date): string {
   return joinDate(date.getFullYear(), date.getMonth() + 1, date.getDate())

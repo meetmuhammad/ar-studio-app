@@ -11,6 +11,7 @@ import type {
   VendorWithCategory
 } from '@/lib/supabase-client'
 import { toast } from 'sonner'
+import type { PnlMode, PnlPreset, PnlResult } from '@/lib/pnl'
 
 // =============================================================================
 // DASHBOARD
@@ -40,6 +41,41 @@ export function useDashboardStats() {
       const response = await authFetch('/api/dashboard-stats')
       if (!response.ok) throw new Error('Failed to fetch dashboard stats')
       return response.json() as Promise<DashboardStatsResponse>
+    },
+  })
+}
+
+// =============================================================================
+// PROFIT & LOSS
+// =============================================================================
+
+export type PnlResponse = PnlResult & {
+  preset: PnlPreset
+  timeZone: string
+  today: string
+  currency: 'PKR'
+  combined: boolean
+  businessCount: number
+}
+
+/** Read-only report. `range` is already resolved (presets in Asia/Karachi). */
+export function usePnl(params: { mode: PnlMode; preset: PnlPreset; start: string; end: string }, options: { enabled?: boolean } = {}) {
+  const { mode, preset, start, end } = params
+  return useQuery({
+    enabled: options.enabled ?? true,
+    queryKey: queryKeys.pnl.report({ mode, start, end }),
+    queryFn: async () => {
+      const search = new URLSearchParams({ mode, preset })
+      if (preset === 'custom') {
+        search.set('start', start)
+        search.set('end', end)
+      }
+      const response = await authFetch(`/api/pnl?${search}`)
+      if (!response.ok) {
+        const body = await response.json().catch(() => null)
+        throw new Error(body?.error || 'Failed to load the profit and loss report')
+      }
+      return response.json() as Promise<PnlResponse>
     },
   })
 }
