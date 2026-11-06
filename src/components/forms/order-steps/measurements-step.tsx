@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useCallback, useState, useEffect } from "react"
 import { useFormContext } from "react-hook-form"
 import {
   FormControl,
@@ -8,7 +8,6 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription
 } from "@/components/ui/form"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
@@ -20,14 +19,15 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
-import { CreateOrderInput } from "@/lib/validators"
+import { CreateOrderFormValues, CreateOrderInput } from "@/lib/validators"
 import { Measurement, MEASUREMENT_FIELDS, MeasurementFormData } from "@/types/measurements"
-import { Star, Ruler, Plus, RefreshCw, Edit3 } from "lucide-react"
+import { Star, Ruler, RefreshCw, Edit3 } from "lucide-react"
 import { toast } from "sonner"
 import { authFetch } from '@/lib/auth-fetch'
 
 export function OrderMeasurementsStep() {
-  const form = useFormContext<CreateOrderInput>()
+  const form = useFormContext<CreateOrderFormValues, unknown, CreateOrderInput>()
+  const { setValue } = form
   const [measurements, setMeasurements] = useState<Measurement[]>([])
   const [selectedMeasurement, setSelectedMeasurement] = useState<Measurement | null>(null)
   const [loading, setLoading] = useState(false)
@@ -37,28 +37,12 @@ export function OrderMeasurementsStep() {
   
   const customerId = form.watch("customerId")
 
-  // Fetch measurements when customer changes
-  useEffect(() => {
-    if (customerId) {
-      fetchCustomerMeasurements(customerId)
-    } else {
-      setMeasurements([])
-      setSelectedMeasurement(null)
-    }
-  }, [customerId])
+  const loadMeasurementsIntoForm = useCallback((measurement: Measurement) => {
+    // Store the measurement ID in the form for order creation
+    setValue("measurementId", measurement.id)
+  }, [setValue])
 
-  // Reset new measurement form when customer changes
-  useEffect(() => {
-    if (customerId) {
-      setNewMeasurement({
-        customer_id: customerId,
-        name: "New Measurements",
-        is_default: measurements.length === 0 // Set as default if no existing measurements
-      })
-    }
-  }, [customerId, measurements.length])
-
-  const fetchCustomerMeasurements = async (customerId: string, showSuccessToast: boolean = false) => {
+  const fetchCustomerMeasurements = useCallback(async (customerId: string, showSuccessToast: boolean = false) => {
     try {
       setLoading(true)
       const response = await authFetch(`/api/measurements?customer_id=${customerId}`)
@@ -81,7 +65,7 @@ export function OrderMeasurementsStep() {
       } else {
         // Clear selection if no measurements found
         setSelectedMeasurement(null)
-        form.setValue("measurementId", undefined)
+        setValue("measurementId", undefined)
       }
     } catch (error) {
       console.error('Error fetching measurements:', error)
@@ -89,12 +73,28 @@ export function OrderMeasurementsStep() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [loadMeasurementsIntoForm, setValue])
 
-  const loadMeasurementsIntoForm = (measurement: Measurement) => {
-    // Store the measurement ID in the form for order creation
-    form.setValue("measurementId", measurement.id)
-  }
+  // Fetch measurements when customer changes
+  useEffect(() => {
+    if (customerId) {
+      fetchCustomerMeasurements(customerId)
+    } else {
+      setMeasurements([])
+      setSelectedMeasurement(null)
+    }
+  }, [customerId, fetchCustomerMeasurements])
+
+  // Reset new measurement form when customer changes
+  useEffect(() => {
+    if (customerId) {
+      setNewMeasurement({
+        customer_id: customerId,
+        name: "New Measurements",
+        is_default: measurements.length === 0 // Set as default if no existing measurements
+      })
+    }
+  }, [customerId, measurements.length])
 
   const handleMeasurementSelect = (measurementId: string) => {
     const measurement = measurements.find(m => m.id === measurementId)

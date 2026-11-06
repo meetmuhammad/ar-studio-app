@@ -24,7 +24,29 @@ const MCP = `${BASE}/api/mcp`
 const MARK = `SEC-MCP ${Math.random().toString(36).slice(2, 8)}`
 
 type Tool = { name: string; annotations?: Record<string, unknown> }
-type Result = { content: { type: string; text?: string }[]; structuredContent?: Record<string, any>; isError?: boolean }
+/** One row of list_ledger_entries, as src/lib/ledger-mcp/server.ts builds it. */
+type EntryOut = {
+  id: string; date: string; description: string; side: 'debit' | 'credit'; amount: string; balance_after: string
+  entry_type: string; vendor: string | null; order_number: string | null; notes: string | null
+}
+/**
+ * The structuredContent fields every tool in server.ts can return, in one shape.
+ * Each step reads only the fields of the tool it called.
+ */
+type Structured = {
+  // list_ledger_entries
+  business_today: string; timezone?: string; currency: string; total: number; page: number; pages: number; entries: EntryOut[]
+  // get_ledger_summary
+  date: string
+  day: { money_in: string; money_out: string; net: string; entries: number }
+  all_time: { total_debit: string; total_credit: string; current_balance: string; entries: number }
+  // find_vendors
+  vendors: { id: string; name: string; category: string | null }[]
+  // prepare_ledger_entry / commit_ledger_entry
+  proposal_id: string; expires_at: string; status: string; warnings: string[]; reused: boolean
+  ledger_entry_id: string; entry_date: string; balance_after: string
+}
+type Result = { content: { type: string; text?: string }[]; structuredContent?: Structured; isError?: boolean }
 const textOf = (r: Result) => r.content.map((c) => c.text ?? '').join('\n')
 
 function forgedJwt(sub: string) {
@@ -142,9 +164,9 @@ async function main() {
     const s = r.structuredContent!
     ensure(s.entries.length === 5 && s.total >= 5, `entries ${s.entries.length} of ${s.total}`)
     ensure(/^\d{4}-\d{2}-\d{2}$/.test(s.business_today) && s.timezone, `business_today ${s.business_today}, tz ${s.timezone}`)
-    const dates = s.entries.map((e: any) => e.date)
+    const dates = s.entries.map((e) => e.date)
     ensure(dates.every((d: string, i: number) => i === 0 || dates[i - 1] >= d), `not newest first: ${dates}`)
-    ensure(s.entries.every((e: any) => /^\d+\.\d{2}$/.test(e.amount) && ['debit', 'credit'].includes(e.side)), 'amount/side shape')
+    ensure(s.entries.every((e) => /^\d+\.\d{2}$/.test(e.amount) && ['debit', 'credit'].includes(e.side)), 'amount/side shape')
     today = s.business_today
   })
 

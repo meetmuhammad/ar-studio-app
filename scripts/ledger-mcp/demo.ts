@@ -11,7 +11,8 @@ import { service, makeUser, cleanup, mintOAuthToken, realOAuthToken } from '../s
 
 const MCP = `${process.env.MCP_TEST_BASE ?? 'http://localhost:3107'}/api/mcp`
 const MARK = `SEC-MCP demo ${Math.random().toString(36).slice(2, 8)}`
-type R = { content: { text?: string }[]; structuredContent?: Record<string, any>; isError?: boolean }
+/** The structuredContent fields this demo reads (prepare_ledger_entry / commit_ledger_entry in server.ts). */
+type R = { content: { text?: string }[]; structuredContent?: { proposal_id?: string; status?: string; ledger_entry_id?: string }; isError?: boolean }
 const say = (s: string) => console.log(s)
 
 async function main() {

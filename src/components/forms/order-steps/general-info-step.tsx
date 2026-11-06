@@ -10,7 +10,6 @@ import {
   FormMessage 
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -20,10 +19,10 @@ import {
 } from "@/components/ui/select"
 import { CustomerCombobox } from "@/components/combobox/customer-combobox"
 import { OrderItemsRepeater } from "@/components/forms/order-items-repeater"
-import { CreateOrderInput } from "@/lib/validators"
+import { CreateOrderFormValues, CreateOrderInput } from "@/lib/validators"
 
 export function OrderGeneralInfoStep() {
-  const form = useFormContext<CreateOrderInput>()
+  const form = useFormContext<CreateOrderFormValues, unknown, CreateOrderInput>()
   const { watch, setError, clearErrors } = form
   
   // Watch both dates for real-time validation

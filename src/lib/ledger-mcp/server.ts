@@ -81,7 +81,7 @@ export function buildLedgerMcpServer(userId: string): McpServer {
         startDate: a.start_date, endDate: a.end_date, entryType: a.entry_type,
         vendorId: a.vendor_id, search: a.search, page: a.page, pageSize: a.page_size,
       })
-      const rows = entries.map((e: any) => ({
+      const rows = entries.map((e) => ({
         id: e.id,
         date: e.entry_date,
         description: e.particulars,
@@ -149,7 +149,7 @@ export function buildLedgerMcpServer(userId: string): McpServer {
       annotations: { title: 'Find vendors', readOnlyHint: true, openWorldHint: false },
     },
     async (a) => guarded(async () => {
-      const rows = (await findVendors([await mcpBusinessId(userId)], a.query)).map((v: any) => ({ id: v.id, name: v.name, category: v.vendor_categories?.name ?? null }))
+      const rows = (await findVendors([await mcpBusinessId(userId)], a.query)).map((v) => ({ id: v.id, name: v.name, category: v.vendor_categories?.name ?? null }))
       if (!rows.length) return text(`No vendor matches "${a.query}".`, { vendors: [] })
       return text(
         `${rows.length} vendor${rows.length === 1 ? '' : 's'} match "${a.query}"${rows.length > 1 ? ' (ambiguous: ask the user which one)' : ''}:\n` +

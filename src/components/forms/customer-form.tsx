@@ -41,7 +41,7 @@ export function CustomerForm({ customer, onSubmit, onCancel }: CustomerFormProps
     setIsSubmitting(true)
     try {
       await onSubmit(data)
-    } catch (error) {
+    } catch {
       // Error handling is done in the parent component
     } finally {
       setIsSubmitting(false)

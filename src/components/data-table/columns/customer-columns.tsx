@@ -64,7 +64,6 @@ function CustomerActions({ customer, onEdit, onDelete }: CustomerActionsProps) {
 export function createCustomerColumns({
   onEdit,
   onDelete,
-  onRowClick,
 }: {
   onEdit: (customer: CustomerWithOrderCount) => void
   onDelete: (customer: CustomerWithOrderCount) => void

@@ -63,6 +63,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null)
+  // The current user id and loading flag, for the listeners and the timeout the
+  // mount effect sets up once (its closure would otherwise keep the first render's values).
+  const userIdRef = useRef<string | undefined>(undefined)
+  const loadingRef = useRef(loading)
+  useEffect(() => {
+    userIdRef.current = user?.id
+    loadingRef.current = loading
+  }, [user?.id, loading])
 
   // Convert Supabase user to our AuthUser format with role from database
   const createAuthUser = async (supabaseUser: User): Promise<AuthUser> => {
@@ -162,7 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         const { type, userId, role } = event.data
         
-        if (type === 'role-update' && user?.id === userId) {
+        if (type === 'role-update' && userIdRef.current === userId) {
           // Update user role from another tab
           setUser(prev => prev ? { ...prev, role } : null)
           setCachedRole(userId, role)
@@ -176,7 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     // Add timeout to prevent infinite loading
     const authTimeout = setTimeout(() => {
-      if (mounted && loading) {
+      if (mounted && loadingRef.current) {
         console.log('Auth timeout - setting loading to false')
         setUser(null)
         setLoading(false)
@@ -186,7 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Get initial session
     const getInitialSession = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession()
+        const { data: { session } } = await supabase.auth.getSession()
         
         if (mounted) {
           clearTimeout(authTimeout)

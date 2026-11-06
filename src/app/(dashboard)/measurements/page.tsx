@@ -27,7 +27,7 @@ import { authFetch } from '@/lib/auth-fetch';
 export default function MeasurementsPage() {
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   
   // Modal states

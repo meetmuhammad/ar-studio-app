@@ -4,7 +4,6 @@ import { ErrorState } from '@/components/dashboard/error-state'
 import { useState, useRef } from "react"
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
-import { toast } from 'sonner'
 import { useCustomers, useCreateCustomer, useUpdateCustomer, useDeleteCustomer } from '@/hooks/use-api'
 
 import { DataTable } from '@/components/data-table/data-table'

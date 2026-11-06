@@ -9,7 +9,7 @@ const TABS: Record<Role, string[]> = {
   staff: ['Orders', 'Customers', 'Measurements', 'More'],
 }
 const SIDEBAR: Record<Role, string[]> = {
-  admin: ['Dashboard', 'Customers', 'Orders', 'Measurements', 'Ledger', 'Vendors'],
+  admin: ['Dashboard', 'Customers', 'Orders', 'Measurements', 'Ledger', 'Profit & Loss', 'Vendors'],
   staff: ['Customers', 'Orders', 'Measurements'],
 }
 
@@ -61,7 +61,7 @@ for (const role of ['admin', 'staff'] as Role[]) {
       const sheet = page.getByRole('dialog')
       await expect(sheet).toBeVisible()
       const links = await sheet.getByRole('list', { name: 'More sections' }).getByRole('link').allInnerTexts().catch(() => [])
-      expect(links.map((l) => l.trim())).toEqual(role === 'admin' ? ['Measurements', 'Vendors'] : [])
+      expect(links.map((l) => l.trim())).toEqual(role === 'admin' ? ['Measurements', 'Profit & Loss', 'Vendors'] : [])
       await expect(sheet.getByRole('button', { name: 'Sign Out' })).toBeVisible()
       await expect(sheet.getByText(`qa-${role}@arstudio.test`)).toBeVisible()
       // Escape closes it and focus returns to the trigger
@@ -100,7 +100,7 @@ for (const role of ['admin', 'staff'] as Role[]) {
 
 test.describe('access control, deep links, sessions', () => {
   test('staff are redirected away from admin-only pages', async ({ browser }) => {
-    for (const path of ['/', '/ledger', '/vendors']) {
+    for (const path of ['/', '/ledger', '/pnl', '/vendors']) {
       const { ctx, page } = await open(browser, 'staff', 'phone-390', path)
       await expect(page).toHaveURL(/\/customers$/, { timeout: 15000 })
       await ctx.close()
@@ -108,7 +108,7 @@ test.describe('access control, deep links, sessions', () => {
   })
 
   test('signed-out visitors are sent to sign-in from every private route', async ({ browser }) => {
-    for (const path of ['/', '/customers', '/orders', '/measurements', '/ledger', '/vendors']) {
+    for (const path of ['/', '/customers', '/orders', '/measurements', '/ledger', '/pnl', '/vendors']) {
       const { ctx, page } = await open(browser, null, 'phone-390', path)
       await expect(page).toHaveURL(/\/sign-in$/, { timeout: 15000 })
       await ctx.close()

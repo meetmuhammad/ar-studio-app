@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { VendorForm } from "@/components/forms/vendor-form"
+import { VendorForm, type VendorInput } from "@/components/forms/vendor-form"
 import type { Vendor } from "@/lib/supabase-client"
 import { authFetch } from '@/lib/auth-fetch'
 
@@ -24,7 +24,7 @@ export function VendorDialog({
   vendor,
   onSuccess,
 }: VendorDialogProps) {
-  const handleSubmit = async (data: any) => {
+  const handleSubmit = async (data: VendorInput) => {
     const url = vendor ? `/api/vendors/${vendor.id}` : '/api/vendors'
     const method = vendor ? 'PUT' : 'POST'
     

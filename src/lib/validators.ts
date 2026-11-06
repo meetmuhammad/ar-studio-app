@@ -113,6 +113,8 @@ export const UpdateOrderSchema = CreateOrderFields.partial().extend({
 })
 
 export type CreateOrderInput = z.infer<typeof CreateOrderSchema>
+/** An order form's values before the schema runs (amounts may still be strings). */
+export type CreateOrderFormValues = z.input<typeof CreateOrderSchema>
 export type UpdateOrderInput = z.infer<typeof UpdateOrderSchema>
 
 // API query schemas for pagination and filtering
@@ -167,3 +169,5 @@ export const CreatePaymentSchema = z.object({
 })
 
 export type CreatePaymentInput = z.infer<typeof CreatePaymentSchema>
+/** The payment form's values before the schema runs (payment_method may still be unset). */
+export type CreatePaymentFormValues = z.input<typeof CreatePaymentSchema>

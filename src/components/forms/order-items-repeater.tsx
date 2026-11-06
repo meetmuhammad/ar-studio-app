@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import { useFieldArray, Control } from "react-hook-form"
 import { Plus, Trash2 } from "lucide-react"
 
@@ -21,7 +20,7 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import type { CreateOrderInput, OrderItem } from "@/lib/validators"
+import type { CreateOrderFormValues, CreateOrderInput } from "@/lib/validators"
 
 const ORDER_TYPES = [
   { value: "nikkah", label: "Nikkah" },
@@ -32,7 +31,7 @@ const ORDER_TYPES = [
 ] as const
 
 interface OrderItemsRepeaterProps {
-  control: Control<CreateOrderInput>
+  control: Control<CreateOrderFormValues, unknown, CreateOrderInput>
   disabled?: boolean
 }
 
@@ -88,7 +87,7 @@ export function OrderItemsRepeater({ control, disabled }: OrderItemsRepeaterProp
         {fields.length === 0 ? (
           <div className="text-center py-6 text-muted-foreground">
             <p className="text-sm">No order items added yet.</p>
-            <p className="text-xs mt-1">Click "Add Item" to get started.</p>
+            <p className="text-xs mt-1">Click &quot;Add Item&quot; to get started.</p>
           </div>
         ) : (
           <div className="space-y-4">

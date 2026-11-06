@@ -49,27 +49,25 @@ export function CustomerDetailDialog({
 
   // Fetch customer orders when dialog opens
   useEffect(() => {
-    if (open && customer) {
-      fetchCustomerOrders()
-    }
-  }, [open, customer])
+    if (!open || !customer) return
 
-  const fetchCustomerOrders = async () => {
-    if (!customer) return
-
-    setLoading(true)
-    try {
-      const response = await authFetch(`/api/orders?customerId=${customer.id}&pageSize=100`)
-      if (response.ok) {
-        const data = await response.json()
-        setOrders(data.data || [])
+    const fetchCustomerOrders = async () => {
+      setLoading(true)
+      try {
+        const response = await authFetch(`/api/orders?customerId=${customer.id}&pageSize=100`)
+        if (response.ok) {
+          const data = await response.json()
+          setOrders(data.data || [])
+        }
+      } catch (error) {
+        console.error('Error fetching customer orders:', error)
+      } finally {
+        setLoading(false)
       }
-    } catch (error) {
-      console.error('Error fetching customer orders:', error)
-    } finally {
-      setLoading(false)
     }
-  }
+
+    fetchCustomerOrders()
+  }, [open, customer])
 
   if (!customer) return null
 

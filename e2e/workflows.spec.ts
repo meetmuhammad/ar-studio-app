@@ -385,10 +385,11 @@ for (const v of ['phone-390', 'tablet-820']) {
 
       // the staff navigation never offers admin-only destinations
       const nav = page.getByRole('navigation', { name: vp(v).width < 768 ? 'Primary' : 'Main' })
-      for (const name of ['Ledger', 'Vendors', 'Dashboard', 'Home']) await expect(nav.getByRole('link', { name })).toHaveCount(0)
+      for (const name of ['Ledger', 'Profit & Loss', 'Vendors', 'Dashboard', 'Home']) await expect(nav.getByRole('link', { name })).toHaveCount(0)
       // and the data behind them refuses a staff token (not just hidden links)
       expect((await api(page, 'GET', '/api/general-ledger')).status).toBe(403)
       expect((await api(page, 'GET', '/api/vendor-ledger')).status).toBe(403)
+      expect((await api(page, 'GET', '/api/pnl?mode=cash&preset=this_month')).status).toBe(403)
       expect((await api(page, 'POST', '/api/general-ledger', { entry_date: '2099-01-01', particulars: 'QA-E2E staff must not write', debit: 1, entry_type: 'miscellaneous' })).status).toBe(403)
     } finally {
       if (id) await api(page, 'DELETE', `/api/customers/${id}`)

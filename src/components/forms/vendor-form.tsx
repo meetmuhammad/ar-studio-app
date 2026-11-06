@@ -38,7 +38,7 @@ const VendorSchema = z.object({
   category_id: z.string().optional(),
 })
 
-type VendorInput = z.infer<typeof VendorSchema>
+export type VendorInput = z.infer<typeof VendorSchema>
 
 interface VendorFormProps {
   vendor?: Vendor | null
@@ -63,7 +63,7 @@ export function VendorForm({ vendor, onSubmit, onCancel }: VendorFormProps) {
     setIsSubmitting(true)
     try {
       await onSubmit(data)
-    } catch (error) {
+    } catch {
       // Error handling is done in the parent component
     } finally {
       setIsSubmitting(false)

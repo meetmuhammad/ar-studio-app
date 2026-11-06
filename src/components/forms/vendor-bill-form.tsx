@@ -27,10 +27,20 @@ const VendorBillSchema = z.object({
 
 type VendorBillInput = z.infer<typeof VendorBillSchema>
 
+/** What the form submits: a bill is a credit on the vendor's sub-ledger. */
+export interface VendorBillSubmitData {
+  vendor_id: string
+  entry_date: string
+  particulars: string
+  debit: null
+  credit: number
+  notes: string | null
+}
+
 interface VendorBillFormProps {
   vendorId: string
   vendorName: string
-  onSubmit: (data: any) => Promise<void>
+  onSubmit: (data: VendorBillSubmitData) => Promise<void>
   onCancel: () => void
 }
 
@@ -51,7 +61,7 @@ export function VendorBillForm({ vendorId, vendorName, onSubmit, onCancel }: Ven
     setIsSubmitting(true)
     try {
       const amount = parseFloat(data.amount)
-      const submitData = {
+      const submitData: VendorBillSubmitData = {
         vendor_id: vendorId,
         entry_date: data.entry_date,
         particulars: data.particulars,
@@ -60,7 +70,7 @@ export function VendorBillForm({ vendorId, vendorName, onSubmit, onCancel }: Ven
         notes: data.notes || null,
       }
       await onSubmit(submitData)
-    } catch (error) {
+    } catch {
       // Error handling is done in the parent component
     } finally {
       setIsSubmitting(false)
