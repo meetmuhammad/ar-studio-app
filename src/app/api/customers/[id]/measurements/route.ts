@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
+import { requireAuth } from "@/lib/api-auth";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -9,6 +10,9 @@ export async function GET(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const auth = await requireAuth(request);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const { id: customerId } = await params;
     const supabase = createAdminSupabaseClient();

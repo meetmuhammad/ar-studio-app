@@ -22,6 +22,7 @@ import {
 import { CustomerDialog } from "@/components/dialogs/customer-dialog"
 import { CreateCustomerInput } from "@/lib/validators"
 import type { Customer } from "@/lib/supabase-client"
+import { authFetch } from '@/lib/auth-fetch'
 
 interface CustomerComboboxProps {
   value?: string
@@ -46,7 +47,7 @@ export function CustomerCombobox({ value, onValueChange, disabled }: CustomerCom
       }
       params.set('pageSize', '50') // Get more customers for selection
 
-      const response = await fetch(`/api/customers?${params.toString()}`)
+      const response = await authFetch(`/api/customers?${params.toString()}`)
       if (response.ok) {
         const data = await response.json()
         setCustomers(data.data || [])
@@ -85,7 +86,7 @@ export function CustomerCombobox({ value, onValueChange, disabled }: CustomerCom
   // Handle create customer
   const handleCreateCustomer = async (data: CreateCustomerInput) => {
     try {
-      const response = await fetch('/api/customers', {
+      const response = await authFetch('/api/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),

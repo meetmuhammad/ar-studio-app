@@ -37,7 +37,7 @@ export function useDashboardStats() {
   return useQuery({
     queryKey: queryKeys.dashboard.stats,
     queryFn: async () => {
-      const response = await fetch('/api/dashboard-stats')
+      const response = await authFetch('/api/dashboard-stats')
       if (!response.ok) throw new Error('Failed to fetch dashboard stats')
       return response.json() as Promise<DashboardStatsResponse>
     },
@@ -70,7 +70,7 @@ export function useCustomers(params: CustomerQueryParams = {}) {
       })
       if (q?.trim()) searchParams.set('q', q.trim())
       
-      const response = await fetch(`/api/customers?${searchParams}`)
+      const response = await authFetch(`/api/customers?${searchParams}`)
       if (!response.ok) throw new Error('Failed to fetch customers')
       return response.json() as Promise<PaginatedResponse<Customer>>
     },
@@ -81,7 +81,7 @@ export function useCustomer(id: string) {
   return useQuery({
     queryKey: queryKeys.customers.detail(id),
     queryFn: async () => {
-      const response = await fetch(`/api/customers/${id}`)
+      const response = await authFetch(`/api/customers/${id}`)
       if (!response.ok) throw new Error('Failed to fetch customer')
       return response.json()
     },
@@ -94,7 +94,7 @@ export function useCreateCustomer() {
   
   return useMutation({
     mutationFn: async (data: any) => {
-      const response = await fetch('/api/customers', {
+      const response = await authFetch('/api/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -121,7 +121,7 @@ export function useUpdateCustomer() {
   
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      const response = await fetch(`/api/customers/${id}`, {
+      const response = await authFetch(`/api/customers/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -150,7 +150,7 @@ export function useDeleteCustomer() {
   
   return useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/customers/${id}`, {
+      const response = await authFetch(`/api/customers/${id}`, {
         method: 'DELETE',
       })
       if (!response.ok) {
@@ -438,7 +438,7 @@ export function useVendors() {
   return useQuery({
     queryKey: queryKeys.vendors.list,
     queryFn: async () => {
-      const response = await fetch('/api/vendors')
+      const response = await authFetch('/api/vendors')
       if (!response.ok) throw new Error('Failed to fetch vendors')
       return response.json() as Promise<VendorWithCategory[]>
     },
@@ -462,7 +462,7 @@ export function useCreateVendor() {
   
   return useMutation({
     mutationFn: async (data: any) => {
-      const response = await fetch('/api/vendors', {
+      const response = await authFetch('/api/vendors', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -488,7 +488,7 @@ export function useUpdateVendor() {
   
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      const response = await fetch(`/api/vendors/${id}`, {
+      const response = await authFetch(`/api/vendors/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -514,7 +514,7 @@ export function useDeleteVendor() {
   
   return useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/vendors/${id}`, {
+      const response = await authFetch(`/api/vendors/${id}`, {
         method: 'DELETE',
       })
       if (!response.ok) {
@@ -541,7 +541,7 @@ export function useVendorCategories(includeArchived = false) {
   return useQuery({
     queryKey: queryKeys.vendorCategories.list(includeArchived),
     queryFn: async () => {
-      const response = await fetch(
+      const response = await authFetch(
         `/api/vendor-categories${includeArchived ? '?include_archived=1' : ''}`
       )
       if (!response.ok) throw new Error('Failed to fetch vendor categories')
@@ -555,7 +555,7 @@ export function useCreateVendorCategory() {
 
   return useMutation({
     mutationFn: async (name: string) => {
-      const response = await fetch('/api/vendor-categories', {
+      const response = await authFetch('/api/vendor-categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
@@ -582,7 +582,7 @@ export function useUpdateVendorCategory() {
 
   return useMutation({
     mutationFn: async ({ id, name, archived }: { id: string; name?: string; archived?: boolean }) => {
-      const response = await fetch(`/api/vendor-categories/${id}`, {
+      const response = await authFetch(`/api/vendor-categories/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, archived }),
@@ -610,7 +610,7 @@ export function useDeleteVendorCategory() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/vendor-categories/${id}`, {
+      const response = await authFetch(`/api/vendor-categories/${id}`, {
         method: 'DELETE',
       })
       if (!response.ok) {

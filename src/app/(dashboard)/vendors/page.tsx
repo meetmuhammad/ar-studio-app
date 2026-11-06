@@ -21,6 +21,7 @@ import { toast } from 'sonner'
 import { VendorDialog } from '@/components/dialogs/vendor-dialog'
 import { VendorCategoriesDialog } from '@/components/dialogs/vendor-categories-dialog'
 import { DeleteConfirmationDialog } from '@/components/dialogs/delete-confirmation-dialog'
+import { authFetch } from '@/lib/auth-fetch'
 
 export default function VendorsPage() {
   const router = useRouter()
@@ -55,7 +56,7 @@ export default function VendorsPage() {
 
   const fetchVendors = async () => {
     try {
-      const response = await fetch('/api/vendors')
+      const response = await authFetch('/api/vendors')
       if (!response.ok) throw new Error('Failed to fetch vendors')
       const data = await response.json()
       setVendors(data)
@@ -80,7 +81,7 @@ export default function VendorsPage() {
     if (!vendor) return
 
     try {
-      const response = await fetch(`/api/vendors/${vendor.id}`, {
+      const response = await authFetch(`/api/vendors/${vendor.id}`, {
         method: 'DELETE',
       })
 

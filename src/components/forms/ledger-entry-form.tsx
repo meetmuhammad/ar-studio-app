@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import type { Vendor, LedgerEntryType, GeneralLedger } from "@/lib/supabase-client"
+import { authFetch } from '@/lib/auth-fetch'
 
 const LedgerEntrySchema = z.object({
   entry_date: z.string().min(1, "Entry date is required"),
@@ -116,7 +117,7 @@ export function LedgerEntryForm({ entry, onSubmit, onCancel }: LedgerEntryFormPr
 
   useEffect(() => {
     // Fetch vendors for the dropdown
-    fetch('/api/vendors')
+    authFetch('/api/vendors')
       .then(res => res.json())
       .then(data => setVendors(data))
       .catch(err => console.error('Error fetching vendors:', err))

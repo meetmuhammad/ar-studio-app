@@ -21,6 +21,7 @@ import { Measurement, MeasurementFormValues } from "@/types/measurements";
 import { Customer } from "@/lib/supabase-client";
 import { Plus, Ruler } from "lucide-react";
 import { toast } from "sonner";
+import { authFetch } from '@/lib/auth-fetch';
 
 
 export default function MeasurementsPage() {
@@ -43,7 +44,7 @@ export default function MeasurementsPage() {
         page: '1',
         limit: '100', // Measurements are lightweight, 100 per page is fine
       });
-      const response = await fetch(`/api/measurements?${params}`);
+      const response = await authFetch(`/api/measurements?${params}`);
       if (!response.ok) throw new Error("Failed to fetch measurements");
       
       const data = await response.json();
@@ -59,7 +60,7 @@ export default function MeasurementsPage() {
   // Fetch customers for the form (only id, name, phone needed)
   const fetchCustomers = async () => {
     try {
-      const response = await fetch("/api/customers?pageSize=1000");
+      const response = await authFetch("/api/customers?pageSize=1000");
       if (!response.ok) throw new Error("Failed to fetch customers");
       
       const data = await response.json();
@@ -79,7 +80,7 @@ export default function MeasurementsPage() {
   const handleCreateMeasurement = async (data: MeasurementFormValues) => {
     try {
       setSubmitting(true);
-      const response = await fetch("/api/measurements", {
+      const response = await authFetch("/api/measurements", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -106,7 +107,7 @@ export default function MeasurementsPage() {
 
     try {
       setSubmitting(true);
-      const response = await fetch(`/api/measurements/${selectedMeasurement.id}`, {
+      const response = await authFetch(`/api/measurements/${selectedMeasurement.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -134,7 +135,7 @@ export default function MeasurementsPage() {
 
     try {
       setSubmitting(true);
-      const response = await fetch(`/api/measurements/${selectedMeasurement.id}`, {
+      const response = await authFetch(`/api/measurements/${selectedMeasurement.id}`, {
         method: "DELETE",
       });
 

@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { VendorForm } from "@/components/forms/vendor-form"
 import type { Vendor } from "@/lib/supabase-client"
+import { authFetch } from '@/lib/auth-fetch'
 
 interface VendorDialogProps {
   open: boolean
@@ -27,7 +28,7 @@ export function VendorDialog({
     const url = vendor ? `/api/vendors/${vendor.id}` : '/api/vendors'
     const method = vendor ? 'PUT' : 'POST'
     
-    const response = await fetch(url, {
+    const response = await authFetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),

@@ -24,6 +24,7 @@ import { CreateOrderInput } from "@/lib/validators"
 import { Measurement, MEASUREMENT_FIELDS, MeasurementFormData } from "@/types/measurements"
 import { Star, Ruler, Plus, RefreshCw, Edit3 } from "lucide-react"
 import { toast } from "sonner"
+import { authFetch } from '@/lib/auth-fetch'
 
 export function OrderMeasurementsStep() {
   const form = useFormContext<CreateOrderInput>()
@@ -60,7 +61,7 @@ export function OrderMeasurementsStep() {
   const fetchCustomerMeasurements = async (customerId: string, showSuccessToast: boolean = false) => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/measurements?customer_id=${customerId}`)
+      const response = await authFetch(`/api/measurements?customer_id=${customerId}`)
       if (!response.ok) throw new Error('Failed to fetch measurements')
       
       const data = await response.json()
@@ -182,7 +183,7 @@ export function OrderMeasurementsStep() {
         name: newMeasurement.name || 'New Measurements',
       }
 
-      const response = await fetch('/api/measurements', {
+      const response = await authFetch('/api/measurements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(measurementData)
