@@ -39,6 +39,9 @@ export default function VendorsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState(ALL_VENDOR_CATEGORIES)
   const { data: categories = [] } = useVendorCategories()
+  // Search matches every category name, archived and empty ones included, so
+  // typing a category's name always gives the same vendors as choosing it.
+  const { data: allCategories = [] } = useVendorCategories(true)
   const [isLoading, setIsLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingVendor, setEditingVendor] = useState<VendorWithCategory | null>(null)
@@ -50,8 +53,8 @@ export default function VendorsPage() {
   }, [])
 
   const filteredVendors = useMemo(
-    () => filterVendors(vendors, { categoryId: categoryFilter, search: searchQuery }),
-    [vendors, categoryFilter, searchQuery]
+    () => filterVendors(vendors, { categoryId: categoryFilter, search: searchQuery, categories: allCategories }),
+    [vendors, categoryFilter, searchQuery, allCategories]
   )
 
   const fetchVendors = async () => {

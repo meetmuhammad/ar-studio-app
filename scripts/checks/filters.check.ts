@@ -37,4 +37,17 @@ ok('searching a category name == choosing it', () => {
 ok('partial search still matches name/notes/category', () => assert.deepEqual(ids(filterVendors(vendors, { search: 'fab' })), ['1', '2', '4']))
 ok('category + search combine', () => assert.deepEqual(ids(filterVendors(vendors, { categoryId: 'c2', search: 'fabric' })), []))
 
+ok('an empty category name searches to 0, like its filter (D1)', () => {
+  const w4 = cat('c3', 'W4 Charity'), charity = cat('c4', 'Charity'), oldOne = cat('c5', 'Old Supplies')
+  const vs = [...vendors, v('5', 'Hope Trust', w4)]
+  const all = [fabric, tailoring, w4, charity, oldOne]
+  for (const c of all) {
+    for (const q of [c.name, `  ${c.name.toUpperCase()} `]) {
+      assert.deepEqual(ids(filterVendors(vs, { search: q, categories: all })), ids(filterVendors(vs, { categoryId: c.id })), c.name)
+    }
+  }
+  assert.deepEqual(ids(filterVendors(vs, { search: 'Charity', categories: all })), [])
+  assert.deepEqual(ids(filterVendors(vs, { search: 'charit', categories: all })), ['5'])
+})
+
 console.log(`\n${n} checks passed`)
