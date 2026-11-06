@@ -146,7 +146,9 @@ export interface GeneralLedgerWithRelations extends GeneralLedger {
   vendors?: VendorWithCategory | null
   orders?: Order | null
   vendor_tags?: VendorTag | null
-  calculatedBalance?: number // Client-side calculated balance for correct display order
+  calculatedBalance?: number // The balance the ledger table shows (range-scoped running balance)
+  /** Running balance within the requested entry_date range; set by GET /api/general-ledger when paginated. */
+  range_balance?: number | null
 }
 
 export interface VendorLedger {

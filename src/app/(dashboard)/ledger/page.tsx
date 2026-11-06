@@ -68,9 +68,13 @@ export default function LedgerPage() {
   const syncMutation = useSyncOrderPayments()
   const deleteMutation = useDeleteLedgerEntry()
   
-  const entries = (entriesResult?.data || []).map((entry: any) => ({
+  // Balance column: the running balance within the selected date range (starts
+  // at 0, debit - credit in ledger order), computed by the API over the whole
+  // range, so the newest in-range entry matches the Current Balance card on any
+  // page. The stored `balance` is all-time and is only a fallback.
+  const entries = (entriesResult?.data || []).map((entry) => ({
     ...entry,
-    calculatedBalance: entry.balance,
+    calculatedBalance: entry.range_balance ?? entry.balance,
   })) as GeneralLedgerWithRelations[]
   const totalEntries = entriesResult?.pagination?.total || 0
   const totalPages = entriesResult?.pagination?.pages || 1
@@ -129,7 +133,7 @@ export default function LedgerPage() {
         entry.entry_type.replace('_', ' '),
         entry.debit || 0,
         entry.credit || 0,
-        entry.calculatedBalance || entry.balance,
+        entry.calculatedBalance ?? entry.balance,
         entry.vendors?.name ? `"${entry.vendors.name.replace(/"/g, '""')}"` : '',
         // The vendor's CURRENT category, matching what the filter selects on.
         entry.vendor_id ? `"${(entry.vendors?.vendor_categories?.name || 'Uncategorized').replace(/"/g, '""')}"` : '',
@@ -364,7 +368,7 @@ export default function LedgerPage() {
                     {entry.credit ? formatCurrency(entry.credit) : '-'}
                   </TableCell>
                   <TableCell data-label="Balance" className="text-right font-medium">
-                    {formatCurrency(entry.calculatedBalance || entry.balance)}
+                    {formatCurrency(entry.calculatedBalance ?? entry.balance)}
                   </TableCell>
                   <TableCell data-label="Actions" className="text-right">
                     {entry.entry_type !== 'order_payment' && (

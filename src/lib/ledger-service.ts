@@ -64,6 +64,59 @@ export async function listLedgerEntries(f: LedgerFilters) {
   return { entries: data ?? [], count: count ?? 0 }
 }
 
+/**
+ * Running balance for each of `ids`, scoped to an inclusive entry_date range
+ * (either side optional): it starts at 0 on the first entry of the range and
+ * adds debit - credit for every entry in the range, in the order the database
+ * uses for the stored all-time balance (entry_date, created_at, id). The value
+ * for an entry is the total after that entry, so the chronologically last entry
+ * of the range carries debit - credit over the whole range -- the figure the
+ * stats route reports as currentBalance for the same range.
+ *
+ * Only the date range scopes the run. Other filters (search, category, type,
+ * vendor) can hide rows from the table, but hidden in-range rows still count,
+ * so the balances shown agree with the Current Balance card.
+ *
+ * Computed here, not from the stored general_ledger.balance column: that column
+ * is all-time by design and stays that way. Reads the range in 1,000-row pages
+ * (PostgREST's response cap) and stops once every requested id has been seen,
+ * so a request for an older page reads less. Sums are in integer cents.
+ */
+export async function getRangeRunningBalances(
+  ids: string[],
+  range: { startDate?: string | null; endDate?: string | null } = {}
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  if (ids.length === 0) return out
+
+  const supabase = createAdminSupabaseClient()
+  const wanted = new Set(ids)
+  const PAGE = 1000
+  let running = 0
+
+  for (let from = 0; ; from += PAGE) {
+    let q = supabase
+      .from('general_ledger')
+      .select('id, debit, credit')
+      .order('entry_date', { ascending: true })
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true }) // total order: paging neither skips nor repeats rows
+      .range(from, from + PAGE - 1)
+    if (range.startDate) q = q.gte('entry_date', range.startDate)
+    if (range.endDate) q = q.lte('entry_date', range.endDate)
+
+    const { data, error } = await q
+    if (error) throw new Error(`Failed to compute running balances: ${error.message}`)
+    for (const row of data ?? []) {
+      running += toCents(row.debit) - toCents(row.credit)
+      if (wanted.has(row.id)) out.set(row.id, centsToDecimal(running))
+    }
+    if (out.size === wanted.size || (data?.length ?? 0) < PAGE) break
+  }
+
+  return out
+}
+
 export interface LedgerTotals {
   /** Decimal strings, exact to the cent. */
   totalDebit: string
