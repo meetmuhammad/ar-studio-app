@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-auth'
+import { requireBusiness } from '@/lib/business-context'
 
 // POST /api/general-ledger/sync-payments - Sync existing order payments to ledger
 export async function POST(request: Request) {
   // Admin only, and checked before anything else: this handler deletes every
-  // order_payment ledger row before it rebuilds them.
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  // order_payment ledger row before it rebuilds them. Scoped to ONE business:
+  // it deletes and rebuilds that business's order payments only.
+  const scope = await requireBusiness(request, { roles: ['admin'] })
+  if (scope instanceof NextResponse) return scope
+  const businessId = scope.businessId
 
   try {
     const supabase = createAdminSupabaseClient()
@@ -17,6 +19,7 @@ export async function POST(request: Request) {
       .from('general_ledger')
       .delete()
       .eq('entry_type', 'order_payment')
+      .eq('business_id', businessId)
 
     if (deleteError) {
       console.error('Error deleting existing order payments:', deleteError)
@@ -30,6 +33,7 @@ export async function POST(request: Request) {
     const { data: ordersWithAdvance, error: ordersError } = await supabase
       .from('orders')
       .select('id, order_number, advance_paid, booking_date')
+      .eq('business_id', businessId)
       .gt('advance_paid', 0)
 
     if (ordersError) {
@@ -44,6 +48,7 @@ export async function POST(request: Request) {
     const { data: payments, error: paymentsError } = await supabase
       .from('payments')
       .select('id, order_id, amount, payment_date, payment_method, notes, orders!inner(order_number)')
+      .eq('business_id', businessId)
 
     if (paymentsError) {
       console.error('Error fetching payments:', paymentsError)
@@ -58,6 +63,7 @@ export async function POST(request: Request) {
     // Create entries for all orders with advance payments
     for (const order of ordersWithAdvance || []) {
       entriesToCreate.push({
+        business_id: businessId,
         entry_date: order.booking_date,
         particulars: `Advance payment for Order #${order.order_number}`,
         debit: order.advance_paid,
@@ -71,6 +77,7 @@ export async function POST(request: Request) {
     for (const payment of payments || []) {
       const order = payment.orders as any
       entriesToCreate.push({
+        business_id: businessId,
         entry_date: payment.payment_date,
         particulars: `Payment for Order #${order?.order_number || 'Unknown'}`,
         debit: payment.amount,

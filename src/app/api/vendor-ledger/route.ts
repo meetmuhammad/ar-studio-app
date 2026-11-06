@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-auth'
+import { inScope, requireBusiness, requireBusinessRead } from '@/lib/business-context'
+import { belongsToBusiness } from '@/lib/database'
 
 // GET /api/vendor-ledger?vendor_id={id} - Get vendor sub-ledger
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusinessRead(request, { roles: ['admin'] })
+  if (scope instanceof NextResponse) return scope
 
   try {
     const supabase = createAdminSupabaseClient()
@@ -19,7 +20,9 @@ export async function GET(request: Request) {
       )
     }
 
-    const { data: entries, error } = await supabase
+    // A vendor's sub-ledger is one book of one business; another business's
+    // vendor matches nothing.
+    const { data: entries, error } = await inScope(supabase
       .from('vendor_ledger')
       .select(`
         *,
@@ -30,7 +33,7 @@ export async function GET(request: Request) {
           orders (id, order_number)
         )
       `)
-      .eq('vendor_id', vendorId)
+      .eq('vendor_id', vendorId), scope)
       .order('entry_date', { ascending: false })
       .order('created_at', { ascending: false })
 
@@ -54,8 +57,8 @@ export async function GET(request: Request) {
 
 // POST /api/vendor-ledger - Create vendor bill (sub-ledger only, no main ledger entry)
 export async function POST(request: Request) {
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusiness(request, { roles: ['admin'] })
+  if (scope instanceof NextResponse) return scope
 
   try {
     const supabase = createAdminSupabaseClient()
@@ -86,6 +89,10 @@ export async function POST(request: Request) {
       )
     }
 
+    if (!(await belongsToBusiness('vendors', [vendor_id], scope.businessId))) {
+      return NextResponse.json({ error: 'Vendor not found' }, { status: 404 })
+    }
+
     // Get the last balance for this vendor
     const { data: lastEntry } = await supabase
       .from('vendor_ledger')
@@ -103,6 +110,7 @@ export async function POST(request: Request) {
     const { data: entry, error } = await supabase
       .from('vendor_ledger')
       .insert({
+        business_id: scope.businessId,
         vendor_id,
         general_ledger_id: null, // No link to general ledger
         entry_date,

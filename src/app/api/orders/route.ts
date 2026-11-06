@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getOrders, createOrder, createOrderItems } from '@/lib/database'
+import { getOrders, createOrder, createOrderItems, belongsToBusiness } from '@/lib/database'
 import { CreateOrderSchema, OrderQuerySchema } from '@/lib/validators'
-import { requireAuth } from '@/lib/api-auth'
+import { requireBusiness, requireBusinessRead } from '@/lib/business-context'
 
 // GET /api/orders - List orders with search and pagination
 export async function GET(request: NextRequest) {
-  const auth = await requireAuth(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusinessRead(request)
+  if (scope instanceof NextResponse) return scope
 
   try {
     const { searchParams } = new URL(request.url)
@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     })
 
     const result = await getOrders({
+      scope,
       q: query.q,
       customerId: query.customerId,
       from: query.from,
@@ -64,8 +65,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   // Creating an order also writes its advance to the ledger, so this is a
   // ledger write path; staff create orders, so staff stay allowed.
-  const auth = await requireAuth(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusiness(request)
+  if (scope instanceof NextResponse) return scope
 
   try {
     const body = await request.json()
@@ -120,8 +121,17 @@ export async function POST(request: NextRequest) {
       status: orderData.status
     }
 
-    // Create the order first
-    const order = await createOrder(orderWithStatus)
+    // The customer and measurement must be in this business. One from another
+    // business is not found (the database guard refuses it too).
+    if (
+      !(await belongsToBusiness('customers', [orderWithStatus.customer_id], scope.businessId)) ||
+      !(await belongsToBusiness('measurements', [orderWithStatus.measurement_id], scope.businessId))
+    ) {
+      return NextResponse.json({ error: 'Customer or measurement not found' }, { status: 404 })
+    }
+
+    // Create the order first (numbered within this business: AR-/TL-#####)
+    const order = await createOrder(scope.business, orderWithStatus)
     
     // Create order items if any
     if (orderItems && orderItems.length > 0) {
@@ -134,6 +144,7 @@ export async function POST(request: NextRequest) {
       const supabase = createAdminSupabaseClient()
       
       await supabase.from('general_ledger').insert({
+        business_id: scope.businessId,
         entry_date: orderData.booking_date,
         particulars: `Advance payment for Order #${order.order_number}`,
         debit: orderData.advance_paid,

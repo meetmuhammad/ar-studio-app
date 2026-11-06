@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-auth'
+import { requireBusiness, requireBusinessRead } from '@/lib/business-context'
+import { createAdminSupabaseClient as adminClient } from '@/lib/supabase'
+
+/** Tags follow their vendor: the vendor must be in one of the scope's businesses. */
+async function vendorInScope(vendorId: string, businessIds: string[]) {
+  const { data } = await adminClient()
+    .from('vendors').select('id').eq('id', vendorId).in('business_id', businessIds).maybeSingle()
+  return !!data
+}
 
 // GET /api/vendor-tags?vendor_id={id} - Get tags for a vendor
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusinessRead(request, { roles: ['admin'] })
+  if (scope instanceof NextResponse) return scope
 
   try {
     const supabase = createAdminSupabaseClient()
@@ -17,6 +25,10 @@ export async function GET(request: Request) {
         { error: 'vendor_id is required' },
         { status: 400 }
       )
+    }
+
+    if (!(await vendorInScope(vendorId, scope.businessIds))) {
+      return NextResponse.json({ error: 'Vendor not found' }, { status: 404 })
     }
 
     const { data: tags, error } = await supabase
@@ -45,8 +57,8 @@ export async function GET(request: Request) {
 
 // POST /api/vendor-tags - Create new tag
 export async function POST(request: Request) {
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusiness(request, { roles: ['admin'] })
+  if (scope instanceof NextResponse) return scope
 
   try {
     const supabase = createAdminSupabaseClient()
@@ -59,6 +71,10 @@ export async function POST(request: Request) {
         { error: 'vendor_id and tag_name are required' },
         { status: 400 }
       )
+    }
+
+    if (!(await vendorInScope(vendor_id, scope.businessIds))) {
+      return NextResponse.json({ error: 'Vendor not found' }, { status: 404 })
     }
 
     const { data: tag, error } = await supabase

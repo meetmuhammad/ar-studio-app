@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCustomer, updateCustomer, deleteCustomer } from '@/lib/database'
 import { UpdateCustomerSchema } from '@/lib/validators'
-import { requireAuth } from '@/lib/api-auth'
+import { requireBusiness, requireBusinessRead } from '@/lib/business-context'
 
 // GET /api/customers/[id] - Get customer by ID
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAuth(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusinessRead(request)
+  if (scope instanceof NextResponse) return scope
 
   try {
     const { id } = await params
-    const customer = await getCustomer(id)
+    // A customer of another business is simply not found.
+    const customer = await getCustomer(id, scope)
 
     if (!customer) {
       return NextResponse.json(
@@ -37,15 +38,18 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAuth(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusiness(request)
+  if (scope instanceof NextResponse) return scope
 
   try {
     const { id } = await params
     const body = await request.json()
     const validatedData = UpdateCustomerSchema.parse(body)
 
-    const customer = await updateCustomer(id, validatedData)
+    const customer = await updateCustomer(id, scope.businessId, validatedData)
+    if (!customer) {
+      return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
+    }
 
     return NextResponse.json(customer)
   } catch (error) {
@@ -70,12 +74,14 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAuth(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusiness(request)
+  if (scope instanceof NextResponse) return scope
 
   try {
     const { id } = await params
-    await deleteCustomer(id)
+    if (!(await deleteCustomer(id, scope.businessId))) {
+      return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
+    }
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('DELETE /api/customers/[id] error:', error)

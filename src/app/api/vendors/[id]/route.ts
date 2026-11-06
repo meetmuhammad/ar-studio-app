@@ -1,20 +1,20 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-auth'
+import { inScope, requireBusiness, requireBusinessRead } from '@/lib/business-context'
 
 // GET /api/vendors/[id] - Get vendor with ledger entries
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusinessRead(request, { roles: ['admin'] })
+  if (scope instanceof NextResponse) return scope
 
   try {
     const supabase = createAdminSupabaseClient()
     const { id } = await params
 
-    const { data: vendor, error } = await supabase
+    const { data: vendor, error } = await inScope(supabase
       .from('vendors')
       .select(`
         *,
@@ -22,7 +22,7 @@ export async function GET(
         vendor_ledger (*),
         vendor_categories (id, name, archived_at)
       `)
-      .eq('id', id)
+      .eq('id', id), scope)
       .single()
 
     if (error) {
@@ -54,8 +54,8 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusiness(request, { roles: ['admin'] })
+  if (scope instanceof NextResponse) return scope
 
   try {
     const supabase = createAdminSupabaseClient()
@@ -88,6 +88,7 @@ export async function PUT(
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
+      .eq('business_id', scope.businessId)
       .select()
       .single()
 
@@ -120,17 +121,23 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusiness(request, { roles: ['admin'] })
+  if (scope instanceof NextResponse) return scope
 
   try {
     const supabase = createAdminSupabaseClient()
     const { id } = await params
 
-    const { error } = await supabase
+    const { data: deleted, error } = await supabase
       .from('vendors')
       .delete()
       .eq('id', id)
+      .eq('business_id', scope.businessId)
+      .select('id')
+
+    if (!error && (deleted?.length ?? 0) === 0) {
+      return NextResponse.json({ error: 'Vendor not found' }, { status: 404 })
+    }
 
     if (error) {
       console.error('Error deleting vendor:', error)

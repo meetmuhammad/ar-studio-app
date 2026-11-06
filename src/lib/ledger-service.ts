@@ -5,9 +5,22 @@ import { centsToDecimal, toCents } from '@/lib/ledger-mcp/normalize'
  * The ledger reads that the REST routes and the MCP server both use, so there
  * is one definition of each. Server-side only: it uses the service-role client,
  * so callers MUST have authorized the request before calling anything here.
+ *
+ * Every function is scoped to the business(es) the caller resolved (see
+ * src/lib/business-context.ts). Each business is its own book: a running
+ * balance is only ever computed within ONE business, never across two.
  */
 
+const scoped = <Q>(query: Q, businessIds: string[]): Q => {
+  if (businessIds.length === 0) throw new Error('ledger-service: empty business scope')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const q = query as any
+  return (businessIds.length === 1 ? q.eq('business_id', businessIds[0]) : q.in('business_id', businessIds)) as Q
+}
+
 export interface LedgerFilters {
+  /** Businesses to read. More than one only in the admin combined view. */
+  businessIds: string[]
   startDate?: string | null
   endDate?: string | null
   entryType?: string | null
@@ -33,14 +46,14 @@ export async function listLedgerEntries(f: LedgerFilters) {
   // drop every entry that has no vendor (order payments, direct expenses).
   const vendorJoin = f.vendorCategoryId ? 'vendors!inner' : 'vendors'
 
-  let query = supabase
+  let query = scoped(supabase
     .from('general_ledger')
     .select(`
       *,
       ${vendorJoin} (id, name, category_id, vendor_categories (id, name)),
       orders (id, order_number),
       vendor_tags (id, tag_name)
-    `, { count: 'exact' })
+    `, { count: 'exact' }), f.businessIds)
     .order('entry_date', { ascending: false })
     .order('created_at', { ascending: false })
     // Imported rows share entry_date and created_at; id is the tie-break the
@@ -83,6 +96,8 @@ export async function listLedgerEntries(f: LedgerFilters) {
  * so a request for an older page reads less. Sums are in integer cents.
  */
 export async function getRangeRunningBalances(
+  /** ONE business: a running balance across two books is meaningless. */
+  businessId: string,
   ids: string[],
   range: { startDate?: string | null; endDate?: string | null } = {}
 ): Promise<Map<string, string>> {
@@ -98,6 +113,7 @@ export async function getRangeRunningBalances(
     let q = supabase
       .from('general_ledger')
       .select('id, debit, credit')
+      .eq('business_id', businessId)
       .order('entry_date', { ascending: true })
       .order('created_at', { ascending: true })
       .order('id', { ascending: true }) // total order: paging neither skips nor repeats rows
@@ -137,7 +153,7 @@ export interface LedgerTotals {
  * cents rather than as floats.
  */
 export async function getLedgerTotals(
-  opts: { date?: string; startDate?: string | null; endDate?: string | null } = {}
+  opts: { businessIds: string[]; date?: string; startDate?: string | null; endDate?: string | null }
 ): Promise<LedgerTotals> {
   const supabase = createAdminSupabaseClient()
   const PAGE = 1000
@@ -146,9 +162,9 @@ export async function getLedgerTotals(
   let count = 0
 
   for (let from = 0; ; from += PAGE) {
-    let q = supabase
+    let q = scoped(supabase
       .from('general_ledger')
-      .select('debit, credit')
+      .select('debit, credit'), opts.businessIds)
       .order('id') // a stable order, so paging neither skips nor repeats rows
       .range(from, from + PAGE - 1)
     if (opts.date) q = q.eq('entry_date', opts.date)
@@ -174,11 +190,11 @@ export async function getLedgerTotals(
 }
 
 /** Vendors by name, for picking the one a vendor payment is for. */
-export async function findVendors(query: string, limit = 10) {
+export async function findVendors(businessIds: string[], query: string, limit = 10) {
   const supabase = createAdminSupabaseClient()
-  const { data, error } = await supabase
+  const { data, error } = await scoped(supabase
     .from('vendors')
-    .select('id, name, vendor_categories (name)')
+    .select('id, name, vendor_categories (name)'), businessIds)
     .ilike('name', `%${query}%`)
     .order('name')
     .limit(limit)

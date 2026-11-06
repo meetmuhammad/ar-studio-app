@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server'
 import { getAllOrdersSimple } from '@/lib/database'
-import { requireAuth } from '@/lib/api-auth'
+import { requireBusinessRead } from '@/lib/business-context'
 
 // GET /api/orders/all - Get all orders (simplified, for dropdowns)
 export async function GET(request: Request) {
-  const auth = await requireAuth(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusinessRead(request)
+  if (scope instanceof NextResponse) return scope
 
   try {
-    const orders = await getAllOrdersSimple()
+    const orders = await getAllOrdersSimple(scope)
     return NextResponse.json({ data: orders })
   } catch (error) {
     console.error('GET /api/orders/all error:', error)

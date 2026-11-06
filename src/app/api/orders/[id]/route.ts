@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getOrder, updateOrder, deleteOrder, updateOrderItems } from '@/lib/database'
+import { getOrder, updateOrder, deleteOrder, updateOrderItems, belongsToBusiness } from '@/lib/database'
 import { UpdateOrderSchema } from '@/lib/validators'
-import { requireAuth } from '@/lib/api-auth'
+import { requireBusiness, requireBusinessRead } from '@/lib/business-context'
 
 // GET /api/orders/[id] - Get order by ID
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAuth(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusinessRead(request)
+  if (scope instanceof NextResponse) return scope
 
   try {
     const { id } = await params
-    const order = await getOrder(id)
+    const order = await getOrder(id, scope)
 
     if (!order) {
       return NextResponse.json(
@@ -37,8 +37,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAuth(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusiness(request)
+  if (scope instanceof NextResponse) return scope
 
   try {
     const { id } = await params
@@ -93,9 +93,20 @@ export async function PATCH(
       ...(updateData.status && { status: updateData.status })
     }
 
-    // Update the order
-    const order = await updateOrder(id, updateWithStatus)
-    
+    // A new customer/measurement must also be in this business.
+    if (
+      !(await belongsToBusiness('customers', [updateWithStatus.customer_id], scope.businessId)) ||
+      !(await belongsToBusiness('measurements', [updateWithStatus.measurement_id], scope.businessId))
+    ) {
+      return NextResponse.json({ error: 'Customer or measurement not found' }, { status: 404 })
+    }
+
+    // Update the order (scoped: an order of another business is not found)
+    const order = await updateOrder(id, scope.businessId, updateWithStatus)
+    if (!order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+    }
+
     // Update order items if provided
     if (orderItems !== undefined) {
       await updateOrderItems(id, orderItems)
@@ -116,12 +127,14 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAuth(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusiness(request)
+  if (scope instanceof NextResponse) return scope
 
   try {
     const { id } = await params
-    await deleteOrder(id)
+    if (!(await deleteOrder(id, scope.businessId))) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+    }
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('DELETE /api/orders/[id] error:', error)

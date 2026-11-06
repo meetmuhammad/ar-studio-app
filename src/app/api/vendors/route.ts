@@ -1,21 +1,22 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-auth'
+import { inScope, requireBusiness, requireBusinessRead } from '@/lib/business-context'
 
 // GET /api/vendors - List all vendors
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusinessRead(request, { roles: ['admin'] })
+  if (scope instanceof NextResponse) return scope
 
   try {
     const supabase = createAdminSupabaseClient()
 
-    const { data: vendors, error } = await supabase
+    // Vendors belong to one business. Categories stay shared (global chart).
+    const { data: vendors, error } = await inScope(supabase
       .from('vendors')
       .select(`
         *,
         vendor_categories (id, name, archived_at)
-      `)
+      `), scope)
       .order('name', { ascending: true })
 
     if (error) {
@@ -38,8 +39,8 @@ export async function GET(request: Request) {
 
 // POST /api/vendors - Create new vendor
 export async function POST(request: Request) {
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusiness(request, { roles: ['admin'] })
+  if (scope instanceof NextResponse) return scope
 
   try {
     const supabase = createAdminSupabaseClient()
@@ -57,6 +58,7 @@ export async function POST(request: Request) {
     const { data: vendor, error } = await supabase
       .from('vendors')
       .insert({
+        business_id: scope.businessId,
         name: name.trim(),
         contact_person: contact_person?.trim() || null,
         phone: phone?.trim() || null,

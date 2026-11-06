@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { measurementSchema } from "@/types/measurements";
-import { requireAuth } from "@/lib/api-auth";
+import { inScope, requireBusiness, requireBusinessRead } from "@/lib/business-context";
+import { belongsToBusiness } from "@/lib/database";
 
 export async function GET(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (auth instanceof NextResponse) return auth;
+  const scope = await requireBusinessRead(request);
+  if (scope instanceof NextResponse) return scope;
 
   try {
     const supabase = createAdminSupabaseClient();
@@ -16,12 +17,12 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "10");
     const offset = (page - 1) * limit;
 
-    let query = supabase
+    let query = inScope(supabase
       .from("measurements")
       .select(`
         *,
         customer:customers(id, name, phone)
-      `)
+      `), scope)
       .order("created_at", { ascending: false });
 
     // Filter by customer if provided
@@ -35,9 +36,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Apply pagination
-    const countQuery = supabase
+    const countQuery = inScope(supabase
       .from("measurements")
-      .select("*", { count: "exact", head: true });
+      .select("*", { count: "exact", head: true }), scope);
     
     if (customer_id) {
       countQuery.eq("customer_id", customer_id);
@@ -76,8 +77,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (auth instanceof NextResponse) return auth;
+  const scope = await requireBusiness(request);
+  if (scope instanceof NextResponse) return scope;
 
   try {
     const body = await request.json();
@@ -113,17 +114,24 @@ export async function POST(request: NextRequest) {
       turban_size: validatedData.turban_size === "" ? null : validatedData.turban_size,
     };
 
+    // The customer must be in this business; one from another business is
+    // simply not found.
+    if (!(await belongsToBusiness("customers", [measurementData.customer_id], scope.businessId))) {
+      return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+    }
+
     // If this is set as default, unset other defaults for the same customer
     if (measurementData.is_default) {
       await supabase
         .from("measurements")
         .update({ is_default: false })
-        .eq("customer_id", measurementData.customer_id);
+        .eq("customer_id", measurementData.customer_id)
+        .eq("business_id", scope.businessId);
     }
 
     const { data, error } = await supabase
       .from("measurements")
-      .insert([measurementData])
+      .insert([{ ...measurementData, business_id: scope.businessId }])
       .select(`
         *,
         customer:customers(id, name, phone)

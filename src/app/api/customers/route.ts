@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCustomers, createCustomer } from '@/lib/database'
 import { CreateCustomerSchema, CustomerQuerySchema } from '@/lib/validators'
-import { requireAuth } from '@/lib/api-auth'
+import { requireBusiness, requireBusinessRead } from '@/lib/business-context'
 
 // GET /api/customers - List customers with search and pagination
 export async function GET(request: NextRequest) {
-  const auth = await requireAuth(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusinessRead(request)
+  if (scope instanceof NextResponse) return scope
 
   try {
     const { searchParams } = new URL(request.url)
@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
     })
 
     const result = await getCustomers({
+      scope,
       q: query.q,
       page: query.page,
       pageSize: query.pageSize,
@@ -46,14 +47,14 @@ export async function GET(request: NextRequest) {
 
 // POST /api/customers - Create a new customer
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth(request)
-  if (auth instanceof NextResponse) return auth
+  const scope = await requireBusiness(request)
+  if (scope instanceof NextResponse) return scope
 
   try {
     const body = await request.json()
     const validatedData = CreateCustomerSchema.parse(body)
 
-    const customer = await createCustomer({
+    const customer = await createCustomer(scope.businessId, {
       name: validatedData.name,
       phone: validatedData.phone,
       address: validatedData.address || null,

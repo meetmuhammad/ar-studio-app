@@ -58,14 +58,20 @@ export type PrepareResult =
       alreadyCommitted: string | null
     }
 
-export async function prepareEntry(userId: string, input: EntryInput, idempotencyKey?: string): Promise<PrepareResult> {
+export async function prepareEntry(
+  userId: string,
+  businessId: string,
+  input: EntryInput,
+  idempotencyKey?: string
+): Promise<PrepareResult> {
   const supabase = createAdminSupabaseClient()
   const today = businessToday(process.env.BUSINESS_TIMEZONE)
 
   // A vendor is only ever chosen by id, never by name: names are not unique.
   let vendorName: string | null = null
   if (typeof input.vendor_id === 'string' && input.vendor_id) {
-    const { data: vendor } = await supabase.from('vendors').select('name').eq('id', input.vendor_id).maybeSingle()
+    const { data: vendor } = await supabase.from('vendors').select('name')
+      .eq('id', input.vendor_id).eq('business_id', businessId).maybeSingle()
     if (!vendor) return { ok: false, problems: ['vendor_id does not match any vendor; use find_vendors to look one up'] }
     vendorName = vendor.name
   }
@@ -77,6 +83,7 @@ export async function prepareEntry(userId: string, input: EntryInput, idempotenc
   // Soft duplicate check: an identical entry may be a retry of something already saved.
   const { data: sameDay } = await supabase.from('general_ledger')
     .select('id, particulars, debit, credit')
+    .eq('business_id', businessId)
     .eq('entry_date', entry.entry_date).eq('entry_type', entry.entry_type).limit(200)
   const twin = (sameDay ?? []).find((r) =>
     toCents(r.debit) === toCents(entry.debit) && toCents(r.credit) === toCents(entry.credit) &&
@@ -94,7 +101,7 @@ export async function prepareEntry(userId: string, input: EntryInput, idempotenc
   const expiresAt = new Date(Date.now() + PROPOSAL_TTL_SECONDS * 1000).toISOString()
   const { data: created, error } = await supabase
     .from('ledger_mcp_proposals')
-    .insert({ user_id: userId, payload: entry, idempotency_key: idempotencyKey ?? null, expires_at: expiresAt })
+    .insert({ user_id: userId, business_id: businessId, payload: entry, idempotency_key: idempotencyKey ?? null, expires_at: expiresAt })
     .select('id, payload, payload_hash, status, expires_at, ledger_entry_id')
     .single()
 
