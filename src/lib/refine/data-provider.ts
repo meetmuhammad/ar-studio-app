@@ -61,6 +61,16 @@ interface ResourceRules {
    * (vendor_tags follow their vendor): refused in the "All businesses" view.
    */
   singleBusinessWrites?: boolean
+  /**
+   * Writes done by Postgres functions instead of table writes (orders and
+   * payments: 20261119000100_order_payment_functions.sql). Each returns the
+   * written row.
+   */
+  writeVia?: {
+    create?: (variables: Record<string, unknown>, businessId: string) => Promise<unknown>
+    update?: (id: BaseKey, variables: Record<string, unknown>) => Promise<unknown>
+    deleteOne?: (id: BaseKey) => Promise<unknown>
+  }
 }
 
 /**
@@ -224,6 +234,48 @@ const RULES: Record<string, ResourceRules> = {
       },
     },
   },
+  // Orders: every write is one Postgres function call (order + items +
+  // advance ledger row in one transaction). Reads are plain, RLS-scoped.
+  orders: {
+    notFound: 'Order not found',
+    writeVia: {
+      create: (variables, businessId) => {
+        const { order, items, advance } = orderArgs(variables)
+        return rpc('create_order', { p_business_id: businessId, p_order: order, p_items: items, p_advance: advance })
+      },
+      update: (id, variables) => {
+        const { order, items, advance } = orderArgs(variables)
+        const patch = advance ? { ...order, advance_paid: advance.amount } : order
+        return rpc('update_order', { p_order_id: id, p_patch: patch, p_items: items })
+      },
+      deleteOne: (id) => rpc('delete_order', { p_order_id: id }),
+    },
+    virtualFilters: {
+      q: orderSearch,
+      delivery_range: dateRangeOn('delivery_date'),
+      booking_range: dateRangeOn('booking_date'),
+    },
+  },
+  // Payments: admin-only writes through functions that also keep the
+  // payment's general_ledger row in step.
+  payments: {
+    notFound: 'Payment not found',
+    writeVia: {
+      create: (variables) => {
+        const { order_id, payment_date, ...rest } = variables
+        return rpc('record_payment', {
+          p_order_id: order_id,
+          p_payment: { ...rest, payment_date: dateOnly(payment_date) },
+        })
+      },
+      update: (id, variables) => {
+        const { payment_date, ...rest } = variables
+        const patch = payment_date === undefined ? rest : { ...rest, payment_date: dateOnly(payment_date) }
+        return rpc('update_payment', { p_payment_id: id, p_patch: patch })
+      },
+      deleteOne: (id) => rpc('delete_payment', { p_payment_id: id }),
+    },
+  },
   // Mirrors src/app/api/vendors/**: strings trimmed, empty optional fields
   // stored as null, and a vendor always has a category (Uncategorized when
   // none is chosen, the column default). Admin-only by RLS.
@@ -282,7 +334,78 @@ function toHttpError(error: PostgrestError, rules?: ResourceRules): HttpError {
   }
   if (error.code === '23503' && rules?.inUse) return httpError(409, rules.inUse)
   if (error.code === '42501') return httpError(403, error.message)
+  // Raised by the order/payment functions (20261119000100) with their own wording.
+  if (error.code === 'P0002') return httpError(404, error.message)
+  if (['22023', '23514', '22P02', '22007', '22008', '23503', '23505'].includes(error.code)) {
+    return httpError(400, error.message)
+  }
   return { ...error, message: error.message, statusCode: 500 }
+}
+
+/** Calls a Postgres function (supabase.rpc) and maps its error. */
+async function rpc<T>(fn: string, args: Record<string, unknown>, rules?: ResourceRules): Promise<T> {
+  const { data, error } = await supabase.rpc(fn, args)
+  if (error) throw toHttpError(error, rules)
+  return data as T
+}
+
+/** Today's date (YYYY-MM-DD) for date-only columns. */
+const dateOnly = (value: unknown): string | undefined => {
+  if (!value) return undefined
+  if (typeof value === 'string') return value.slice(0, 10)
+  if (value instanceof Date) return value.toISOString().slice(0, 10)
+  if (typeof value === 'object' && 'format' in (value as object)) {
+    return (value as { format: (f: string) => string }).format('YYYY-MM-DD')
+  }
+  return String(value)
+}
+
+/**
+ * Order form values -> create_order / update_order arguments. The form
+ * sends snake_case order fields plus `order_items` and `advance_paid`.
+ */
+function orderArgs(variables: Record<string, unknown>) {
+  const { order_items, advance_paid, payment_method, ...rest } = variables
+  const order: Record<string, unknown> = { ...rest, payment_method }
+  if ('booking_date' in order) order.booking_date = dateOnly(order.booking_date)
+  if ('delivery_date' in order) order.delivery_date = dateOnly(order.delivery_date)
+  return {
+    order,
+    items: Array.isArray(order_items) ? order_items : null,
+    advance: advance_paid === undefined ? null : { amount: advance_paid ?? 0, payment_method: payment_method ?? null },
+  }
+}
+
+/** Date range virtual filter on another date column. */
+function dateRangeOn(field: string): VirtualFilter {
+  return (value) => {
+    if (!Array.isArray(value) || value.length !== 2 || !value[0] || !value[1]) return []
+    return [
+      { field, operator: 'gte', value: dateOnly(value[0]) },
+      { field, operator: 'lte', value: dateOnly(value[1]) },
+    ]
+  }
+}
+
+/**
+ * Order search, as GET /api/orders?q=: order number contains the term, or
+ * the customer's name or phone does (customers resolved first, because
+ * PostgREST cannot OR across an embedded table).
+ */
+async function orderSearch(value: unknown, scopeIds: string[]): Promise<CrudFilter[]> {
+  const term = asText(value)
+  if (!term) return []
+  const { data, error } = await supabase
+    .from('customers')
+    .select('id')
+    .in('business_id', scopeIds)
+    .or(`name.ilike.${pgLiteral(`%${term}%`)},phone.ilike.${pgLiteral(`%${term}%`)}`)
+    .limit(1000)
+  if (error) throw toHttpError(error)
+  const members: CrudFilter[] = [{ field: 'order_number', operator: 'contains', value: term }]
+  const ids = (data ?? []).map((c) => c.id as string)
+  if (ids.length) members.push({ field: 'customer_id', operator: 'in', value: ids })
+  return [{ key: 'search', operator: 'or', value: members as never }]
 }
 
 /** Business ids a read may return rows from. */
@@ -347,6 +470,9 @@ const scoped: Pick<
   create: async ({ resource, variables, meta }) => {
     const rules = RULES[resource]
     const businessId = writeScope()
+    if (rules?.writeVia?.create) {
+      return { data: (await rules.writeVia.create(withoutBusiness(variables), businessId)) as never }
+    }
     const values = { ...(rules?.prepare?.(withoutBusiness(variables)) ?? withoutBusiness(variables)), business_id: businessId }
     await rules?.beforeSave?.(values, { businessId })
     const { data, error } = await supabase
@@ -361,6 +487,9 @@ const scoped: Pick<
   update: async ({ resource, id, variables, meta }) => {
     const rules = RULES[resource]
     const businessId = writeScope()
+    if (rules?.writeVia?.update) {
+      return { data: (await rules.writeVia.update(id, withoutBusiness(variables))) as never }
+    }
     const values = rules?.prepare?.(withoutBusiness(variables)) ?? withoutBusiness(variables)
     await rules?.beforeSave?.(values, { businessId, id })
     const { data, error } = await supabase
@@ -378,6 +507,10 @@ const scoped: Pick<
   deleteOne: async ({ resource, id }) => {
     const rules = RULES[resource]
     const businessId = writeScope()
+    if (rules?.writeVia?.deleteOne) {
+      await rules.writeVia.deleteOne(id)
+      return { data: { id } as never }
+    }
     await rules?.beforeDelete?.(id, businessId)
     const { data, error } = await supabase
       .from(resource)

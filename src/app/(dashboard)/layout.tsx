@@ -1,18 +1,11 @@
 "use client"
 
-import { useMemo, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { Authenticated } from '@refinedev/core'
 import { ThemedLayout, ThemedSider } from '@refinedev/antd'
 import { Alert, Flex, Grid, Result, Spin, Typography } from 'antd'
 import { BusinessScopeSync } from '@/components/providers/refine-provider'
 import { ShellHeader } from '@/components/refine/header'
-import { OrderDialog } from '@/components/dialogs/order-dialog'
-import { PaymentDialog } from '@/components/dialogs/payment-dialog'
-import { CreateOrderInput } from '@/lib/validators'
-import { DashboardActionsProvider } from '@/contexts/dashboard-actions'
-import { toast } from 'sonner'
-import { authFetch } from '@/lib/auth-fetch'
 import { BusinessProvider, useBusiness } from '@/contexts/business-context'
 
 /**
@@ -21,7 +14,7 @@ import { BusinessProvider, useBusiness } from '@/contexts/business-context'
  * base styles (links, touch targets) scoped away from the antd shell.
  * Add a module's routes here when it is ported.
  */
-const REFINE_MODULES = ['/customers', '/measurements', '/vendors']
+const REFINE_MODULES = ['/customers', '/measurements', '/vendors', '/orders']
 const isRefineRoute = (pathname: string) =>
   pathname === '/' || REFINE_MODULES.some((base) => pathname === base || pathname.startsWith(`${base}/`))
 
@@ -41,15 +34,12 @@ function FullScreenStatus({ label }: { label: string }) {
 
 /**
  * Page content for the selected business. Keyed by the switch generation, so
- * switching business remounts the page (and the global dialogs) and every
+ * switching business remounts the page and every
  * fetch runs again for the new business. Nothing renders until a business is
  * chosen, so no request goes out on the ATC fallback by accident.
  */
-function BusinessScoped({ children, quiet = false }: { children: React.ReactNode; quiet?: boolean }) {
+function BusinessScoped({ children }: { children: React.ReactNode }) {
   const { ready, noAccess, isAll, generation } = useBusiness()
-
-  // Global dialogs: nothing until a business is chosen, no banner.
-  if (quiet) return ready && !noAccess ? <div key={generation} className="contents">{children}</div> : null
 
   if (noAccess) {
     return (
@@ -97,59 +87,6 @@ export default function DashboardLayout({
 }) {
   const legacy = !isRefineRoute(usePathname())
   const screens = Grid.useBreakpoint()
-  const [orderDialog, setOrderDialog] = useState<{
-    open: boolean
-    order?: null
-  }>({ open: false, order: null })
-  
-  const [paymentDialog, setPaymentDialog] = useState<{
-    open: boolean
-  }>({ open: false })
-
-  // Handle create order
-  const handleCreateOrder = async (data: CreateOrderInput) => {
-    try {
-      const response = await authFetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create order')
-      }
-
-      toast.success('Order created successfully')
-      // Optionally, trigger a refresh of orders data across the app
-      window.dispatchEvent(new CustomEvent('orderCreated'))
-    } catch (error) {
-      console.error('Error creating order:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to create order')
-      throw error
-    }
-  }
-
-  const openOrderDialog = () => {
-    setOrderDialog({ open: true, order: null })
-  }
-  
-  const openPaymentDialog = () => {
-    setPaymentDialog({ open: true })
-  }
-  
-  const handlePaymentSuccess = () => {
-    // Optionally refresh any payment-related data
-    window.dispatchEvent(new CustomEvent('paymentAdded'))
-  }
-
-  // Exposed to pages so PageHeader can render these as page-level actions.
-  // The dialogs, handlers, and events above are unchanged.
-  const dashboardActions = useMemo(
-    () => ({ openOrderDialog, openPaymentDialog }),
-    []
-  )
-
   return (
     <Authenticated
       key="dashboard"
@@ -159,7 +96,6 @@ export default function DashboardLayout({
     >
       <BusinessProvider>
       <BusinessScopeSync />
-      <DashboardActionsProvider value={dashboardActions}>
       <div className="ar-antd">
         {/* Refine antd shell: sidebar menu from the resources, filtered per
             item by the accessControlProvider (CanAccess inside ThemedSider);
@@ -178,25 +114,6 @@ export default function DashboardLayout({
           </main>
         </ThemedLayout>
       </div>
-
-        {/* Global dialogs, inside BusinessScoped so a switch remounts them too. */}
-        <BusinessScoped quiet>
-        {/* Global Order Dialog */}
-        <OrderDialog
-          open={orderDialog.open}
-          onOpenChange={(open) => setOrderDialog({ open, order: null })}
-          order={null}
-          onSubmit={handleCreateOrder}
-        />
-        
-        {/* Global Payment Dialog */}
-        <PaymentDialog
-          open={paymentDialog.open}
-          onOpenChange={(open) => setPaymentDialog({ open })}
-          onSuccess={handlePaymentSuccess}
-        />
-        </BusinessScoped>
-      </DashboardActionsProvider>
       </BusinessProvider>
     </Authenticated>
   )

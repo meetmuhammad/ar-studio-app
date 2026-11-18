@@ -1,5 +1,7 @@
 'use client'
 
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useCan, useGetIdentity, useLogout } from '@refinedev/core'
 import { Avatar, Button, Dropdown, Grid, Layout, Space, Tag, Tooltip, Typography, theme } from 'antd'
 import {
@@ -12,7 +14,7 @@ import {
   SunOutlined,
 } from '@ant-design/icons'
 import { useColorMode } from '@/components/providers/color-mode-provider'
-import { useDashboardActions } from '@/contexts/dashboard-actions'
+import { PaymentModal } from '@/components/orders/payment-modal'
 import { useBusiness } from '@/contexts/business-context'
 import type { Identity } from '@/lib/refine/auth-provider'
 import { BusinessSwitcher } from './business-switcher'
@@ -36,9 +38,10 @@ function useSignOut() {
 }
 
 /**
- * Shell header: business switcher on the left; the global Create order / Add
- * payment actions (dialogs owned by the dashboard layout), the light/dark
- * toggle, a notifications bell and the user menu on the right.
+ * Shell header: business switcher on the left; the global "Create New Order"
+ * (opens /orders/create) and "Add New Payment" (payment modal with an order
+ * picker) actions, the light/dark toggle, a notifications bell and the user
+ * menu on the right.
  */
 export function ShellHeader() {
   const { token } = theme.useToken()
@@ -46,7 +49,12 @@ export function ShellHeader() {
   const compact = !screens.md
   const { mode, toggle } = useColorMode()
   const { data: user } = useGetIdentity<Identity | null>()
-  const actions = useDashboardActions()
+  const router = useRouter()
+  const [paymentOpen, setPaymentOpen] = useState(false)
+  const actions = {
+    openOrderDialog: () => router.push('/orders/create'),
+    openPaymentDialog: () => setPaymentOpen(true),
+  }
   const { isAll } = useBusiness()
   const signOut = useSignOut()
   const readOnlyTitle = isAll ? 'Read-only: pick one business' : undefined
@@ -77,8 +85,7 @@ export function ShellHeader() {
       </div>
 
       <Space size={compact ? 4 : 8} align="center">
-        {actions &&
-          (compact ? (
+        {compact ? (
             <Dropdown
               disabled={isAll}
               menu={{
@@ -108,7 +115,8 @@ export function ShellHeader() {
                 {screens.lg ? 'Add New Payment' : 'Payment'}
               </Button>
             </>
-          ))}
+          )}
+        <PaymentModal open={paymentOpen} onClose={() => setPaymentOpen(false)} />
 
         <Tooltip title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
           <Button

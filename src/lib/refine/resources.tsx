@@ -66,7 +66,17 @@ const MODULES: ModuleDef[] = [
     businessScoped: true,
     actionRoles: ADMIN_DELETE,
   },
-  { name: 'orders', list: '/orders', label: 'Orders', icon: <ShoppingOutlined />, businessScoped: true, actionRoles: ADMIN_DELETE },
+  {
+    name: 'orders',
+    list: '/orders',
+    create: '/orders/create',
+    edit: '/orders/edit/:id',
+    show: '/orders/show/:id',
+    label: 'Orders',
+    icon: <ShoppingOutlined />,
+    businessScoped: true,
+    actionRoles: ADMIN_DELETE,
+  },
   {
     name: 'measurements',
     list: '/measurements',

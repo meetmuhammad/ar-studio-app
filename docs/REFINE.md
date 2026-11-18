@@ -2,10 +2,11 @@
 
 The root Next.js 15 App Router app is a Refine app. Refine (`@refinedev/core` 5) with the
 Ant Design UI kit (`@refinedev/antd` 6, `antd` 5) provides the shell (sidebar, header, theme),
-auth, access control and data access. Customers, Measurements, Vendors, the Dashboard and the
-sign-in page are fully on Refine + antd. Orders, Ledger and P&L are still the previous shadcn
-pages, rendered inside the new shell until they are ported. Refine pages read and write through
-the Supabase data provider. The only `/api` call left on them is the vendor ledger and bills
+auth, access control and data access. Customers, Measurements, Vendors, Orders (with payments),
+the Dashboard and the sign-in page are fully on Refine + antd. Ledger and P&L are still the
+previous shadcn pages, rendered inside the new shell until they are ported. Refine pages read
+through the Supabase data provider and write either to tables (RLS) or, for orders and payments,
+through Postgres functions. The only `/api` call left on them is the vendor ledger and bills
 section, which has no direct client access by design (see Vendors).
 
 Nothing under `src/app/api/**`, `src/app/.well-known/**`, `src/app/oauth/**`,
@@ -24,6 +25,9 @@ src/app/(dashboard)/customers/**        list / create / edit/[id] / show/[id] (R
 src/app/(dashboard)/measurements/**     list / create[?customer_id=] / edit/[id] / show/[id] (Refine + antd)
 src/app/(dashboard)/vendors/**          list / create / edit/[id] / show/[id] (Refine + antd, admin only);
                                         /vendors/[id] redirects to /vendors/show/[id]
+src/app/(dashboard)/orders/**           list / create[?customer_id=] (3 steps) / edit/[id] / show/[id]
+                                        (items, payments, receipt and measurement print)
+src/components/orders/                  constants + payment math, OrderStepsForm, useOrderForm, PaymentModal
 src/app/sign-in/page.tsx                Ant Design Pro style sign-in through Refine useLogin
 
 src/components/providers/refine-provider.tsx      <Refine> root (+ AuthSync, BusinessScopeSync)
@@ -99,7 +103,8 @@ resource's `meta.roles`.
 | --- | --- | --- |
 | dashboard | `/` | admin |
 | customers | `/customers`, `/customers/create`, `/customers/edit/:id`, `/customers/show/:id` | admin, staff |
-| orders | `/orders` | admin, staff |
+| orders | `/orders`, `/orders/create`, `/orders/edit/:id`, `/orders/show/:id` | admin, staff (delete: admin) |
+| payments | (no pages; on the order page and the header "Add New Payment") | read: admin, staff; write: admin |
 | measurements | `/measurements`, `/measurements/create`, `/measurements/edit/:id`, `/measurements/show/:id` | admin, staff |
 | vendors | `/vendors`, `/vendors/create`, `/vendors/edit/:id`, `/vendors/show/:id` | admin |
 | vendor_tags, vendor_categories | (no pages; managed from Vendors) | admin |
@@ -189,6 +194,54 @@ The vendors category filter uses the real column (`category_id`), so it needs no
 - **Ledger and bills.** `vendor_ledger` / `general_ledger` have no direct client access by design, so the vendor page keeps `GET /api/vendor-ledger` and the existing shadcn `VendorBillDialog` (`POST /api/vendor-ledger`). Without the API (e.g. locally with no service-role key) the card says the ledger is unavailable, and Create Bill is disabled; details and tags still work. The totals and running balance are as on the previous page.
 - **List.** There is no balance column, as on the previous list (no ledger reads needed).
 
+## Orders and payments
+
+### Database functions (`supabase/migrations/20261119000100_order_payment_functions.sql`)
+
+All are `SECURITY DEFINER` (`search_path = public, pg_temp`), executable by `authenticated`
+only, and do every write of one operation in one transaction. They raise SQLSTATE `42501`
+(not signed in, no role, not a member, admin only), `P0002` (not found), `22023` / `23514`
+(invalid input). The data provider maps these to 403 / 404 / 400 with the function's message.
+
+| Function | Mirrors | Who | Writes |
+| --- | --- | --- | --- |
+| `create_order(p_business_id, p_order, p_items, p_advance)` | POST /api/orders | admin, staff (member) | order (number `<code>-#####`, race-free under an advisory lock), items, advance → `general_ledger` ("Advance payment for Order #n") |
+| `update_order(p_order_id, p_patch, p_items)` | PATCH /api/orders/[id] | admin, staff (member) | order fields present in the patch, items replaced when given, advance ledger row kept in step |
+| `delete_order(p_order_id)` | DELETE /api/orders/[id] | admin (member) | order, its items, payments and `order_payment` ledger rows |
+| `record_payment(p_order_id, p_payment)` | POST /api/payments | admin (member) | payment + ledger row ("Payment for Order #n", notes or "Payment via <method>") |
+| `update_payment(p_payment_id, p_patch)` | PATCH /api/payments/[id] | admin (member) | payment fields + its ledger row |
+| `delete_payment(p_payment_id)` | DELETE /api/payments/[id] | admin (member) | payment + its ledger row |
+
+Running balances are kept by the existing `general_ledger` triggers. `supabase/tests/order_payment_functions_check.sql`
+exercises all of them as the disposable admin and staff users inside a transaction that rolls back.
+
+**Deliberate differences from the API** (also in the migration header):
+- **Atomic writes:** all writes of one operation are in one transaction. The API keeps a payment whose ledger insert failed, and keeps an order whose items or advance failed.
+- **Ledger kept in step:** order advance edits, payment edits and deletes, and order deletes update or remove the matching ledger rows immediately. These are the rows `POST /api/general-ledger/sync-payments` would produce; the API leaves the ledger stale until that sync runs.
+- **Admin-only operations:** deleting orders and all payment writes are admin-only, as in RLS. The API routes still allow staff.
+- **Partial updates:** `update_order` changes only the keys sent. The API's PATCH nulls amounts, method and measurement when they are absent from the body.
+- **Balance on create:** `create_order` stores `total - advance` as the balance when none is sent.
+- **No payments row for the advance:** as in the API, the advance lives on the order and in the ledger only.
+
+### UI
+
+- **Data provider:** `orders` and `payments` writes go through `writeVia` in `data-provider.ts` (`supabase.rpc`). Refine's `useForm`, `useDelete`, `RowActions` and `PaymentModal` therefore all use the functions, and Refine invalidates the lists as usual. Reads are plain RLS-scoped selects.
+- **List filters:**
+  - "Order number or customer" (virtual `q`: order number contains the term, or the customer's name/phone does).
+  - Status: defaults to In Process, as before. Typing a search switches it to All Orders.
+  - Delivery date and Booking date ranges (virtual `delivery_range` / `booking_range`).
+- **List sorting:** delivery date (default, ascending), booking date or created. Payment status is computed per row: paid = advance + payments, then Paid / Partial / Unpaid / No total.
+- **Create/edit:** antd `Steps`, mirroring the previous multi-step form.
+  - **General Information:** customer, dates, status, comments, and up to 4 items with unique types.
+  - **Measurements:** the customer's default set is preselected; "New measurement" opens a modal with the measurement form. Also fitting preferences.
+  - **Payment:** method, total, advance, and a calculated balance.
+  - **Navigation:** Next validates the current step; Enter moves on; submitting validates every step. `/orders/create?customer_id=` preselects the customer.
+- **Show page:**
+  - Totals, details, items, and the payments table.
+  - Payment actions: "Record Payment", edit and delete (admin; disabled with a tooltip for staff).
+  - Printing: "Print Receipt" (existing `openPrintPreview`) and "Print Measurement" when a set is linked.
+- **Header:** "Create New Order" opens `/orders/create`. "Add New Payment" opens the payment modal with an order picker (admin only).
+
 ## UX baseline (Ant Design Pro patterns)
 
 Shared components in `src/components/refine/`, used by Customers and Measurements:
@@ -204,7 +257,7 @@ Shared components in `src/components/refine/`, used by Customers and Measurement
 - **Forms**: sections in cards (`FormSection`), first field auto-focused, Enter submits (`EnterToSubmit`, since Refine's Save button is outside the `<form>`), validation from the API's zod schemas (`zodRule`), success/error notifications from `notifications.ts`. Edit and show pages show a `PageSkeleton` while loading; the edit form stays mounted (hidden) so Refine can fill it.
 - **Sign-in**: centred card with the AR Studio mark, Email / Password with icons, an inline error `Alert`, and a loading Sign In button. Works in light and dark mode.
 
-## Porting the next module (for example Orders)
+## Porting the next module (for example Ledger)
 
 1. Add any extra routes (`create`, `edit`, `show`) to the module's entry in `MODULES` in `src/lib/refine/resources.tsx`. Roles stay in `NAV_ITEMS`.
 2. If the table has resource-specific rules (error wording, delete preconditions, value normalisation), add them to `RULES` in `data-provider.ts`. Scoping is already automatic for the scoped tables.
@@ -226,7 +279,10 @@ running balances) should keep going through the existing API routes, for example
 
 - **Vendor ledger and bills:** still on `/api/vendor-ledger` and the shadcn `VendorBillDialog` (see Vendors). Porting them needs a server-side path for ledger writes (the running balance is maintained by database triggers and must stay atomic). The ledger card filters entries client-side, as before.
 - **Vendor list:** the `tag` and `q` filters resolve at most 1000 matching tags or categories.
-- **Legacy modules:** Orders, Ledger and P&L are still shadcn pages using the `/api` routes. They need the service-role key, so they show errors locally without it. The global "Create New Order" / "Add New Payment" dialogs in the header are also still shadcn, and the order dialog's measurement step still uses the `/api/measurements` routes.
+- **Legacy modules:** Ledger and P&L are still shadcn pages using the `/api` routes. They need the service-role key, so they show errors locally without it.
+- **Orders "Nearest delivery" sort:** the previous list put upcoming deliveries first and past-due ones after, using three server queries. The Refine list sorts by delivery date ascending, so past-due orders come first. The delivery date is shown in red when an In Process order is late. Restoring the exact order needs a sort expression, which means a view or function.
+- **`orders_with_payment_status` view:** not used. Its definition is not in the repo, so the list computes payment status from the order and its payments, with the same formula as the receipt.
+- **Order functions:** written against the API and the migrations in this repo. The base table definitions (column types, foreign-key actions) predate `supabase/migrations`, so run `supabase/tests/order_payment_functions_check.sql` after applying.
 - **OAuth consent:** untouched (shadcn).
 - **Sign-in "Remember me":** not added. Supabase always keeps the session in `localStorage`, so the checkbox would have had no effect.
 - **Measurement print:** reuses `PrintMeasurement` / `openMeasurementPrintPreview`. `order` is now optional, so a measurement prints on its own (no order number or items). The print window still loads Tailwind from `cdn.tailwindcss.com`, as before, so it needs network access.
@@ -239,6 +295,6 @@ running balances) should keep going through the existing API routes, for example
   - `useCustomers`, `useCreateCustomer`, `useUpdateCustomer`, `useDeleteCustomer` in `src/hooks/use-api.ts`; the vendor-category hooks there (`useVendorCategories`, …) are still used by the legacy Ledger page.
   - `src/lib/vendor-filter.ts`, kept for `scripts/checks/filters.check.ts`.
   - `itemsFor` / `tabItemsFor` / `moreItemsFor` in `nav-items.ts`.
-  - `src/components/dialogs/customer-dialog.tsx` and `src/components/forms/customer-form.tsx`, still used by the order dialog's customer picker.
+  - The order hooks in `src/hooks/use-api.ts` (`useOrders`, `useCreateOrder`, …) and the payment types in `validators.ts` used only by the removed dialogs.
   - `src/components/data-table/data-table.tsx`, still used by legacy pages.
 - **Existing auth wait:** `AuthContext` awaits the role lookup inside Supabase's `onAuthStateChange`, which can hold the first session read for up to the 10 s role timeout if that query hangs. The previous guard waited on the same path; changing it means touching `AuthContext` timing and was left as is.
