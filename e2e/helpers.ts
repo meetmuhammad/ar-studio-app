@@ -3,10 +3,13 @@ import path from 'node:path'
 import type { Browser, BrowserContext, Page } from '@playwright/test'
 
 export const QA_PASSWORD = 'QaLocal-2026!'
+/** Local-only QA accounts seeded in the LOCAL Supabase stack (never a hosted project). */
 export const ACCOUNTS = {
   admin: { email: 'qa-admin@arstudio.test', state: 'e2e/.auth/admin.json' },
   staff: { email: 'qa-staff@arstudio.test', state: 'e2e/.auth/staff.json' },
 } as const
+/** Own account for the sign-out test: Supabase sign-out revokes every session of the user. */
+export const SIGNOUT_ACCOUNT = 'qa-signout@arstudio.test'
 export type Role = keyof typeof ACCOUNTS
 
 export interface Viewport { name: string; width: number; height: number; touch: boolean }
@@ -40,10 +43,6 @@ export async function ctxFor(browser: Browser, role: Role | null, vp: Viewport):
     isMobile: vp.touch && browser.browserType().name() !== 'firefox',
     storageState: role ? ACCOUNTS[role].state : undefined,
   })
-}
-
-export const ids = (): { vendorId?: string; customerId?: string; orderId?: string } => {
-  try { return JSON.parse(fs.readFileSync('e2e/.auth/ids.json', 'utf8')) } catch { return {} }
 }
 
 export function shotPath(phase: string, browser: string, role: string, screen: string, vp: string) {

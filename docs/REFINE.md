@@ -321,6 +321,56 @@ Shared components in `src/components/refine/`, used by Customers and Measurement
 - **Forms**: sections in cards (`FormSection`), first field auto-focused, Enter submits (`EnterToSubmit`, since Refine's Save button is outside the `<form>`), validation from the API's zod schemas (`zodRule`), success/error notifications from `notifications.ts`. Edit and show pages show a `PageSkeleton` while loading; the edit form stays mounted (hidden) so Refine can fill it.
 - **Sign-in**: centred card with the AR Studio mark, Email / Password with icons, an inline error `Alert`, and a loading Sign In button. Works in light and dark mode.
 
+## Browser tests (Playwright)
+
+Two suites share the selectors and small flows in `e2e/support/ui.ts` (sign in, sider/drawer
+menu, FilterBar search, row delete with its confirm, create/remove records). Tests assert what a
+user sees: roles, labels, button text, URLs. antd icon buttons include the icon's name in their
+accessible name ("search Search", "right Next"), so buttons are matched with `btn(scope, 'Search')`,
+which accepts an optional icon word.
+
+### Local suite (default): `npm run test:e2e`
+
+- Config `playwright.config.ts`, specs `e2e/*.spec.ts` (chromium and webkit), `e2e/staging/**` ignored.
+- Runs against a local app (`E2E_BASE_URL`, default `http://localhost:3100`) pointed at the **local** Supabase stack, with the local QA accounts (`qa-admin`, `qa-staff`, `qa-signout` `@arstudio.test`) seeded there.
+- Guard: `e2e/global-guard.ts` runs as `globalSetup` and again in each test. It refuses to run unless `.env.local`'s `NEXT_PUBLIC_SUPABASE_URL` and `E2E_BASE_URL` are localhost / 127.0.0.1.
+- Specs:
+  - `nav`: sider menu per role, drawer below 992px, header actions, account menu, theme toggle persistence, staff 403 / redirect, sign-in, sign-out, expired session.
+  - `workflows`: customers, measurements (customer deep link), vendors (categories, tags), orders (Steps) with payments, and ledger entries, at 1440 and 1024; staff limits.
+  - `states`: long names, empty states, and a failed read with Retry.
+  - `dialogs`: payment modal, categories drawer, ledger entry dialog and the new-measurement modal fit every width and close with Escape.
+  - `audit`: responsive sweep with screenshots.
+  - `pwa`: manifest, icons, no caching, focus, reduced motion.
+- Records are named `QA-E2E … <unique suffix>` and removed through the UI in `finally`.
+
+### Staging suite (opt-in): `npm run test:e2e:staging`
+
+```
+E2E_ADMIN_EMAIL=… E2E_ADMIN_PASSWORD=… E2E_STAFF_EMAIL=… E2E_STAFF_PASSWORD=… \
+E2E_BASE_URL=http://localhost:3100 npm run test:e2e:staging
+```
+
+- Config `playwright.staging.config.ts`, specs `e2e/staging/*.spec.ts`, chromium, one worker, in order.
+- For the dummy/staging Supabase project only. Start the app against it first (`npm run build && npm start` with that project's public URL and anon key).
+- **Guard** (`e2e/staging/guard.ts`, `globalSetup`). It refuses to start unless:
+  - the host of `NEXT_PUBLIC_SUPABASE_URL` (environment, else `.env.local`) is exactly `ohgqgkraybpvnfdbgmvl.supabase.co`;
+  - neither that URL nor `E2E_BASE_URL` contains the production ref `drdnqsjjxmqiklwfadmk`;
+  - the app served at `E2E_BASE_URL` has only the staging project in its client bundle;
+  - all four credential variables are set.
+- In every test, requests to the production project are blocked, and the test fails if the page calls any Supabase project other than staging.
+- Credentials are read from the environment only and never written to the repo. Sessions are saved to `e2e/.auth/staging-*.json` (gitignored). Traces are off because they would record typed passwords.
+- Coverage, as admin and staff:
+  - sign-in, including the wrong-password alert;
+  - role menus, phone drawer, header actions and account menu;
+  - light/dark persistence;
+  - customers CRUD and search (staff cannot delete);
+  - measurements created from the customer page deep link, then edited;
+  - vendors with tags and the categories drawer (staff get 403);
+  - an order through the three steps with an item and an advance;
+  - recording, editing and deleting a payment, then deleting the order (staff cannot);
+  - dashboard, ledger (filters, CSV export) and P&L rendering (staff get 403 or the redirect).
+- **Data:** each spec creates its own records named `E2E-STG … <unique suffix>` and deletes them through the UI as admin in `afterAll`. Cleanup only matches those unique names and phone numbers, so existing rows are never touched. The reports spec creates nothing.
+
 ## Porting the next module
 
 1. Add any extra routes (`create`, `edit`, `show`) to the module's entry in `MODULES` in `src/lib/refine/resources.tsx`. Roles stay in `NAV_ITEMS`.
@@ -354,7 +404,6 @@ running balances) should keep going through the existing API routes, for example
 - **Measurement list sorting by customer** is not offered (PostgREST orders embedded rows, not parents). The customer filter resolves at most 1000 matching customers.
 - **Phone layout:** the shell uses Refine's drawer menu on phones. The previous bottom tab bar is gone; `tab` / `tabLabel` in `NAV_ITEMS` are kept for a possible custom tab bar.
 - **Notifications bell:** static.
-- **e2e tests:** the Playwright specs in `e2e/` select elements of the old shadcn sidebar and tab bar (`nav.spec.ts`, `states.spec.ts`, `workflows.spec.ts`, `dialogs.spec.ts`, `pwa.spec.ts`) and need updating for the antd shell.
 - **Unused code to delete when modules are ported:**
   - `src/hooks/use-api.ts` now holds only `useDashboardStats` (for `/overview`); delete it with `/overview`.
   - `src/lib/vendor-filter.ts`, kept for `scripts/checks/filters.check.ts`.

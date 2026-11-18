@@ -14,3 +14,8 @@ export function assertLocalTarget(): string {
   }
   return url
 }
+
+/** Playwright globalSetup for the default config: stop before any browser starts. */
+export default async function globalSetup() {
+  assertLocalTarget()
+}
