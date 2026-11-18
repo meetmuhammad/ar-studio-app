@@ -70,6 +70,9 @@ const MODULES: ModuleDef[] = [
   {
     name: 'measurements',
     list: '/measurements',
+    create: '/measurements/create',
+    edit: '/measurements/edit/:id',
+    show: '/measurements/show/:id',
     label: 'Measurements',
     icon: <ColumnHeightOutlined />,
     businessScoped: true,

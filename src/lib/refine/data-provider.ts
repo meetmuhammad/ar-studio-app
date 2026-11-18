@@ -1,7 +1,8 @@
-import type { BaseKey, DataProvider, HttpError } from '@refinedev/core'
+import type { BaseKey, CrudFilter, DataProvider, HttpError } from '@refinedev/core'
 import { dataProvider as supabaseDataProvider } from '@refinedev/supabase'
 import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase-client'
+import { MEASUREMENT_FIELDS } from '@/types/measurements'
 import { ALL_BUSINESSES } from '@/lib/business-shared'
 import { getActiveBusiness } from '@/lib/business-store'
 import { COMBINED_VIEW_READ_ONLY } from './access-control'
@@ -48,13 +49,72 @@ interface ResourceRules {
   beforeDelete?: (id: BaseKey, businessId: string) => Promise<void>
   /** Normalises create/update variables (e.g. empty strings to null). */
   prepare?: (variables: Record<string, unknown>) => Record<string, unknown>
+  /** Runs before an insert/update with the prepared values (e.g. keep one default). */
+  beforeSave?: (values: Record<string, unknown>, ctx: { businessId: string; id?: BaseKey }) => Promise<void>
+  /** Resource-specific virtual filters (see VIRTUAL_FILTERS). */
+  virtualFilters?: Record<string, VirtualFilter>
 }
 
-const emptyToNull = (keys: string[]) => (variables: Record<string, unknown>) => {
+/**
+ * A filter whose `field` is a form field name rather than a column. List
+ * pages name their filter-form fields after these, so Refine's URL sync
+ * (syncWithLocation) restores the form as typed; the provider expands each
+ * into real column filters before querying.
+ */
+type VirtualFilter = (value: unknown, scopeIds: string[]) => Promise<CrudFilter[]> | CrudFilter[]
+
+const emptyToNull = (keys: readonly string[]) => (variables: Record<string, unknown>) => {
   const out = { ...variables }
   for (const key of keys) if (out[key] === '') out[key] = null
   return out
 }
+
+/** A value for PostgREST's or(): quoted, so commas and parentheses stay literal. */
+const pgLiteral = (value: string) => `"${value.replace(/["\\]/g, '\\$&')}"`
+
+const asText = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
+
+/** Name (case-insensitive) or phone contains the term, as GET /api/customers?q= does. */
+const nameOrPhone = (term: string): CrudFilter => ({
+  key: 'search',
+  operator: 'or',
+  value: [
+    { field: 'name', operator: 'contains', value: term },
+    { field: 'phone', operator: 'containss', value: term },
+  ],
+})
+
+/** Matches nothing: used when a lookup filter found no rows. */
+const NO_ROWS: CrudFilter = { field: 'id', operator: 'in', value: ['00000000-0000-0000-0000-000000000000'] }
+
+/** Virtual filters every scoped table understands. */
+const VIRTUAL_FILTERS: Record<string, VirtualFilter> = {
+  // [startIso, endIso] from a date-range field -> created_at between them.
+  created_range: (value) => {
+    if (!Array.isArray(value) || value.length !== 2 || !value[0] || !value[1]) return []
+    return [
+      { field: 'created_at', operator: 'gte', value: value[0] },
+      { field: 'created_at', operator: 'lte', value: value[1] },
+    ]
+  },
+}
+
+/** Rows whose customer's name or phone contains the term (resolved to customer ids). */
+const customerSearch: VirtualFilter = async (value, scopeIds) => {
+  const term = asText(value)
+  if (!term) return []
+  const { data, error } = await supabase
+    .from('customers')
+    .select('id')
+    .in('business_id', scopeIds)
+    .or(`name.ilike.${pgLiteral(`%${term}%`)},phone.like.${pgLiteral(`%${term}%`)}`)
+    .limit(1000)
+  if (error) throw toHttpError(error)
+  const ids = (data ?? []).map((row) => row.id as string)
+  return ids.length ? [{ field: 'customer_id', operator: 'in', value: ids }] : [NO_ROWS]
+}
+
+const MEASUREMENT_NUMBER_FIELDS = MEASUREMENT_FIELDS.map((f) => f.key)
 
 const RULES: Record<string, ResourceRules> = {
   // Mirrors src/app/api/customers/** and src/lib/database.ts.
@@ -64,6 +124,12 @@ const RULES: Record<string, ResourceRules> = {
     duplicateField: 'phone',
     notFound: 'Customer not found',
     prepare: emptyToNull(['address']),
+    virtualFilters: {
+      q: (value) => {
+        const term = asText(value)
+        return term ? [nameOrPhone(term)] : []
+      },
+    },
     beforeDelete: async (id, businessId) => {
       const { count, error } = await supabase
         .from('orders')
@@ -76,6 +142,45 @@ const RULES: Record<string, ResourceRules> = {
       }
     },
   },
+  // Mirrors src/app/api/measurements/**: empty readings are stored as null, and
+  // marking a set as default clears the flag on the customer's other sets in
+  // the same business. The customer must be in the business: the customer
+  // picker only offers scoped customers, and the database trigger
+  // (enforce_business_scope) rejects a cross-business link.
+  measurements: {
+    notFound: 'Measurement not found',
+    prepare: emptyToNull([...MEASUREMENT_NUMBER_FIELDS, 'notes']),
+    beforeSave: async (values, { businessId, id }) => {
+      if (values.is_default !== true || !values.customer_id) return
+      let query = supabase
+        .from('measurements')
+        .update({ is_default: false })
+        .eq('customer_id', values.customer_id as string)
+        .eq('business_id', businessId)
+      if (id !== undefined) query = query.neq('id', id)
+      const { error } = await query
+      if (error) throw toHttpError(error)
+    },
+    virtualFilters: {
+      customer: customerSearch,
+      q: (value) => {
+        const term = asText(value)
+        return term ? [{ field: 'name', operator: 'contains', value: term }] : []
+      },
+    },
+  },
+}
+
+/** Replaces virtual filters with real column filters. */
+async function expandFilters(resource: string, filters: CrudFilter[], scopeIds: string[]): Promise<CrudFilter[]> {
+  const handlers = { ...VIRTUAL_FILTERS, ...RULES[resource]?.virtualFilters }
+  const out: CrudFilter[] = []
+  for (const filter of filters) {
+    const handler = 'field' in filter ? handlers[filter.field] : undefined
+    if (handler) out.push(...(await handler(filter.value, scopeIds)))
+    else out.push(filter)
+  }
+  return out
 }
 
 function toHttpError(error: PostgrestError, rules?: ResourceRules): HttpError {
@@ -117,11 +222,14 @@ const scoped: Pick<
   Required<DataProvider>,
   'getList' | 'getOne' | 'getMany' | 'create' | 'update' | 'deleteOne'
 > = {
-  getList: (params) =>
-    base.getList({
+  getList: async (params) => {
+    const scopeIds = readScope()
+    const filters = await expandFilters(params.resource, params.filters ?? [], scopeIds)
+    return base.getList({
       ...params,
-      filters: [...(params.filters ?? []), { field: 'business_id', operator: 'in', value: readScope() }],
-    }),
+      filters: [...filters, { field: 'business_id', operator: 'in', value: scopeIds }],
+    })
+  },
 
   getOne: async ({ resource, id, meta }) => {
     const { data, error } = await supabase
@@ -149,6 +257,7 @@ const scoped: Pick<
     const rules = RULES[resource]
     const businessId = writeScope()
     const values = { ...(rules?.prepare?.(withoutBusiness(variables)) ?? withoutBusiness(variables)), business_id: businessId }
+    await rules?.beforeSave?.(values, { businessId })
     const { data, error } = await supabase
       .from(resource)
       .insert([values])
@@ -162,6 +271,7 @@ const scoped: Pick<
     const rules = RULES[resource]
     const businessId = writeScope()
     const values = rules?.prepare?.(withoutBusiness(variables)) ?? withoutBusiness(variables)
+    await rules?.beforeSave?.(values, { businessId, id })
     const { data, error } = await supabase
       .from(resource)
       .update({ ...values, updated_at: new Date().toISOString() })

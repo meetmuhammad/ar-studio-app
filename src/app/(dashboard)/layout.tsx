@@ -21,8 +21,9 @@ import { BusinessProvider, useBusiness } from '@/contexts/business-context'
  * base styles (links, touch targets) scoped away from the antd shell.
  * Add a module's routes here when it is ported.
  */
+const REFINE_MODULES = ['/customers', '/measurements']
 const isRefineRoute = (pathname: string) =>
-  pathname === '/' || pathname === '/customers' || pathname.startsWith('/customers/')
+  pathname === '/' || REFINE_MODULES.some((base) => pathname === base || pathname.startsWith(`${base}/`))
 
 /** Refine's sider without its built-in logout item (sign out lives in the header user menu). */
 function ShellSider() {

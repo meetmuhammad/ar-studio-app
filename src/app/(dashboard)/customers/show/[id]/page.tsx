@@ -1,20 +1,39 @@
 'use client'
 
+import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { Show } from '@refinedev/antd'
-import { useList, useShow, type HttpError } from '@refinedev/core'
-import { Col, Descriptions, Empty, List as AntdList, Result, Row, Space, Statistic, Tag, Typography, theme } from 'antd'
+import { useCan, useList, useShow, type HttpError } from '@refinedev/core'
+import {
+  Button,
+  Col,
+  Descriptions,
+  Empty,
+  List as AntdList,
+  Result,
+  Row,
+  Space,
+  Statistic,
+  Tag,
+  Tooltip,
+  Typography,
+  theme,
+} from 'antd'
 import {
   CalendarOutlined,
   ColumnHeightOutlined,
   DollarOutlined,
   EnvironmentOutlined,
   PhoneOutlined,
+  PlusOutlined,
   ShoppingOutlined,
+  StarFilled,
   UserOutlined,
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { CardWithTitle } from '@/components/refine/card-with-title'
+import { PageSkeleton, transparentContent, withSubtitle } from '@/components/refine/page-parts'
+import { MEASUREMENTS, formatReading, type MeasurementRow } from '@/components/measurements/types'
 import { deleteNotifications } from '@/components/customers/customer-form-fields'
 import { CUSTOMERS, type CustomerRow } from '@/components/customers/types'
 
@@ -52,13 +71,27 @@ export default function CustomerShowPage() {
     },
     queryOptions: { enabled: !!id },
   })
-  const { result: measurements, query: measurementsQuery } = useList<{ id: string }, HttpError>({
-    resource: 'measurements',
+  const { result: measurements, query: measurementsQuery } = useList<MeasurementRow, HttpError>({
+    resource: MEASUREMENTS,
     filters: [{ field: 'customer_id', operator: 'eq', value: id }],
-    pagination: { pageSize: 1 },
-    meta: { select: 'id' },
+    sorters: [{ field: 'created_at', order: 'desc' }],
+    pagination: { pageSize: 50 },
+    meta: { select: 'id, name, is_default, created_at, chest, waist, shoulder, sleeves' },
     queryOptions: { enabled: !!id },
   })
+  const { data: canAddMeasurement } = useCan({ resource: MEASUREMENTS, action: 'create' })
+  const newMeasurementHref = `/measurements/create?customer_id=${id}`
+  const newMeasurement = canAddMeasurement?.can ? (
+    <Link href={newMeasurementHref}>
+      <Button icon={<PlusOutlined />}>New measurement</Button>
+    </Link>
+  ) : (
+    <Tooltip title={canAddMeasurement?.reason}>
+      <Button icon={<PlusOutlined />} disabled>
+        New measurement
+      </Button>
+    </Tooltip>
+  )
 
   const deleteProps = {
     confirmTitle: `Delete ${customer?.name ?? 'customer'}? This action cannot be undone.`,
@@ -87,11 +120,14 @@ export default function CustomerShowPage() {
   return (
     <Show
       title={customer?.name ?? 'Customer'}
-      isLoading={query.isLoading}
+      headerProps={withSubtitle(customer?.phone)}
       recordItemId={id}
       deleteButtonProps={deleteProps}
-      contentProps={{ style: { background: 'transparent', boxShadow: 'none', padding: 0 } }}
+      contentProps={transparentContent}
     >
+      {query.isLoading ? (
+        <PageSkeleton sections={3} />
+      ) : (
       <Space direction="vertical" size={24} style={{ width: '100%' }}>
         <CardWithTitle icon={<UserOutlined />} title="Customer Information">
           {customer && (
@@ -142,6 +178,51 @@ export default function CustomerShowPage() {
           </Col>
         </Row>
 
+        <CardWithTitle icon={<ColumnHeightOutlined />} title="Measurements" action={newMeasurement}>
+          {measurementsQuery.isError ? (
+            <Result status="warning" title="Couldn't load measurements" subTitle={measurementsQuery.error?.message} />
+          ) : (
+            <AntdList<MeasurementRow>
+              loading={measurementsQuery.isLoading}
+              dataSource={measurements.data ?? []}
+              locale={{
+                emptyText: (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No measurements yet.">
+                    {canAddMeasurement?.can && (
+                      <Link href={newMeasurementHref}>
+                        <Button type="primary" icon={<PlusOutlined />}>
+                          New measurement
+                        </Button>
+                      </Link>
+                    )}
+                  </Empty>
+                ),
+              }}
+              renderItem={(m) => (
+                <AntdList.Item
+                  extra={<Typography.Text type="secondary">{day(m.created_at)}</Typography.Text>}
+                >
+                  <AntdList.Item.Meta
+                    title={
+                      <Space size={8} wrap>
+                        <Link href={`/measurements/show/${m.id}`}>{m.name}</Link>
+                        {m.is_default && (
+                          <Tag icon={<StarFilled />} color="gold">
+                            Default
+                          </Tag>
+                        )}
+                      </Space>
+                    }
+                    description={(['chest', 'waist', 'shoulder', 'sleeves'] as const)
+                      .map((key) => `${key.charAt(0).toUpperCase()}${key.slice(1)} ${formatReading(m, key)}`)
+                      .join(' · ')}
+                  />
+                </AntdList.Item>
+              )}
+            />
+          )}
+        </CardWithTitle>
+
         <CardWithTitle icon={<ShoppingOutlined />} title="Orders History">
           {ordersQuery.isError ? (
             <Result status="warning" title="Couldn't load orders" subTitle={ordersQuery.error?.message} />
@@ -183,6 +264,7 @@ export default function CustomerShowPage() {
           )}
         </CardWithTitle>
       </Space>
+      )}
     </Show>
   )
 }

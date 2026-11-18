@@ -1,33 +1,23 @@
 'use client'
 
 import { Form, Input } from 'antd'
-import type { Rule } from 'antd/es/form'
-import type { ZodType } from 'zod'
 import { CreateCustomerSchema } from '@/lib/validators'
-
-/**
- * antd validation rule backed by the API's own zod schema, so the form and
- * POST/PATCH /api/customers can never disagree. Shows the schema's message.
- */
-const zodRule = (schema: ZodType): Rule => ({
-  validator: async (_rule, value) => {
-    const result = schema.safeParse(value ?? '')
-    if (!result.success) throw new Error(result.error.issues[0]?.message ?? 'Invalid value')
-  },
-})
+import { zodRule } from '@/lib/refine/zod-rule'
+import { deleteNotificationsFor, saveNotifications } from '@/lib/refine/notifications'
 
 const { name, phone, address } = CreateCustomerSchema.shape
 
 /**
  * Customer fields: same labels, placeholders and validation as the previous
  * form (src/components/forms/customer-form.tsx): name 2–100 characters, phone
- * in the international format (max 20), optional address (max 500).
+ * in the international format (max 20), optional address (max 500). Rules
+ * come from the API's own zod schema. The first field takes focus.
  */
 export function CustomerFormFields() {
   return (
     <>
       <Form.Item label="Name" name="name" required rules={[zodRule(name)]}>
-        <Input placeholder="Enter customer name" autoComplete="off" />
+        <Input placeholder="Enter customer name" autoComplete="off" autoFocus />
       </Form.Item>
       <Form.Item label="Phone" name="phone" required rules={[zodRule(phone)]}>
         <Input placeholder="+1234567890" inputMode="tel" autoComplete="off" />
@@ -39,25 +29,8 @@ export function CustomerFormFields() {
   )
 }
 
-const messageOf = (error: unknown, fallback: string): string => {
-  const message = error && typeof error === 'object' && 'message' in error ? error.message : undefined
-  return typeof message === 'string' && message ? message : fallback
-}
-
 /** Delete notifications matching the previous toasts ("Customer has orders; ..." etc.). */
-export const deleteNotifications = {
-  successNotification: () => ({ message: 'Customer deleted successfully', type: 'success' as const }),
-  errorNotification: (error?: unknown) => ({ message: messageOf(error, 'Failed to delete customer'), type: 'error' as const }),
-}
+export const deleteNotifications = deleteNotificationsFor('Customer')
 
 /** Notifications matching the previous toasts, including the duplicate-phone message. */
-export const customerNotifications = (action: 'create' | 'edit') => ({
-  successNotification: () => ({
-    message: action === 'edit' ? 'Customer updated successfully' : 'Customer created successfully',
-    type: 'success' as const,
-  }),
-  errorNotification: (error?: { message?: string }) => ({
-    message: error?.message || (action === 'edit' ? 'Failed to update customer' : 'Failed to create customer'),
-    type: 'error' as const,
-  }),
-})
+export const customerNotifications = (action: 'create' | 'edit') => saveNotifications('Customer', action)

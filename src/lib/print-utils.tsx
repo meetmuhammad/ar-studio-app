@@ -264,9 +264,13 @@ export function openPrintPreview({ order, payments }: PrintReceiptOptions) {
 
 // Print measurement functions
 interface PrintMeasurementOptions {
-  order: OrderWithCustomer
+  /** Optional: omit to print a measurement on its own (no order header or items). */
+  order?: OrderWithCustomer
   measurement: Measurement
 }
+
+const escapeHtml = (value: string) =>
+  value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string)
 
 export function printMeasurement({ order, measurement }: PrintMeasurementOptions) {
   // Create a new window
@@ -289,7 +293,7 @@ export function printMeasurement({ order, measurement }: PrintMeasurementOptions
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Measurement - ${order.order_number}</title>
+      <title>Measurement - ${escapeHtml(order ? order.order_number : measurement.name)}</title>
       <script src="https://cdn.tailwindcss.com"></script>
       <style>
         @media print {
@@ -395,7 +399,7 @@ export function openMeasurementPrintPreview({ order, measurement }: PrintMeasure
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Measurement Preview - ${order.order_number}</title>
+      <title>Measurement Preview - ${escapeHtml(order ? order.order_number : measurement.name)}</title>
       <script src="https://cdn.tailwindcss.com"></script>
       <style>
         @media print {

@@ -1,14 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useInvalidateAuthStore, useIsAuthenticated, useLogin } from '@refinedev/core'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2, Eye, EyeOff } from 'lucide-react'
-import { toast } from 'sonner'
+import { Alert, App, Button, Card, Flex, Form, Input, Typography, theme } from 'antd'
+import { LockOutlined, MailOutlined } from '@ant-design/icons'
+import { AppLogo } from '@/components/refine/app-logo'
+import { useColorMode } from '@/components/providers/color-mode-provider'
+import { cardShadow } from '@/lib/refine/theme'
 import type { LoginParams } from '@/lib/refine/auth-provider'
 
 // Only the OAuth consent page may be returned to after sign-in (no open redirect).
@@ -17,11 +16,23 @@ const afterSignIn = () => {
   return /^\/oauth\/consent\?authorization_id=[\w-]+$/.test(next) ? next : '/'
 }
 
+interface SignInValues {
+  email: string
+  password: string
+}
+
+/**
+ * Sign-in in the Ant Design Pro login style: centred card with the AR Studio
+ * mark, email and password with icons, an inline error and a loading button.
+ * Signs in through Refine's useLogin / authProvider (Supabase email +
+ * password). Follows the light/dark mode of the rest of the app.
+ */
 export default function SignInPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
+  const { token } = theme.useToken()
+  const { mode } = useColorMode()
+  const { message } = App.useApp()
+  const [error, setError] = useState<string | null>(null)
   const invalidateAuthStore = useInvalidateAuthStore()
   const { data: auth, isLoading: authLoading } = useIsAuthenticated()
 
@@ -29,19 +40,19 @@ export default function SignInPage() {
   // parameter, so redirection is handled here with the allow-list above.
   const { mutate: login, isPending: isSubmitting } = useLogin<LoginParams>({
     mutationOptions: {
-      onSuccess: async ({ success, error }) => {
+      onSuccess: async ({ success, error: loginError }) => {
         await invalidateAuthStore()
         if (!success) {
-          console.error('Sign in error:', error)
-          toast.error(error?.message || 'Failed to sign in')
+          console.error('Sign in error:', loginError)
+          setError(loginError?.message || 'Failed to sign in')
           return
         }
-        toast.success('Successfully signed in!')
+        message.success('Successfully signed in!')
         router.push(afterSignIn())
       },
-      onError: (error) => {
-        console.error('Sign in error:', error)
-        toast.error(error instanceof Error ? error.message : 'Failed to sign in')
+      onError: (loginError) => {
+        console.error('Sign in error:', loginError)
+        setError(loginError instanceof Error ? loginError.message : 'Failed to sign in')
       },
     },
   })
@@ -53,98 +64,87 @@ export default function SignInPage() {
     }
   }, [auth?.authenticated, authLoading, isSubmitting, router])
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    login({ email, password })
+  const onFinish = ({ email, password }: SignInValues) => {
+    setError(null)
+    login({ email: email.trim(), password })
   }
 
   return (
-    <div className="min-h-dvh flex items-center justify-center bg-background py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-6 sm:space-y-8">
-        <div className="text-center">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">AR Studio</h1>
-          <p className="mt-2 text-sm sm:text-base text-muted-foreground">Customer & Order Management System</p>
-        </div>
+    <Flex
+      className="ar-antd"
+      align="center"
+      justify="center"
+      style={{
+        minHeight: '100dvh',
+        padding: '32px 16px',
+        background:
+          mode === 'dark'
+            ? token.colorBgLayout
+            : `radial-gradient(circle at 20% 0%, ${token.colorPrimaryBg} 0, transparent 45%), ${token.colorBgLayout}`,
+      }}
+    >
+      <div style={{ width: '100%', maxWidth: 400 }}>
+        <Flex vertical align="center" gap={8} style={{ marginBottom: 28 }}>
+          <Flex align="center" gap={10}>
+            <span style={{ transform: 'scale(1.4)', display: 'inline-flex' }}>
+              <AppLogo />
+            </span>
+            <Typography.Title level={2} style={{ margin: 0, marginLeft: 6 }}>
+              AR Studio
+            </Typography.Title>
+          </Flex>
+          <Typography.Text type="secondary">Customer &amp; Order Management System</Typography.Text>
+        </Flex>
 
-        <Card className='mb-6 sm:mb-8'>
-          <CardHeader>
-            <CardTitle className="text-xl sm:text-2xl">Sign In</CardTitle>
-            <CardDescription className="text-sm">
-              Enter your credentials to access the dashboard
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="admin@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  disabled={isSubmitting || authLoading}
-                />
-              </div>
+        <Card style={{ boxShadow: cardShadow(mode) }} styles={{ body: { padding: '28px 28px 12px' } }}>
+          <Typography.Title level={4} style={{ marginTop: 0 }}>
+            Sign in
+          </Typography.Title>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 20 }}>
+            Enter your credentials to access the dashboard
+          </Typography.Paragraph>
 
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    disabled={isSubmitting || authLoading}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowPassword(!showPassword)}
-                    disabled={isSubmitting || authLoading}
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    aria-pressed={showPassword}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
+          {error && (
+            <Alert
+              type="error"
+              showIcon
+              message={error}
+              closable
+              onClose={() => setError(null)}
+              style={{ marginBottom: 16 }}
+              role="alert"
+            />
+          )}
 
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isSubmitting || authLoading}
-              >
-                {(isSubmitting || authLoading) ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
-                  'Sign In'
-                )}
+          <Form<SignInValues>
+            layout="vertical"
+            size="large"
+            onFinish={onFinish}
+            requiredMark={false}
+            disabled={isSubmitting}
+            aria-label="Sign in"
+          >
+            <Form.Item
+              label="Email"
+              name="email"
+              rules={[
+                { required: true, message: 'Please enter your email' },
+                { type: 'email', message: 'Please enter a valid email' },
+              ]}
+            >
+              <Input prefix={<MailOutlined />} placeholder="admin@example.com" autoComplete="email" autoFocus inputMode="email" />
+            </Form.Item>
+            <Form.Item label="Password" name="password" rules={[{ required: true, message: 'Please enter your password' }]}>
+              <Input.Password prefix={<LockOutlined />} placeholder="Enter your password" autoComplete="current-password" />
+            </Form.Item>
+            <Form.Item>
+              <Button type="primary" htmlType="submit" block loading={isSubmitting}>
+                {isSubmitting ? 'Signing in...' : 'Sign In'}
               </Button>
-            </form>
-          </CardContent>
+            </Form.Item>
+          </Form>
         </Card>
-
-        {/* <div className="text-center text-sm text-gray-600">
-          <p>Demo Credentials:</p>
-          <div className="mt-2 space-y-1">
-            <p><strong>Admin:</strong> admin@example.com / admin123</p>
-            <p><strong>Staff:</strong> staff@example.com / staff123</p>
-          </div>
-        </div> */}
       </div>
-    </div>
+    </Flex>
   )
 }

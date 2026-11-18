@@ -369,3 +369,10 @@ input[type="checkbox"], input[type="radio"] { min-height: 0 !important; }
     content: ""; position: absolute; inset: -0.75rem;
   }
 }
+
+/* Refine (antd) page headers on phones: the subtitle would squeeze the title,
+   so only the title and actions are shown below 768px. */
+@media (max-width: 767px) {
+  .ar-antd .ant-page-header-heading-sub-title { display: none; }
+  .ar-antd .ant-page-header-heading-left { flex-wrap: wrap; }
+}

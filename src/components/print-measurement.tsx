@@ -5,11 +5,13 @@ import { Measurement, MEASUREMENT_FIELDS } from "@/types/measurements"
 import type { OrderWithCustomer } from "@/lib/supabase-client"
 
 interface PrintMeasurementProps {
-  order: OrderWithCustomer
+  /** Optional: without an order the sheet prints the measurement on its own. */
+  order?: OrderWithCustomer
   measurement: Measurement
 }
 
 export function PrintMeasurement({ order, measurement }: PrintMeasurementProps) {
+  const customerName = order?.customers.name ?? measurement.customer?.name ?? ''
   // Filter measurement fields that have values
   const measurementsWithValues = MEASUREMENT_FIELDS.filter(field => 
     measurement[field.key] !== undefined && measurement[field.key] !== null
@@ -27,7 +29,7 @@ export function PrintMeasurement({ order, measurement }: PrintMeasurementProps) 
         <div className="flex justify-between items-center mb-3">
           <h2 className="text-lg font-semibold">Customer Measurements</h2>
           <div className="text-right">
-            <p className="font-mono text-base font-bold">#{order.order_number}</p>
+            {order && <p className="font-mono text-base font-bold">#{order.order_number}</p>}
             <p className="text-xs text-gray-600">
               {format(new Date(), "MMM d, yyyy 'at' HH:mm")}
             </p>
@@ -42,7 +44,7 @@ export function PrintMeasurement({ order, measurement }: PrintMeasurementProps) 
           <div className="space-y-1 text-xs">
             <div className="flex justify-between">
               <span className="font-medium">Name:</span>
-              <span>{order.customers.name}</span>
+              <span>{customerName}</span>
             </div>
             <div className="flex justify-between">
               <span className="font-medium">Measurement Set:</span>
@@ -53,7 +55,7 @@ export function PrintMeasurement({ order, measurement }: PrintMeasurementProps) 
       </div>
 
       {/* Order Items */}
-      {order.order_items && order.order_items.length > 0 && (
+      {order?.order_items && order.order_items.length > 0 && (
         <div className="mb-4">
           <h3 className="text-sm font-semibold mb-2 text-gray-800">Order Items</h3>
           
