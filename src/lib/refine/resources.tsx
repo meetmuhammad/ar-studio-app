@@ -29,14 +29,29 @@ export interface ResourceMeta {
   roles: Role[]
   /** Rows carry business_id and must be scoped to the selected business. */
   businessScoped: boolean
+  /**
+   * Narrower roles for specific actions, mirroring the database policies in
+   * supabase/migrations/20261119000000_role_scoped_rls.sql (e.g. delete is
+   * admin-only on customers). Actions not listed use `roles`.
+   */
+  actionRoles?: Partial<Record<string, Role[]>>
+  /** Not shown in the sidebar (access-control only). */
+  hide?: boolean
 }
 
 interface ModuleDef extends Omit<ResourceProps, 'meta'> {
-  list: string
   label: string
   icon: React.ReactNode
   businessScoped: boolean
+  actionRoles?: ResourceMeta['actionRoles']
+  /** For modules without their own page; otherwise roles come from NAV_ITEMS. */
+  roles?: Role[]
+  hide?: boolean
 }
+
+const ADMIN_ONLY: Role[] = ['admin']
+const ADMIN_DELETE = { delete: ADMIN_ONLY }
+const ADMIN_WRITES = { create: ADMIN_ONLY, edit: ADMIN_ONLY, delete: ADMIN_ONLY, clone: ADMIN_ONLY }
 
 const MODULES: ModuleDef[] = [
   { name: 'dashboard', list: '/', label: 'Dashboard', icon: <DashboardOutlined />, businessScoped: false },
@@ -49,24 +64,52 @@ const MODULES: ModuleDef[] = [
     label: 'Customers',
     icon: <TeamOutlined />,
     businessScoped: true,
+    actionRoles: ADMIN_DELETE,
   },
-  { name: 'orders', list: '/orders', label: 'Orders', icon: <ShoppingOutlined />, businessScoped: true },
-  { name: 'measurements', list: '/measurements', label: 'Measurements', icon: <ColumnHeightOutlined />, businessScoped: true },
+  { name: 'orders', list: '/orders', label: 'Orders', icon: <ShoppingOutlined />, businessScoped: true, actionRoles: ADMIN_DELETE },
+  {
+    name: 'measurements',
+    list: '/measurements',
+    label: 'Measurements',
+    icon: <ColumnHeightOutlined />,
+    businessScoped: true,
+    actionRoles: ADMIN_DELETE,
+  },
+  // Vendors are admin-only as a whole (roles from NAV_ITEMS).
   { name: 'vendors', list: '/vendors', show: '/vendors/:id', label: 'Vendors', icon: <ShopOutlined />, businessScoped: true },
   { name: 'ledger', list: '/ledger', label: 'Ledger', icon: <BookOutlined />, businessScoped: true },
   { name: 'pnl', list: '/pnl', label: 'P&L', icon: <FundOutlined />, businessScoped: false },
+  // No page of its own: members may read payments, only admins may write them.
+  {
+    name: 'payments',
+    label: 'Payments',
+    icon: null,
+    businessScoped: true,
+    roles: ['admin', 'staff'],
+    actionRoles: ADMIN_WRITES,
+    hide: true,
+  },
 ]
 
-const rolesFor = (href: string): Role[] => {
+const rolesFor = (href: string | undefined): Role[] => {
   const item = NAV_ITEMS.find((i) => i.href === href)
   if (!item) throw new Error(`No NAV_ITEMS entry (roles) for route ${href}`)
   return item.roles
 }
 
-export const resources: ResourceProps[] = MODULES.map(({ label, icon, businessScoped, ...resource }) => {
-  const meta: ResourceMeta = { label, icon, roles: rolesFor(resource.list), businessScoped }
-  return { ...resource, meta }
-})
+export const resources: ResourceProps[] = MODULES.map(
+  ({ label, icon, businessScoped, actionRoles, roles, hide, ...resource }) => {
+    const meta: ResourceMeta = {
+      label,
+      icon,
+      roles: roles ?? rolesFor(typeof resource.list === 'string' ? resource.list : undefined),
+      businessScoped,
+      actionRoles,
+      hide,
+    }
+    return { ...resource, meta }
+  }
+)
 
 const META_BY_NAME = new Map(resources.map((r) => [r.name, r.meta as ResourceMeta]))
 

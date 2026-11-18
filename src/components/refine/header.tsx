@@ -1,6 +1,6 @@
 'use client'
 
-import { useGetIdentity, useLogout } from '@refinedev/core'
+import { useCan, useGetIdentity, useLogout } from '@refinedev/core'
 import { Avatar, Button, Dropdown, Grid, Layout, Space, Tag, Tooltip, Typography, theme } from 'antd'
 import {
   BellOutlined,
@@ -50,6 +50,10 @@ export function ShellHeader() {
   const { isAll } = useBusiness()
   const signOut = useSignOut()
   const readOnlyTitle = isAll ? 'Read-only: pick one business' : undefined
+  // Payments are admin-only to write (database policy); staff see the button disabled.
+  const { data: canAddPayment } = useCan({ resource: 'payments', action: 'create' })
+  const paymentDisabled = isAll || !canAddPayment?.can
+  const paymentTitle = readOnlyTitle ?? (canAddPayment && !canAddPayment.can ? canAddPayment.reason : undefined)
 
   return (
     <Layout.Header
@@ -80,7 +84,14 @@ export function ShellHeader() {
               menu={{
                 items: [
                   { key: 'order', icon: <PlusOutlined />, label: 'New order', onClick: actions.openOrderDialog },
-                  { key: 'payment', icon: <DollarOutlined />, label: 'Add payment', onClick: actions.openPaymentDialog },
+                  {
+                    key: 'payment',
+                    icon: <DollarOutlined />,
+                    label: 'Add payment',
+                    disabled: paymentDisabled,
+                    title: paymentTitle,
+                    onClick: actions.openPaymentDialog,
+                  },
                 ],
               }}
             >
@@ -93,7 +104,7 @@ export function ShellHeader() {
               <Button type="primary" icon={<PlusOutlined />} onClick={actions.openOrderDialog} disabled={isAll} title={readOnlyTitle}>
                 {screens.lg ? 'Create New Order' : 'Order'}
               </Button>
-              <Button icon={<DollarOutlined />} onClick={actions.openPaymentDialog} disabled={isAll} title={readOnlyTitle}>
+              <Button icon={<DollarOutlined />} onClick={actions.openPaymentDialog} disabled={paymentDisabled} title={paymentTitle}>
                 {screens.lg ? 'Add New Payment' : 'Payment'}
               </Button>
             </>

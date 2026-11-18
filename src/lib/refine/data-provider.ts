@@ -185,7 +185,18 @@ const scoped: Pick<
       .eq('business_id', businessId)
       .select('id')
     if (error) throw toHttpError(error, rules)
-    if (!data?.length) throw httpError(404, rules?.notFound ?? 'Not found')
+    if (!data?.length) {
+      // RLS turns a forbidden delete into "0 rows". If the row is still
+      // visible, the caller may read it but not delete it (admin-only).
+      const { data: visible } = await supabase
+        .from(resource)
+        .select('id')
+        .eq('id', id)
+        .eq('business_id', businessId)
+        .maybeSingle()
+      if (visible) throw httpError(403, 'Only an admin can delete this')
+      throw httpError(404, rules?.notFound ?? 'Not found')
+    }
     return { data: data[0] as never }
   },
 }

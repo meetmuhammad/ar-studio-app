@@ -91,11 +91,16 @@ resource's `meta.roles`.
 | ledger | `/ledger` | admin |
 | pnl | `/pnl` | admin |
 
-Rules (`canRoleAccess`):
+Rules (`canRoleAccess`), matching the database policies in
+`supabase/migrations/20261119000000_role_scoped_rls.sql` (verify with
+`supabase/tests/role_scoped_rls_check.sql`):
 
 1. Unknown resource, or no role: denied.
 2. Role not in `meta.roles`: denied.
-3. Within an allowed module both roles may do every action, matching the API (`requireBusiness` allows admin + staff).
+3. Per-action roles from `meta.actionRoles`:
+   - **Delete** on customers, orders and measurements is admin-only.
+   - **Payments** (a resource without a page): readable by members; create, edit and delete are admin-only. The header's "Add New Payment" button follows this rule.
+   - Everything else in an allowed module is open to both roles.
 4. In the admin "All businesses" view, `create` / `edit` / `delete` / `clone` on a business-scoped resource is denied with the read-only reason. This matches `authFetch` and the API.
 
 Where the rules apply:
@@ -147,6 +152,8 @@ running balances) should keep going through the existing API routes, for example
 `custom` call, rather than through several client-side writes.
 
 ## Deferred
+
+- **API vs database roles:** the API routes still allow staff to delete orders and measurements and to record payments (`requireBusiness` defaults to admin + staff). They use the service role, so the new policies don't reach them. Legacy pages that call those routes therefore still allow it until the routes or the pages are changed.
 
 - **Legacy modules:** Orders, Measurements, Vendors, Ledger and P&L are still shadcn pages using the `/api` routes. They need the service-role key, so they show errors locally without it. The global "Create New Order" / "Add New Payment" dialogs in the header are also still shadcn.
 - **Sign-in and OAuth consent:** the sign-in page keeps its previous shadcn look (now via Refine `useLogin`). The OAuth consent page is untouched.
