@@ -3,11 +3,11 @@
 The root Next.js 15 App Router app is a Refine app. Refine (`@refinedev/core` 5) with the
 Ant Design UI kit (`@refinedev/antd` 6, `antd` 5) provides the shell (sidebar, header, theme),
 auth, access control and data access. Customers, Measurements, Vendors, Orders (with payments),
-the Dashboard and the sign-in page are fully on Refine + antd. Ledger and P&L are still the
-previous shadcn pages, rendered inside the new shell until they are ported. Refine pages read
-through the Supabase data provider and write either to tables (RLS) or, for orders and payments,
-through Postgres functions. The only `/api` call left on them is the vendor ledger and bills
-section, which has no direct client access by design (see Vendors).
+the Dashboard, Ledger, P&L and the sign-in page are on Refine + antd. Refine pages read through
+the Supabase data provider (or, for the admin reports, read-only Postgres functions) and write
+either to tables (RLS) or, for orders and payments, through Postgres functions. The `/api` calls
+left are ledger writes (the Ledger page's add / edit / delete / sync, and the vendor ledger and
+bills section), which have no direct client access by design (see Ledger and Vendors).
 
 Nothing under `src/app/api/**`, `src/app/.well-known/**`, `src/app/oauth/**`,
 `src/lib/ledger-mcp/**`, `src/lib/ledger-service.ts` or `src/lib/pnl.ts` changed. The mobile
@@ -19,8 +19,10 @@ app and the MCP server keep using the API routes exactly as before.
 src/app/layout.tsx                      AntdRegistry(layer) > next-themes > React Query > AuthContext
                                         > ColorModeProvider (antd ConfigProvider + App) > RefineProvider
 src/app/(dashboard)/layout.tsx          <Authenticated> + BusinessProvider + ThemedLayout (sider + ShellHeader)
-src/app/(dashboard)/page.tsx            Dashboard (Refine + antd, admin only)
-src/app/(dashboard)/overview/page.tsx   The previous dashboard, unchanged apart from its title
+src/app/(dashboard)/page.tsx            Dashboard, Ant Design Pro analysis layout (admin only)
+src/app/(dashboard)/overview/page.tsx   The classic overview over /api/dashboard-stats, unchanged
+src/app/(dashboard)/ledger/page.tsx     General ledger over ledger_entries (admin only)
+src/app/(dashboard)/pnl/page.tsx        Profit & Loss over pnl_input + computePnl (admin only)
 src/app/(dashboard)/customers/**        list / create / edit/[id] / show/[id] (Refine + antd)
 src/app/(dashboard)/measurements/**     list / create[?customer_id=] / edit/[id] / show/[id] (Refine + antd)
 src/app/(dashboard)/vendors/**          list / create / edit/[id] / show/[id] (Refine + antd, admin only);
@@ -35,7 +37,8 @@ src/components/providers/color-mode-provider.tsx  light/dark for antd and the le
 src/components/refine/                  shell (header, business switcher, logo) and the shared UX
                                         baseline: FilterBar, ResourceTable (+ TableToolbar),
                                         RowActions, page-parts (FormSection, PageSkeleton, ...),
-                                        CardWithTitle, KpiCard, WriteGuard
+                                        CardWithTitle, WriteGuard, ChartCard (+ Trend),
+                                        PeriodPicker (presets + custom range)
 src/components/customers/               customers types, form fields (rules from the zod schema)
 src/components/measurements/            measurements types, form fields, CustomerSelect
 src/components/vendors/                 constants + zod schemas, vendor form (with tags), CategorySelect,
@@ -50,6 +53,7 @@ src/lib/refine/resources.tsx            resources: routes, labels, icons, sideba
 src/lib/refine/data-provider.ts         @refinedev/supabase wrapped with business scoping
 src/lib/refine/business-scope.ts        membership ids for the "All businesses" view
 src/lib/refine/theme.ts                 antd theme: ACCENT, light/dark algorithm, tokens
+src/lib/refine/reporting.ts             typed React Query hooks over the reporting functions
 src/lib/auth/role.ts                    role lookup + cache shared by AuthContext and Refine
 ```
 
@@ -91,7 +95,7 @@ returned to, as before.
   antd element. The legacy base rules for links and 44px touch targets apply outside the antd
   UI (`.ar-antd`) and inside legacy pages (`.legacy-page`, set by the dashboard layout).
 - Card look: use `CardWithTitle` (icon + title on the left, optional action on the right, soft
-  shadow) and `KpiCard` (icon, title, big number, area sparkline).
+  shadow) and `ChartCard` (title with info tooltip, big number, trend, mini area/bar chart, footer).
 
 ## Access control (roles)
 
@@ -130,6 +134,7 @@ Where the rules apply:
 - **Create/edit pages:** wrapped in `WriteGuard`, which shows the reason instead of the form.
 - **Dashboard:** wrapped in `CanAccess` and sends other roles to `/customers`.
 - **Admin-only pages (Vendors):** wrapped in `ResourceGuard`, which shows a 403 result with a "Go to Customers" button for other roles (direct or shared URLs).
+- **Ledger and P&L:** wrapped in `CanAccess` with a 403 result. The reporting functions refuse non-admins as well (42501), so a direct URL shows no data either.
 - **Legacy pages:** keep their `RoleGuard`.
 
 Hiding UI is only an affordance. The API and RLS still enforce everything.
@@ -242,6 +247,65 @@ exercises all of them as the disposable admin and staff users inside a transacti
   - Printing: "Print Receipt" (existing `openPrintPreview`) and "Print Measurement" when a set is linked.
 - **Header:** "Create New Order" opens `/orders/create`. "Add New Payment" opens the payment modal with an order picker (admin only).
 
+## Reports: Dashboard, Ledger and P&L (admin only)
+
+### Database functions (`supabase/migrations/20261119000200_reporting_functions.sql`)
+
+`general_ledger` and `vendor_ledger` have no client grants, and reports need exact totals (no
+1,000-row cap), so the three report screens read through read-only functions. All are `STABLE`,
+`SECURITY DEFINER` (`search_path = public, pg_temp`), executable by `authenticated` only, and
+check `current_user_is_admin()` and that every requested business id is one of
+`current_user_business_ids()` (SQLSTATE `42501` otherwise). They take an array of business ids:
+the selected business, or every membership in "All businesses". Dates are inclusive; "today" is
+Asia/Karachi.
+
+| Function | Returns | Mirrors |
+| --- | --- | --- |
+| `dashboard_summary(p_business_ids, p_from, p_to)` | jsonb: customers, orders (total, in range, by status), revenue in range, cash received (advances / payments / total), outstanding, 12-month series, top 5 customers, upcoming and overdue deliveries | `/api/dashboard-stats` where a figure exists (differences below) |
+| `ledger_entries(p_business_ids, p_from, p_to, p_search, p_entry_type, p_vendor_id, p_limit, p_offset, p_vendor_category_id)` | jsonb `{rows, total, combined, opening_balance, totals: {debit, credit, net, entry_count}}` | `ledger-service.ts`: `listLedgerEntries` (filters, newest first), `getRangeRunningBalances` (`range_balance`, one business only) and `getLedgerTotals` (date range only) |
+| `pnl_input(p_business_ids, p_from, p_to)` | jsonb `{orders, payments, ledger, vendorLedger, vendors}` | `/api/pnl` `fetchRows`, for both bases at once |
+
+`supabase/tests/reporting_functions_check.sql` impersonates disposable admin and staff users
+inside a transaction that rolls back: staff gets 42501 from all three, an admin asking for a
+business they don't belong to gets 42501, and the admin's figures equal direct sums (cash received
+= advances + payments, ledger debit / credit / count, running balance, opening balance).
+
+`src/lib/refine/reporting.ts` wraps them in React Query hooks (`useDashboardSummary`,
+`useLedgerPage`, `usePnlInput`, query key `['report', fn, businessIds, args]`). If the migration
+has not been applied (PostgREST `PGRST202`), the screens say so instead of failing silently.
+
+### Dashboard (`/`)
+
+- **Period:** `PeriodPicker` (This Month / This Quarter / This Year / Custom), default This Month. Trends compare with the previous month / quarter / year, or the same number of days before a custom range.
+- **KPI cards:** Revenue (orders booked in the period), Cash received (advances + later payments, split in the footer), Orders (booked in the period), Outstanding balance (unpaid on every order that is not Cancelled, today). The first three have a trend and a 12-month mini chart; Outstanding shows customers and overdue deliveries instead (it is a balance today, not a period figure).
+- **Sales card:** tabs Revenue / Orders with a 12-month bar chart and "Top customers by order value" for the period.
+- **Upcoming deliveries (next 14 days):** In Process orders, nearest first, with the balance due, plus a warning for overdue ones, and "See all orders".
+- Loading skeletons, empty states and light/dark come from antd. The old capped client-side series are gone; every figure is computed in SQL.
+- `/overview` (link "Open the classic overview") keeps the previous screen over `/api/dashboard-stats`.
+
+**Differences from `/api/dashboard-stats`** (also in the migration header):
+- **Cash received:** `advance_paid` (by booking date) + `payments.amount` (by payment date), the money definition used by P&L. The API's "Total received" is ledger debit − credit over every entry, vendor payments included (returned as `ledger_net`).
+- **Outstanding:** Σ max(total − advance − payments, 0) per order that isn't Cancelled. The API reports total revenue − ledger net (returned as `outstanding_api`).
+- **Revenue:** for the selected period. The API reports all-time (returned as `revenue_all_time`).
+- **Upcoming:** In Process orders due in the next 14 days, up to 10. The API listed the next 5 orders that weren't Cancelled.
+- **Series:** 12 months of order value and cash. The API charted 6 months of ledger `order_payment` debits.
+
+### Ledger (`/ledger`)
+
+- **Reads:** `ledger_entries`, paged on the server (page and size in the URL with the filters: `from`, `to`, `q`, `type`, `vendor`, `category`).
+- **Filters** ("Ledger filters"): Dates (range picker with Last 7 days / Last 30 days / This month / This year presets), Search particulars, Entry type, Vendor, Category.
+- **Table** (`ResourceTable`, key `ledger`): Date, Particulars (links to the order), Type, Vendor / Category, Debit, Credit, Balance (the running balance within the date range, as before; Business instead in "All businesses"), Notes (hidden by default), Actions. Sticky header, density and column settings. Summary rows: opening balance, totals for the dates, closing balance.
+- **Stat cards:** Total Debit, Total Credit, Current Balance (Net in "All businesses"), Total Entries, over the date range only, as `/api/general-ledger/stats`.
+- **Export CSV:** every row of the current filter (same columns as the previous export).
+- **Writes stay on the API:** Add Entry and edit use the existing `LedgerEntryDialog` (`POST` / `PATCH /api/general-ledger`), delete uses `DELETE /api/general-ledger/[id]`, and Sync payments uses `POST /api/general-ledger/sync-payments`. Running balances are maintained by triggers and the API owns those writes. Without the service-role key (locally) the read side works and a failed write shows "The ledger service could not save this change". Order payment rows are not editable here, as before (edit the payment on the order).
+
+### P&L (`/pnl`)
+
+- `pnl_input` returns the API's rows for the period; `computePnl` from `src/lib/pnl.ts` (unchanged) builds the statement in the browser. Switching basis needs no new request.
+- **Controls:** Basis (Cash basis / Accrual basis) and Period (This Month / This Quarter / This Year / Custom).
+- **Cards:** Statement (Revenue, Cost of sales / production, Gross profit, Staff, Overheads, Other expenses, Other income, Net profit), By month (revenue and net profit chart), Monthly breakdown table with a period total row, Not in profit (opening balances, owner withdrawals, transfers, and in accrual the vendor payments replaced by bills), Read this with the figures (limitations and unknown categories).
+- Same figures as `GET /api/pnl` for the same business, basis and dates.
+
 ## UX baseline (Ant Design Pro patterns)
 
 Shared components in `src/components/refine/`, used by Customers and Measurements:
@@ -257,7 +321,7 @@ Shared components in `src/components/refine/`, used by Customers and Measurement
 - **Forms**: sections in cards (`FormSection`), first field auto-focused, Enter submits (`EnterToSubmit`, since Refine's Save button is outside the `<form>`), validation from the API's zod schemas (`zodRule`), success/error notifications from `notifications.ts`. Edit and show pages show a `PageSkeleton` while loading; the edit form stays mounted (hidden) so Refine can fill it.
 - **Sign-in**: centred card with the AR Studio mark, Email / Password with icons, an inline error `Alert`, and a loading Sign In button. Works in light and dark mode.
 
-## Porting the next module (for example Ledger)
+## Porting the next module
 
 1. Add any extra routes (`create`, `edit`, `show`) to the module's entry in `MODULES` in `src/lib/refine/resources.tsx`. Roles stay in `NAV_ITEMS`.
 2. If the table has resource-specific rules (error wording, delete preconditions, value normalisation), add them to `RULES` in `data-provider.ts`. Scoping is already automatic for the scoped tables.
@@ -279,7 +343,8 @@ running balances) should keep going through the existing API routes, for example
 
 - **Vendor ledger and bills:** still on `/api/vendor-ledger` and the shadcn `VendorBillDialog` (see Vendors). Porting them needs a server-side path for ledger writes (the running balance is maintained by database triggers and must stay atomic). The ledger card filters entries client-side, as before.
 - **Vendor list:** the `tag` and `q` filters resolve at most 1000 matching tags or categories.
-- **Legacy modules:** Ledger and P&L are still shadcn pages using the `/api` routes. They need the service-role key, so they show errors locally without it.
+- **Ledger writes:** add / edit / delete / sync on `/ledger` still use the `/api/general-ledger` routes and the shadcn `LedgerEntryDialog`. Moving them needs atomic write functions like the order ones.
+- **Reporting functions:** written against the API and the migrations in this repo. Run `supabase/tests/reporting_functions_check.sql` after applying.
 - **Orders "Nearest delivery" sort:** the previous list put upcoming deliveries first and past-due ones after, using three server queries. The Refine list sorts by delivery date ascending, so past-due orders come first. The delivery date is shown in red when an In Process order is late. Restoring the exact order needs a sort expression, which means a view or function.
 - **`orders_with_payment_status` view:** not used. Its definition is not in the repo, so the list computes payment status from the order and its payments, with the same formula as the receipt.
 - **Order functions:** written against the API and the migrations in this repo. The base table definitions (column types, foreign-key actions) predate `supabase/migrations`, so run `supabase/tests/order_payment_functions_check.sql` after applying.
@@ -289,12 +354,11 @@ running balances) should keep going through the existing API routes, for example
 - **Measurement list sorting by customer** is not offered (PostgREST orders embedded rows, not parents). The customer filter resolves at most 1000 matching customers.
 - **Phone layout:** the shell uses Refine's drawer menu on phones. The previous bottom tab bar is gone; `tab` / `tabLabel` in `NAV_ITEMS` are kept for a possible custom tab bar.
 - **Notifications bell:** static.
-- **Dashboard series:** sparklines fetch 6 months of rows without pagination, so each series is capped by the PostgREST row limit (1000 by default). Headline counts are exact. "Payments received" sums the `payments` table only; order advances stored on `orders.advance_paid` are not included. Moving the series to SQL aggregates (views or RPC) needs a database change and was out of scope.
 - **e2e tests:** the Playwright specs in `e2e/` select elements of the old shadcn sidebar and tab bar (`nav.spec.ts`, `states.spec.ts`, `workflows.spec.ts`, `dialogs.spec.ts`, `pwa.spec.ts`) and need updating for the antd shell.
 - **Unused code to delete when modules are ported:**
-  - `useCustomers`, `useCreateCustomer`, `useUpdateCustomer`, `useDeleteCustomer` in `src/hooks/use-api.ts`; the vendor-category hooks there (`useVendorCategories`, …) are still used by the legacy Ledger page.
+  - `src/hooks/use-api.ts` now holds only `useDashboardStats` (for `/overview`); delete it with `/overview`.
   - `src/lib/vendor-filter.ts`, kept for `scripts/checks/filters.check.ts`.
   - `itemsFor` / `tabItemsFor` / `moreItemsFor` in `nav-items.ts`.
-  - The order hooks in `src/hooks/use-api.ts` (`useOrders`, `useCreateOrder`, …) and the payment types in `validators.ts` used only by the removed dialogs.
+  - The payment types in `validators.ts` used only by the removed dialogs.
   - `src/components/data-table/data-table.tsx`, still used by legacy pages.
 - **Existing auth wait:** `AuthContext` awaits the role lookup inside Supabase's `onAuthStateChange`, which can hold the first session read for up to the 10 s role timeout if that query hangs. The previous guard waited on the same path; changing it means touching `AuthContext` timing and was left as is.

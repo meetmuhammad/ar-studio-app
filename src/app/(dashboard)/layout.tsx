@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation'
 import { Authenticated } from '@refinedev/core'
 import { ThemedLayout, ThemedSider } from '@refinedev/antd'
-import { Alert, Flex, Grid, Result, Spin, Typography } from 'antd'
+import { Alert, Flex, Grid, Result, Spin, Typography, theme } from 'antd'
 import { BusinessScopeSync } from '@/components/providers/refine-provider'
 import { ShellHeader } from '@/components/refine/header'
 import { BusinessProvider, useBusiness } from '@/contexts/business-context'
@@ -14,13 +14,33 @@ import { BusinessProvider, useBusiness } from '@/contexts/business-context'
  * base styles (links, touch targets) scoped away from the antd shell.
  * Add a module's routes here when it is ported.
  */
-const REFINE_MODULES = ['/customers', '/measurements', '/vendors', '/orders']
+const REFINE_MODULES = ['/customers', '/measurements', '/vendors', '/orders', '/ledger', '/pnl']
 const isRefineRoute = (pathname: string) =>
   pathname === '/' || REFINE_MODULES.some((base) => pathname === base || pathname.startsWith(`${base}/`))
 
-/** Refine's sider without its built-in logout item (sign out lives in the header user menu). */
+/**
+ * Refine's sider without its built-in logout item (sign out lives in the
+ * header user menu). The sider itself is fixed at 100vh and stays in view while
+ * the page scrolls; this wrapper is the flex item of the shell row, so it
+ * stretches to the full page height and carries the sider's background and
+ * border below the first screen (long pages, full-page screenshots). Below lg
+ * the menu is a drawer and the wrapper stays plain.
+ */
 function ShellSider() {
-  return <ThemedSider fixed render={({ items }) => items} />
+  const { token } = theme.useToken()
+  const screens = Grid.useBreakpoint()
+  const desktop = screens.lg !== false
+  return (
+    <div
+      style={
+        desktop
+          ? { flex: 'none', alignSelf: 'stretch', backgroundColor: token.colorBgContainer, borderRight: `1px solid ${token.colorBgElevated}` }
+          : { flex: 'none' }
+      }
+    >
+      <ThemedSider fixed render={({ items }) => items} />
+    </div>
+  )
 }
 
 function FullScreenStatus({ label }: { label: string }) {

@@ -1,232 +1,144 @@
 'use client'
 
-import { useState } from 'react'
-import { format } from 'date-fns'
-import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from 'recharts'
-import { X } from 'lucide-react'
-
-import { RoleGuard } from '@/components/auth/role-guard'
-import { PageHeader } from '@/components/dashboard/page-header'
-import { ErrorState } from '@/components/dashboard/error-state'
-import {
-  SectionCard,
-  SectionCardContent,
-  SectionCardDescription,
-  SectionCardHeader,
-  SectionCardTitle,
-} from '@/components/dashboard/section-card'
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { Button } from '@/components/ui/button'
-import { DatePicker } from '@/components/ui/date-picker'
-import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
+import { useMemo, useState } from 'react'
+import { CanAccess } from '@refinedev/core'
+import { Button, Col, Descriptions, Empty, Flex, Result, Row, Segmented, Skeleton, Table, Typography, theme } from 'antd'
+import { BarChartOutlined, FileTextOutlined, InfoCircleOutlined, StopOutlined, TableOutlined } from '@ant-design/icons'
+import { Bar, BarChart, CartesianGrid, Legend, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import dayjs from 'dayjs'
 import { useBusinessLabel } from '@/contexts/business-context'
-import { usePnl, type PnlResponse } from '@/hooks/use-api'
-import { useReducedMotion } from '@/hooks/use-reduced-motion'
-import { BUSINESS_TIME_ZONE, fromDateString, toDateString, todayInBusinessZone } from '@/lib/date-range'
+import { FormSection, Sections } from '@/components/refine/page-parts'
+import { PeriodPicker, resolvePeriod, type Period } from '@/components/refine/period-picker'
+import { usePnlInput, useReportScope } from '@/lib/refine/reporting'
+import { BUSINESS_TIME_ZONE } from '@/lib/date-range'
 import { formatCompactNumber, formatPKR } from '@/lib/format'
-import { PNL_PRESETS, isPnlPreset, resolvePnlRange, type PnlMode, type PnlPreset } from '@/lib/pnl'
-import { cn } from '@/lib/utils'
+import { computePnl, type PnlMode, type PnlMonth, type PnlResult } from '@/lib/pnl'
 
-const MODES: Array<{ value: PnlMode; label: string; hint: string }> = [
+const MODES: { value: PnlMode; label: string; hint: string }[] = [
   { value: 'cash', label: 'Cash basis', hint: 'Money received and paid out in the period' },
   { value: 'accrual', label: 'Accrual basis', hint: 'Orders delivered and bills recorded in the period' },
 ]
 
-/** Cents from the API -> rupees for display (formatPKR rounds to whole rupees). */
-const rupees = (cents: number) => cents / 100
-const money = (cents: number) => formatPKR(rupees(cents))
-const longDate = (d: string) => format(fromDateString(d), 'd MMM yyyy')
-const monthLabel = (key: string, withYear: boolean) =>
-  format(fromDateString(`${key}-01`), withYear ? 'MMM yy' : 'MMM')
+const money = (cents: number) => formatPKR(cents / 100)
+const longDate = (d: string) => dayjs(d).format('D MMM YYYY')
 
-export default function ProfitAndLossPage() {
+/**
+ * Profit & Loss: the same report as GET /api/pnl. The rows come from the
+ * read-only pnl_input function (the API's queries, for both bases at once)
+ * and the figures from computePnl in src/lib/pnl.ts, unchanged, so the
+ * numbers match the API's for the same business, basis and dates.
+ */
+function PnlScreen() {
   const businessLabel = useBusinessLabel()
+  const scope = useReportScope()
   const [mode, setMode] = useState<PnlMode>('cash')
-  const [preset, setPreset] = useState<PnlPreset>('this_month')
-  const [custom, setCustom] = useState<{ start?: string; end?: string }>({})
+  const [period, setPeriod] = useState<Period>({ preset: 'this_month', custom: {} })
+  const range = resolvePeriod(period)
+  const input = usePnlInput(range)
 
-  // Presets resolve in Asia/Karachi on the client too, so the window shown
-  // before the response arrives is the one the server will use.
-  const resolved = resolvePnlRange(preset, custom, todayInBusinessZone())
-  const range = 'range' in resolved ? resolved.range : null
-
-  const { data, isPending, isError, error, refetch } = usePnl(
-    { mode, preset, start: range?.start ?? '', end: range?.end ?? '' },
-    { enabled: !!range }
+  const result: PnlResult | null = useMemo(
+    () => (input.data && range ? computePnl(input.data, { mode, range, businessIds: scope.ids }) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [input.data, mode, range?.start, range?.end, scope.ids.join(',')]
   )
 
-  const changePreset = (value: string) => {
-    if (!isPnlPreset(value)) return
-    // Switching to Custom starts from the dates the previous preset covered.
-    if (value === 'custom' && range) setCustom({ start: range.start, end: range.end })
-    setPreset(value)
-  }
-
-  const windowText = range
-    ? `${longDate(range.start)} to ${longDate(range.end)} (${BUSINESS_TIME_ZONE})`
-    : 'Choose a start and an end date'
+  const windowText = range ? `${longDate(range.start)} to ${longDate(range.end)} (${BUSINESS_TIME_ZONE})` : 'Choose a start and an end date'
 
   return (
-    <RoleGuard allowedRoles={['admin']}>
-      <div className="mx-auto max-w-[1600px] space-y-6">
-        <PageHeader title="Profit & Loss" description={`${businessLabel} · ${windowText}`} />
-
-        <SectionCard>
-          <SectionCardContent className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-start lg:gap-8">
-            <fieldset className="min-w-0 space-y-2">
-              <legend className="mb-2 text-sm text-muted-foreground">Basis</legend>
-              <RadioGroup
-                value={mode}
-                onValueChange={(v) => setMode(v as PnlMode)}
-                aria-label="Basis"
-                className="grid gap-2 sm:grid-cols-2"
-              >
-                {MODES.map((m) => (
-                  <Label
-                    key={m.value}
-                    htmlFor={`pnl-mode-${m.value}`}
-                    className={cn(
-                      'flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 font-normal',
-                      mode === m.value ? 'border-primary bg-accent' : 'border-border'
-                    )}
-                  >
-                    <RadioGroupItem id={`pnl-mode-${m.value}`} value={m.value} className="mt-0.5" />
-                    <span className="grid gap-0.5">
-                      <span className="text-sm font-medium">{m.label}</span>
-                      <span className="text-xs text-muted-foreground">{m.hint}</span>
-                    </span>
-                  </Label>
-                ))}
-              </RadioGroup>
-            </fieldset>
-
-            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="pnl-period" className="text-sm text-muted-foreground">Period</Label>
-                <Select value={preset} onValueChange={changePreset}>
-                  <SelectTrigger id="pnl-period" className="w-full sm:w-[160px]" aria-label="Period">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PNL_PRESETS.map((p) => (
-                      <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {preset === 'custom' && (
-                <>
-                  <BoundPicker
-                    label="From"
-                    value={custom.start}
-                    max={custom.end}
-                    onChange={(start) => setCustom((c) => ({ ...c, start }))}
-                  />
-                  <BoundPicker
-                    label="To"
-                    value={custom.end}
-                    min={custom.start}
-                    onChange={(end) => setCustom((c) => ({ ...c, end }))}
-                  />
-                </>
-              )}
-            </div>
-          </SectionCardContent>
-        </SectionCard>
-
-        {!range ? (
-          <SectionCard>
-            <SectionCardContent className="py-6 text-center text-sm text-muted-foreground">
-              {!custom.start || !custom.end ? 'Pick a start and an end date to see the report.' : 'error' in resolved ? resolved.error : null}
-            </SectionCardContent>
-          </SectionCard>
-        ) : isError ? (
-          <ErrorState
-            title="Couldn't load the profit and loss report"
-            detail={error instanceof Error ? error.message : undefined}
-            onRetry={() => refetch()}
-          />
-        ) : isPending || !data ? (
-          <LoadingState />
-        ) : (
-          <Report data={data} />
-        )}
+    <Flex vertical gap={16}>
+      <div>
+        <Typography.Title level={3} style={{ margin: 0 }}>
+          Profit &amp; Loss
+        </Typography.Title>
+        <Typography.Text type="secondary">
+          {businessLabel} · {windowText}
+        </Typography.Text>
       </div>
-    </RoleGuard>
-  )
-}
 
-function BoundPicker({ label, value, min, max, onChange }: {
-  label: string
-  value?: string
-  min?: string
-  max?: string
-  onChange: (value: string | undefined) => void
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label className="text-sm text-muted-foreground">{label}</Label>
-      <div className="flex min-w-0 items-center gap-2">
-        <DatePicker
-          date={value ? fromDateString(value) : undefined}
-          onDateChange={(d) => onChange(d ? toDateString(d) : undefined)}
-          placeholder={`${label} date`}
-          className="w-full sm:w-[200px]"
-          minDate={min ? fromDateString(min) : undefined}
-          maxDate={max ? fromDateString(max) : undefined}
+      <FormSection title="Report">
+        <Flex wrap gap={24} align="start" style={{ paddingBottom: 16 }}>
+          <div>
+            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 6 }}>
+              Basis
+            </Typography.Text>
+            <Segmented
+              aria-label="Basis"
+              value={mode}
+              onChange={(v) => setMode(v as PnlMode)}
+              options={MODES.map((m) => ({ value: m.value, label: m.label }))}
+            />
+            <Typography.Text type="secondary" style={{ display: 'block', marginTop: 6, fontSize: 12 }}>
+              {MODES.find((m) => m.value === mode)?.hint}
+            </Typography.Text>
+          </div>
+          <div>
+            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 6 }}>
+              Period
+            </Typography.Text>
+            <PeriodPicker value={period} onChange={setPeriod} />
+          </div>
+        </Flex>
+      </FormSection>
+
+      {!range ? (
+        <Empty description="Pick a start and an end date to see the report." />
+      ) : input.isError ? (
+        <Result
+          status="warning"
+          title="Couldn't load the profit and loss report"
+          subTitle={input.error.message}
+          extra={<Button onClick={() => input.refetch()}>Retry</Button>}
         />
-        {value && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onChange(undefined)}
-            aria-label={`Clear ${label.toLowerCase()} date`}
-            className="h-10 w-10 flex-shrink-0 pointer-coarse:h-11 pointer-coarse:w-11"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
-    </div>
+      ) : input.isLoading || !result ? (
+        <Row gutter={[16, 16]} aria-busy="true" aria-label="Loading report">
+          <Col xs={24} lg={10}>
+            <Skeleton active paragraph={{ rows: 9 }} />
+          </Col>
+          <Col xs={24} lg={14}>
+            <Skeleton active paragraph={{ rows: 9 }} />
+          </Col>
+        </Row>
+      ) : (
+        <Report data={result} />
+      )}
+    </Flex>
   )
 }
 
-function LoadingState() {
+function Report({ data }: { data: PnlResult }) {
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12" aria-busy="true" aria-label="Loading report">
-      <Skeleton className="h-[360px] w-full lg:col-span-5" />
-      <Skeleton className="h-[360px] w-full lg:col-span-7" />
-      <Skeleton className="h-[160px] w-full lg:col-span-12" />
-    </div>
+    <Sections>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={10}>
+          <Statement data={data} />
+        </Col>
+        <Col xs={24} lg={14}>
+          <MonthlyChart data={data} />
+        </Col>
+      </Row>
+      <MonthlyTable data={data} />
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={12}>
+          <Excluded data={data} />
+        </Col>
+        <Col xs={24} lg={12}>
+          <Notes data={data} />
+        </Col>
+      </Row>
+    </Sections>
   )
 }
 
-function Report({ data }: { data: PnlResponse }) {
-  return (
-    <>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <Statement data={data} />
-        <MonthlyTrend data={data} />
-      </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Excluded data={data} />
-        <Limitations data={data} />
-      </div>
-    </>
-  )
-}
-
-function Statement({ data }: { data: PnlResponse }) {
+function Statement({ data }: { data: PnlResult }) {
+  const { token } = theme.useToken()
   const s = data.statement
   const d = data.revenueDetail
-  const revenueNote = data.mode === 'cash'
-    ? `Advances ${money(d.advancesCents)} · Later payments ${money(d.laterPaymentsCents)}`
-    : `${d.deliveredOrders} delivered ${d.deliveredOrders === 1 ? 'order' : 'orders'} at full value`
+  const revenueNote =
+    data.mode === 'cash'
+      ? `Advances ${money(d.advancesCents)} · Later payments ${money(d.laterPaymentsCents)}`
+      : `${d.deliveredOrders} delivered ${d.deliveredOrders === 1 ? 'order' : 'orders'} at full value`
 
-  const rows: Array<{ label: string; cents: number; note?: string; total?: boolean; strong?: boolean }> = [
+  const rows: { label: string; cents: number; note?: string; total?: boolean; strong?: boolean }[] = [
     { label: 'Revenue', cents: s.revenueCents, note: revenueNote },
     { label: 'Cost of sales / production', cents: s.costOfSalesCents },
     { label: 'Gross profit', cents: s.grossProfitCents, total: true },
@@ -238,173 +150,189 @@ function Statement({ data }: { data: PnlResponse }) {
   ]
 
   return (
-    <SectionCard className="lg:col-span-5">
-      <SectionCardHeader>
-        <SectionCardTitle className="text-base">Statement</SectionCardTitle>
-        <SectionCardDescription className="text-xs">
-          {data.mode === 'cash' ? 'Cash basis' : 'Accrual basis'}, in PKR
-        </SectionCardDescription>
-      </SectionCardHeader>
-      <SectionCardContent>
-        <table className="w-full text-sm">
-          <caption className="sr-only">
-            Profit and loss statement, {data.mode === 'cash' ? 'cash basis' : 'accrual basis'}, {data.range.start} to {data.range.end}
-          </caption>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.label} className={cn(r.total && 'border-t border-border')}>
-                <th scope="row" className={cn('py-2 pr-3 text-left align-top', r.total ? 'font-semibold' : 'font-normal')}>
-                  {r.label}
-                  {r.note ? <span className="mt-0.5 block text-xs font-normal text-muted-foreground">{r.note}</span> : null}
-                </th>
-                <td
-                  className={cn(
-                    'py-2 text-right align-top font-mono tabular-nums whitespace-nowrap',
-                    r.total && 'font-semibold',
-                    r.strong && 'text-base',
-                    r.total && r.cents < 0 && 'text-destructive-text'
-                  )}
-                >
-                  {money(r.cents)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </SectionCardContent>
-    </SectionCard>
+    <FormSection icon={<FileTextOutlined />} title="Statement" extra={<Typography.Text type="secondary">{data.mode === 'cash' ? 'Cash basis' : 'Accrual basis'}, in PKR</Typography.Text>}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16 }} aria-label="Profit and loss statement">
+        <caption className="sr-only">
+          Profit and loss statement, {data.mode === 'cash' ? 'cash basis' : 'accrual basis'}, {data.range.start} to {data.range.end}
+        </caption>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.label} style={{ borderTop: r.total ? `1px solid ${token.colorBorderSecondary}` : undefined }}>
+              <th scope="row" style={{ textAlign: 'left', padding: '8px 12px 8px 0', fontWeight: r.total ? 600 : 400, verticalAlign: 'top' }}>
+                {r.label}
+                {r.note && (
+                  <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, fontWeight: 400 }}>
+                    {r.note}
+                  </Typography.Text>
+                )}
+              </th>
+              <td
+                style={{
+                  textAlign: 'right',
+                  padding: '8px 0',
+                  whiteSpace: 'nowrap',
+                  fontVariantNumeric: 'tabular-nums',
+                  fontWeight: r.total ? 600 : 400,
+                  fontSize: r.strong ? 16 : undefined,
+                  color: r.total && r.cents < 0 ? token.colorError : undefined,
+                }}
+              >
+                {money(r.cents)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </FormSection>
   )
 }
 
-function MonthlyTrend({ data }: { data: PnlResponse }) {
-  const reducedMotion = useReducedMotion()
+const monthName = (key: string, withYear: boolean) => dayjs(`${key}-01`).format(withYear ? 'MMM YY' : 'MMM')
+
+function MonthlyChart({ data }: { data: PnlResult }) {
+  const { token } = theme.useToken()
   const spansYears = data.monthly.length > 0 && data.monthly[0].month.slice(0, 4) !== data.monthly[data.monthly.length - 1].month.slice(0, 4)
   const points = data.monthly.map((m) => ({
-    month: monthLabel(m.month, spansYears || data.monthly.length > 12),
-    revenue: rupees(m.revenueCents),
-    netProfit: rupees(m.netProfitCents),
+    month: monthName(m.month, spansYears || data.monthly.length > 12),
+    Revenue: m.revenueCents / 100,
+    'Net profit': m.netProfitCents / 100,
   }))
-
+  const axis = { stroke: token.colorTextTertiary, fontSize: 12, tickLine: false, axisLine: false }
   return (
-    <SectionCard className="lg:col-span-7">
-      <SectionCardHeader>
-        <SectionCardTitle className="text-base">By month</SectionCardTitle>
-        <SectionCardDescription className="text-xs">Revenue and net profit per calendar month, in PKR</SectionCardDescription>
-      </SectionCardHeader>
-      <SectionCardContent>
-        <ChartContainer
-          config={{
-            revenue: { label: 'Revenue', color: 'var(--chart-1)' },
-            netProfit: { label: 'Net profit', color: 'var(--chart-4)' },
-          }}
-          className="h-[240px] w-full sm:h-[280px]"
-          role="img"
-          aria-label={`Revenue and net profit by month, in PKR: ${points
-            .map((p) => `${p.month} revenue ${formatCompactNumber(p.revenue)}, net ${formatCompactNumber(p.netProfit)}`)
-            .join('; ')}.`}
-        >
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
-              <XAxis dataKey="month" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-              <YAxis
-                stroke="var(--muted-foreground)"
-                fontSize={12}
-                width={44}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(value: number) => formatCompactNumber(value)}
-              />
-              <ReferenceLine y={0} stroke="var(--border)" />
-              <ChartTooltip
-                content={
-                  <ChartTooltipContent
-                    formatter={(value, name) => (
-                      <div className="flex w-full items-center justify-between gap-3">
-                        <span className="text-muted-foreground">{name === 'netProfit' ? 'Net profit' : 'Revenue'}</span>
-                        <span className="font-mono font-medium tabular-nums text-foreground">{formatPKR(Number(value))}</span>
-                      </div>
-                    )}
-                  />
-                }
-              />
-              <Bar dataKey="revenue" fill="var(--color-revenue)" radius={[3, 3, 0, 0]} isAnimationActive={!reducedMotion} />
-              <Bar dataKey="netProfit" fill="var(--color-netProfit)" radius={[3, 3, 0, 0]} isAnimationActive={!reducedMotion} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartContainer>
-        <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-[2px] bg-chart-1" aria-hidden="true" />Revenue</span>
-          <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-[2px] bg-chart-4" aria-hidden="true" />Net profit</span>
-        </div>
-      </SectionCardContent>
-    </SectionCard>
+    <FormSection icon={<BarChartOutlined />} title="By month" extra={<Typography.Text type="secondary">Revenue and net profit, in PKR</Typography.Text>}>
+      <div style={{ height: 300, paddingBottom: 16 }} role="img" aria-label="Revenue and net profit by month">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid vertical={false} stroke={token.colorBorderSecondary} strokeDasharray="3 3" />
+            <XAxis dataKey="month" {...axis} />
+            <YAxis {...axis} width={48} tickFormatter={(v: number) => formatCompactNumber(v)} />
+            <ReferenceLine y={0} stroke={token.colorBorder} />
+            <Tooltip
+              cursor={{ fill: token.colorFillTertiary }}
+              contentStyle={{ background: token.colorBgElevated, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 6 }}
+              labelStyle={{ color: token.colorText }}
+              itemStyle={{ color: token.colorText }}
+              formatter={(v, name) => [formatPKR(Number(v)), String(name)]}
+            />
+            <Legend wrapperStyle={{ color: token.colorText }} />
+            <Bar dataKey="Revenue" fill={token.colorPrimary} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+            <Bar dataKey="Net profit" fill={token.colorSuccess} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </FormSection>
   )
 }
 
-function Excluded({ data }: { data: PnlResponse }) {
-  const e = data.excluded
-  const rows: Array<{ label: string; value: string; note: string }> = [
-    { label: 'Opening balances', value: money(e.openingBalanceCents), note: 'Set-up entries, not earnings' },
-    { label: 'Owner withdrawals', value: money(e.ownerWithdrawalCents), note: 'Drawings, not a business cost' },
-    {
-      label: 'Transfers',
-      value: e.transfers.count === 0 ? 'None' : `${e.transfers.count} · in ${money(e.transfers.moneyInCents)} · out ${money(e.transfers.moneyOutCents)}`,
-      note: 'Ledger entries whose description or notes say "transfer"',
-    },
+function MonthlyTable({ data }: { data: PnlResult }) {
+  const { token } = theme.useToken()
+  const cell = (cents: number, strong = false) => (
+    <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: strong ? 600 : undefined, color: strong && cents < 0 ? token.colorError : undefined }}>
+      {money(cents)}
+    </span>
+  )
+  const columns = [
+    { key: 'month', title: 'Month', fixed: 'left' as const, width: 110, render: (_: unknown, m: PnlMonth) => dayjs(`${m.month}-01`).format('MMM YYYY') },
+    { key: 'revenue', title: 'Revenue', align: 'right' as const, render: (_: unknown, m: PnlMonth) => cell(m.revenueCents) },
+    { key: 'cos', title: 'Cost of sales', align: 'right' as const, render: (_: unknown, m: PnlMonth) => cell(m.costOfSalesCents) },
+    { key: 'gross', title: 'Gross profit', align: 'right' as const, render: (_: unknown, m: PnlMonth) => cell(m.grossProfitCents, true) },
+    { key: 'staff', title: 'Staff', align: 'right' as const, render: (_: unknown, m: PnlMonth) => cell(m.staffCents) },
+    { key: 'overheads', title: 'Overheads', align: 'right' as const, render: (_: unknown, m: PnlMonth) => cell(m.overheadsCents) },
+    { key: 'other', title: 'Other expenses', align: 'right' as const, render: (_: unknown, m: PnlMonth) => cell(m.otherExpenseCents) },
+    { key: 'income', title: 'Other income', align: 'right' as const, render: (_: unknown, m: PnlMonth) => cell(m.otherIncomeCents) },
+    { key: 'net', title: 'Net profit', align: 'right' as const, render: (_: unknown, m: PnlMonth) => cell(m.netProfitCents, true) },
   ]
-  if (data.mode === 'accrual') {
-    rows.push({
-      label: 'Vendor payments replaced by bills',
-      value: money(data.suppressedVendorPaymentsCents),
-      note: 'Paid in this period to vendors whose bills are counted instead',
-    })
-  }
-
   return (
-    <SectionCard>
-      <SectionCardHeader>
-        <SectionCardTitle className="text-base">Not in profit</SectionCardTitle>
-        <SectionCardDescription className="text-xs">Recorded in this period but kept out of the statement</SectionCardDescription>
-      </SectionCardHeader>
-      <SectionCardContent>
-        <dl className="divide-y divide-border text-sm">
-          {rows.map((r) => (
-            <div key={r.label} className="flex flex-col gap-0.5 py-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-              <dt>
-                {r.label}
-                <span className="block text-xs text-muted-foreground">{r.note}</span>
-              </dt>
-              <dd className="font-mono tabular-nums sm:text-right">{r.value}</dd>
-            </div>
-          ))}
-        </dl>
-      </SectionCardContent>
-    </SectionCard>
+    <FormSection icon={<TableOutlined />} title="Monthly breakdown">
+      <Table<PnlMonth>
+        rowKey="month"
+        size="middle"
+        dataSource={data.monthly}
+        columns={columns}
+        pagination={false}
+        scroll={{ x: 1000 }}
+        style={{ marginBottom: 16 }}
+        aria-label="Monthly breakdown"
+        summary={() => (
+          <Table.Summary.Row>
+            <Table.Summary.Cell index={0}>
+              <Typography.Text strong>Period</Typography.Text>
+            </Table.Summary.Cell>
+            {[
+              data.statement.revenueCents,
+              data.statement.costOfSalesCents,
+              data.statement.grossProfitCents,
+              data.statement.staffCents,
+              data.statement.overheadsCents,
+              data.statement.otherExpenseCents,
+              data.statement.otherIncomeCents,
+              data.statement.netProfitCents,
+            ].map((cents, i) => (
+              <Table.Summary.Cell key={i} index={i + 1} align="right">
+                {cell(cents, true)}
+              </Table.Summary.Cell>
+            ))}
+          </Table.Summary.Row>
+        )}
+      />
+    </FormSection>
   )
 }
 
-function Limitations({ data }: { data: PnlResponse }) {
+function Excluded({ data }: { data: PnlResult }) {
+  const e = data.excluded
   return (
-    <SectionCard>
-      <SectionCardHeader>
-        <SectionCardTitle className="text-base">Read this with the figures</SectionCardTitle>
-        <SectionCardDescription className="text-xs">What the books cannot show for this result</SectionCardDescription>
-      </SectionCardHeader>
-      <SectionCardContent>
-        <ul className="list-disc space-y-2 pl-5 text-sm">
-          {data.limitations.map((l) => <li key={l}>{l}</li>)}
-          {data.unknownCategories.length > 0 ? (
-            <li>
-              Counted under Other because the report does not recognise the category:{' '}
-              {data.unknownCategories.join(', ')}.
-            </li>
-          ) : null}
-          <li className="text-muted-foreground">
-            Costs use each vendor&apos;s current category, so moving a vendor to another category also moves its past costs.
+    <FormSection icon={<StopOutlined />} title="Not in profit" extra={<Typography.Text type="secondary">Recorded in this period but kept out</Typography.Text>}>
+      <Descriptions column={1} size="small" style={{ marginBottom: 12 }}>
+        <Descriptions.Item label="Opening balances">{money(e.openingBalanceCents)} · set-up entries, not earnings</Descriptions.Item>
+        <Descriptions.Item label="Owner withdrawals">{money(e.ownerWithdrawalCents)} · drawings, not a business cost</Descriptions.Item>
+        <Descriptions.Item label="Transfers">
+          {e.transfers.count === 0
+            ? 'None'
+            : `${e.transfers.count} · in ${money(e.transfers.moneyInCents)} · out ${money(e.transfers.moneyOutCents)}`}
+        </Descriptions.Item>
+        {data.mode === 'accrual' && (
+          <Descriptions.Item label="Vendor payments replaced by bills">{money(data.suppressedVendorPaymentsCents)}</Descriptions.Item>
+        )}
+      </Descriptions>
+    </FormSection>
+  )
+}
+
+function Notes({ data }: { data: PnlResult }) {
+  return (
+    <FormSection icon={<InfoCircleOutlined />} title="Read this with the figures">
+      <ul style={{ paddingLeft: 18, margin: '0 0 16px' }}>
+        {data.limitations.map((l) => (
+          <li key={l} style={{ marginBottom: 8 }}>
+            <Typography.Text>{l}</Typography.Text>
           </li>
-        </ul>
-      </SectionCardContent>
-    </SectionCard>
+        ))}
+        {data.unknownCategories.length > 0 && (
+          <li style={{ marginBottom: 8 }}>
+            <Typography.Text>
+              Counted under Other because the report does not recognise the category: {data.unknownCategories.join(', ')}.
+            </Typography.Text>
+          </li>
+        )}
+        <li>
+          <Typography.Text type="secondary">
+            Costs use each vendor&apos;s current category, so moving a vendor to another category also moves its past costs.
+          </Typography.Text>
+        </li>
+      </ul>
+    </FormSection>
+  )
+}
+
+export default function ProfitAndLossPage() {
+  return (
+    <CanAccess
+      resource="pnl"
+      action="list"
+      fallback={<Result status="403" title="403" subTitle="Sorry, you are not authorized to access this page." />}
+    >
+      <PnlScreen />
+    </CanAccess>
   )
 }
