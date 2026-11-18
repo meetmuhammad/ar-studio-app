@@ -1,17 +1,42 @@
 "use client"
 
 import { useMemo, useState } from 'react'
-import { Sidebar } from '@/components/dashboard/sidebar'
-import { Header } from '@/components/dashboard/header'
-import { RouteGuard } from '@/components/auth/route-guard'
+import { usePathname } from 'next/navigation'
+import { Authenticated } from '@refinedev/core'
+import { ThemedLayout, ThemedSider } from '@refinedev/antd'
+import { Alert, Flex, Grid, Result, Spin, Typography } from 'antd'
+import { BusinessScopeSync } from '@/components/providers/refine-provider'
+import { ShellHeader } from '@/components/refine/header'
 import { OrderDialog } from '@/components/dialogs/order-dialog'
 import { PaymentDialog } from '@/components/dialogs/payment-dialog'
-import { BottomNav } from '@/components/dashboard/bottom-nav'
 import { CreateOrderInput } from '@/lib/validators'
 import { DashboardActionsProvider } from '@/contexts/dashboard-actions'
 import { toast } from 'sonner'
 import { authFetch } from '@/lib/auth-fetch'
 import { BusinessProvider, useBusiness } from '@/contexts/business-context'
+
+/**
+ * Routes already built with Refine + antd. Every other dashboard route is a
+ * legacy shadcn page and is wrapped in .legacy-page, which keeps the legacy
+ * base styles (links, touch targets) scoped away from the antd shell.
+ * Add a module's routes here when it is ported.
+ */
+const isRefineRoute = (pathname: string) =>
+  pathname === '/' || pathname === '/customers' || pathname.startsWith('/customers/')
+
+/** Refine's sider without its built-in logout item (sign out lives in the header user menu). */
+function ShellSider() {
+  return <ThemedSider fixed render={({ items }) => items} />
+}
+
+function FullScreenStatus({ label }: { label: string }) {
+  return (
+    <Flex vertical align="center" justify="center" gap={16} style={{ minHeight: '100dvh' }}>
+      <Spin size="large" />
+      <Typography.Text type="secondary">{label}</Typography.Text>
+    </Flex>
+  )
+}
 
 /**
  * Page content for the selected business. Keyed by the switch generation, so
@@ -27,22 +52,37 @@ function BusinessScoped({ children, quiet = false }: { children: React.ReactNode
 
   if (noAccess) {
     return (
-      <div className="mx-auto max-w-md py-16 text-center text-sm text-muted-foreground">
-        Your account has not been given access to any business yet. Ask an administrator.
-      </div>
+      <Result
+        status="403"
+        subTitle="Your account has not been given access to any business yet. Ask an administrator."
+      />
     )
   }
   if (!ready) {
-    return <div className="animate-pulse py-16 text-center text-sm text-muted-foreground">Loading…</div>
+    return (
+      <Flex justify="center" style={{ padding: '64px 0' }}>
+        <Spin tip="Loading…">
+          <div style={{ width: 120, height: 40 }} />
+        </Spin>
+      </Flex>
+    )
   }
 
   return (
     <div key={generation} className="contents">
       {isAll && (
-        <div role="status" className="mb-4 rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">All businesses</span> — combined, read-only view. Each
-          business keeps its own books, so there is no shared running balance. Switch to one business to add or edit.
-        </div>
+        <Alert
+          role="status"
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={
+            <span>
+              <strong>All businesses</strong> — combined, read-only view. Each business keeps its own books, so there
+              is no shared running balance. Switch to one business to add or edit.
+            </span>
+          }
+        />
       )}
       {children}
     </div>
@@ -54,6 +94,8 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
+  const legacy = !isRefineRoute(usePathname())
+  const screens = Grid.useBreakpoint()
   const [orderDialog, setOrderDialog] = useState<{
     open: boolean
     order?: null
@@ -108,31 +150,33 @@ export default function DashboardLayout({
   )
 
   return (
-    <RouteGuard requireAuth={true} requiredRoles={['admin', 'staff']}>
+    <Authenticated
+      key="dashboard"
+      redirectOnFail="/sign-in"
+      appendCurrentPathToQuery={false}
+      loading={<FullScreenStatus label="Checking authentication..." />}
+    >
       <BusinessProvider>
+      <BusinessScopeSync />
       <DashboardActionsProvider value={dashboardActions}>
-      {/* h-dvh, not h-screen: on phones 100vh is taller than the visible area
-          while the browser toolbar is showing, which pushes the bottom of the
-          page (and the tab bar) off screen. */}
-      <div className="flex h-dvh bg-background">
-        {/* Tablet (md-lg): icon rail. Desktop (lg+): full sidebar. Phones: the
-            bottom tab bar below replaces both. */}
-        <aside className="hidden md:flex w-[4.5rem] lg:w-64 border-r">
-          <Sidebar responsiveRail />
-        </aside>
-
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <Header />
-          {/* bg-background, not bg-muted/40: the page surface is now a distinct
-              step below the white cards, so the extra tint only muddied it.
-              Bottom padding on phones clears the fixed tab bar plus the home
-              indicator, so the last row is never covered. */}
-          <main className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain bg-background p-3 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:p-4 sm:pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:p-6">
+      <div className="ar-antd">
+        {/* Refine antd shell: sidebar menu from the resources, filtered per
+            item by the accessControlProvider (CanAccess inside ThemedSider);
+            collapsible on desktop, a drawer on phones. */}
+        <ThemedLayout
+          Header={ShellHeader}
+          Sider={ShellSider}
+        >
+          {/* Below lg the sider is a drawer whose toggle button is fixed just
+              under the header; the top padding keeps it off the page title. */}
+          <main
+            className={legacy ? 'legacy-page' : undefined}
+            style={{ paddingTop: screens.lg === false ? 44 : 0, paddingBottom: 'env(safe-area-inset-bottom)' }}
+          >
             <BusinessScoped>{children}</BusinessScoped>
           </main>
-        </div>
-
-        <BottomNav />
+        </ThemedLayout>
+      </div>
 
         {/* Global dialogs, inside BusinessScoped so a switch remounts them too. */}
         <BusinessScoped quiet>
@@ -151,9 +195,8 @@ export default function DashboardLayout({
           onSuccess={handlePaymentSuccess}
         />
         </BusinessScoped>
-      </div>
       </DashboardActionsProvider>
       </BusinessProvider>
-    </RouteGuard>
+    </Authenticated>
   )
 }

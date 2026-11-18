@@ -1,307 +1,187 @@
-"use client"
+'use client'
 
+import { useEffect } from 'react'
 import Link from 'next/link'
-import { format } from 'date-fns'
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  XAxis,
-  YAxis,
-} from 'recharts'
-import {
-  ArrowUpRight,
-  Calendar,
-  CreditCard,
-  PackageCheck,
-  ShoppingCart,
-  TrendingUp,
-  Users,
-} from 'lucide-react'
-
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { RoleGuard } from '@/components/auth/role-guard'
-import { PageHeader } from '@/components/dashboard/page-header'
+import { useRouter } from 'next/navigation'
+import { CanAccess, useList, type BaseRecord, type CrudFilter, type HttpError } from '@refinedev/core'
+import { Button, Col, Empty, Flex, List as AntdList, Row, Spin, Typography, theme } from 'antd'
+import { ArrowRightOutlined, DollarOutlined, ShoppingOutlined, TeamOutlined } from '@ant-design/icons'
+import dayjs, { type Dayjs } from 'dayjs'
+import { KpiCard, type SparkPoint } from '@/components/refine/kpi-card'
+import { CardWithTitle } from '@/components/refine/card-with-title'
 import { useBusinessLabel } from '@/contexts/business-context'
-import { StatCard } from '@/components/dashboard/stat-card'
-import { StatSparkline } from '@/components/dashboard/stat-sparkline'
-import { EmptyState } from '@/components/dashboard/empty-state'
-import { ErrorState } from '@/components/dashboard/error-state'
-import { DeliveryRow, type UpcomingOrder } from '@/components/dashboard/delivery-row'
-import {
-  SectionCard,
-  SectionCardAction,
-  SectionCardContent,
-  SectionCardDescription,
-  SectionCardHeader,
-  SectionCardTitle,
-} from '@/components/dashboard/section-card'
-import { useDashboardStats } from '@/hooks/use-api'
-import { useReducedMotion } from '@/hooks/use-reduced-motion'
-import {
-  formatCompactNumber,
-  formatCompactPKR,
-  formatPKR,
-  monthOverMonth,
-  percentOf,
-} from '@/lib/format'
+import type { CustomerRow } from '@/components/customers/types'
 
-export default function DashboardPage() {
+/**
+ * Admin dashboard (Refine + antd). Every number is read straight from the
+ * Supabase tables through the business-scoped data provider, so it follows
+ * the selected business (or all of them in the combined view).
+ *
+ * Sparklines cover the last 6 calendar months. Their rows are fetched without
+ * pagination, so a month series is capped by the PostgREST row limit
+ * (1000 by default); the headline counts use exact counts and are not.
+ */
+
+const MONTHS = 6
+
+function monthStarts(): Dayjs[] {
+  const first = dayjs().startOf('month').subtract(MONTHS - 1, 'month')
+  return Array.from({ length: MONTHS }, (_, i) => first.add(i, 'month'))
+}
+
+/** Exact row count for a scoped table (head-only count via Content-Range). */
+function useCount(resource: string) {
+  const { result, query } = useList<BaseRecord, HttpError>({
+    resource,
+    pagination: { currentPage: 1, pageSize: 1 },
+    meta: { select: 'id' },
+  })
+  return { total: result.total ?? 0, isLoading: query.isLoading, isError: query.isError }
+}
+
+/** Per-month series of a date column: row count, or the sum of `sumField`. */
+function useMonthly(resource: string, dateField: string, sumField?: string) {
+  const months = monthStarts()
+  const filters: CrudFilter[] = [{ field: dateField, operator: 'gte', value: months[0].format('YYYY-MM-DD') }]
+  const { result, query } = useList<Record<string, unknown>, HttpError>({
+    resource,
+    filters,
+    pagination: { mode: 'off' },
+    meta: { select: sumField ? `${dateField}, ${sumField}` : dateField },
+  })
+  const rows = result.data ?? []
+  const series: SparkPoint[] = months.map((month) => {
+    const inMonth = rows.filter((row) => dayjs(row[dateField] as string).isSame(month, 'month'))
+    return {
+      label: month.format('MMM YYYY'),
+      value: sumField ? inMonth.reduce((sum, row) => sum + Number(row[sumField] ?? 0), 0) : inMonth.length,
+    }
+  })
+  return { series, sum: series.reduce((s, p) => s + p.value, 0), isLoading: query.isLoading }
+}
+
+const pkr = (value: number) => `PKR ${Math.round(value).toLocaleString()}`
+
+function RedirectTo({ href }: { href: string }) {
+  const router = useRouter()
+  useEffect(() => router.replace(href), [href, router])
+  return (
+    <Flex justify="center" style={{ padding: 64 }}>
+      <Spin />
+    </Flex>
+  )
+}
+
+function DashboardContent() {
+  const { token } = theme.useToken()
   const businessLabel = useBusinessLabel()
-  const {
-    data: stats,
-    isPending,
-    isError,
-    error,
-    refetch,
-    dataUpdatedAt,
-  } = useDashboardStats()
 
-  const chartData = stats?.chartData ?? []
-  const upcomingOrders = (stats?.upcomingOrders ?? []) as UpcomingOrder[]
+  const customers = useCount('customers')
+  const orders = useCount('orders')
+  const customerSeries = useMonthly('customers', 'created_at')
+  const orderSeries = useMonthly('orders', 'created_at')
+  const payments = useMonthly('payments', 'payment_date', 'amount')
 
-  const delta = monthOverMonth(chartData)
-  const collectionRate = percentOf(stats?.totalReceived ?? 0, stats?.totalRevenue ?? 0)
-  const windowTotal = chartData.reduce((sum, point) => sum + point.revenue, 0)
-  const hasRevenue = chartData.some((point) => point.revenue > 0)
+  const { result: latest, query: latestQuery } = useList<CustomerRow, HttpError>({
+    resource: 'customers',
+    sorters: [{ field: 'created_at', order: 'desc' }],
+    pagination: { currentPage: 1, pageSize: 5 },
+    meta: { select: 'id, name, phone, created_at' },
+  })
 
   return (
-    <RoleGuard allowedRoles={['admin']}>
-      <div className="mx-auto max-w-[1600px] space-y-6">
-        <PageHeader
-          title="Dashboard"
-          description={
-            isPending || !dataUpdatedAt
-              ? businessLabel
-              : `${businessLabel} · Last updated ${format(new Date(dataUpdatedAt), 'HH:mm')}`
-          }
-        />
-
-        {isError ? (
-          <ErrorState
-            detail={error instanceof Error ? error.message : undefined}
-            onRetry={() => refetch()}
-          />
-        ) : (
-          <>
-            {/* KPI row — ordered by what drives action: money first, counts after */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <StatCard
-                label="Revenue"
-                value={formatPKR(stats?.totalRevenue ?? 0)}
-                icon={TrendingUp}
-                href="/ledger"
-                linkLabel="View ledger"
-                delta={delta ?? undefined}
-                sparkline={<StatSparkline data={chartData} />}
-                isLoading={isPending}
-              />
-
-              <StatCard
-                label="Outstanding"
-                value={formatPKR(stats?.outstandingBalance ?? 0)}
-                icon={CreditCard}
-                href="/ledger"
-                linkLabel="View ledger"
-                emphasis="warning"
-                progress={
-                  collectionRate === null
-                    ? undefined
-                    : { percent: collectionRate, label: `${collectionRate}% collected` }
-                }
-                isLoading={isPending}
-              />
-
-              <StatCard
-                label="Orders"
-                value={String(stats?.totalOrders ?? 0)}
-                icon={ShoppingCart}
-                href="/orders"
-                linkLabel="View all orders"
-                footnote={`+${stats?.recentOrdersCount ?? 0} this month`}
-                isLoading={isPending}
-              />
-
-              {/* No delta: the payload carries no historical customer series */}
-              <StatCard
-                label="Customers"
-                value={String(stats?.totalCustomers ?? 0)}
-                icon={Users}
-                href="/customers"
-                linkLabel="View all customers"
-                isLoading={isPending}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-              <RevenueOverview
-                data={chartData}
-                total={windowTotal}
-                hasRevenue={hasRevenue}
-                isLoading={isPending}
-              />
-              <UpcomingDeliveries orders={upcomingOrders} isLoading={isPending} />
-            </div>
-          </>
-        )}
+    <Flex vertical gap={24}>
+      <div>
+        <Typography.Title level={3} style={{ margin: 0 }}>
+          Dashboard
+        </Typography.Title>
+        <Typography.Text type="secondary">{businessLabel}</Typography.Text>
       </div>
-    </RoleGuard>
-  )
-}
 
-function RevenueOverview({
-  data,
-  total,
-  hasRevenue,
-  isLoading,
-}: {
-  data: Array<{ month: string; revenue: number }>
-  total: number
-  hasRevenue: boolean
-  isLoading: boolean
-}) {
-  const reducedMotion = useReducedMotion()
+      <Row gutter={[24, 24]}>
+        <Col xs={24} md={8}>
+          <KpiCard
+            icon={<TeamOutlined />}
+            title="Customers"
+            value={customers.isError ? '—' : customers.total.toLocaleString()}
+            color={token.colorPrimary}
+            loading={customers.isLoading}
+            data={customerSeries.series}
+            formatValue={(v) => `${v} new`}
+          />
+        </Col>
+        <Col xs={24} md={8}>
+          <KpiCard
+            icon={<ShoppingOutlined />}
+            title="Orders"
+            value={orders.isError ? '—' : orders.total.toLocaleString()}
+            color={token.colorSuccess}
+            loading={orders.isLoading}
+            data={orderSeries.series}
+            formatValue={(v) => `${v} orders`}
+          />
+        </Col>
+        <Col xs={24} md={8}>
+          <KpiCard
+            icon={<DollarOutlined />}
+            title={`Payments received (${MONTHS} months)`}
+            value={pkr(payments.sum)}
+            color={token.colorWarning}
+            loading={payments.isLoading}
+            data={payments.series}
+            formatValue={pkr}
+          />
+        </Col>
+      </Row>
 
-  return (
-    <SectionCard className="lg:col-span-8">
-      <SectionCardHeader>
-        <SectionCardTitle className="text-base">Revenue Overview</SectionCardTitle>
-        <SectionCardDescription className="text-xs">
-          Monthly revenue for the last 6 months, in PKR
-        </SectionCardDescription>
-        {!isLoading && hasRevenue ? (
-          <SectionCardAction className="font-mono text-xs tabular-nums text-muted-foreground">
-            6-mo: {formatCompactPKR(total)}
-          </SectionCardAction>
-        ) : null}
-      </SectionCardHeader>
-
-      <SectionCardContent>
-        {isLoading ? (
-          <Skeleton className="h-[240px] w-full sm:h-[280px] lg:h-[300px]" />
-        ) : !hasRevenue ? (
-          <EmptyState
-            icon={TrendingUp}
-            message="No revenue recorded in the last 6 months"
+      <Row gutter={[24, 24]}>
+        <Col xs={24} lg={14}>
+          <CardWithTitle
+            icon={<TeamOutlined />}
+            title="Latest customers"
             action={
-              <Link href="/ledger" className="text-xs no-underline">
-                <Button variant="outline" size="sm">
-                  View ledger
-                </Button>
+              <Link href="/customers">
+                <Button icon={<ArrowRightOutlined />}>See all customers</Button>
               </Link>
             }
-          />
-        ) : (
-          <ChartContainer
-            config={{
-              // Bare token: --chart-1 is an oklch value, so wrapping it in hsl()
-              // yields an invalid colour and the series silently loses its fill.
-              revenue: { label: 'Revenue', color: 'var(--chart-1)' },
-            }}
-            className="h-[240px] w-full sm:h-[280px] lg:h-[300px]"
-            role="img"
-            aria-label={`Monthly revenue for the last 6 months, in PKR: ${data
-              .map((point) => `${point.month} ${formatCompactNumber(point.revenue)}`)
-              .join(', ')}. Total ${formatCompactPKR(total)}.`}
           >
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid
-                  vertical={false}
-                  stroke="var(--border)"
-                  strokeDasharray="3 3"
-                />
-                <XAxis
-                  dataKey="month"
-                  stroke="var(--muted-foreground)"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  stroke="var(--muted-foreground)"
-                  fontSize={12}
-                  width={44}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value: number) => formatCompactNumber(value)}
-                />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Area
-                  type="monotone"
-                  dataKey="revenue"
-                  strokeWidth={2}
-                  stroke="var(--color-revenue)"
-                  fill="var(--color-revenue)"
-                  fillOpacity={0.2}
-                  activeDot={{ r: 5 }}
-                  isAnimationActive={!reducedMotion}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </ChartContainer>
-        )}
-      </SectionCardContent>
-    </SectionCard>
+            <AntdList<CustomerRow>
+              loading={latestQuery.isLoading}
+              dataSource={latest.data}
+              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No customers yet." /> }}
+              renderItem={(c) => (
+                <AntdList.Item extra={<Typography.Text type="secondary">{dayjs(c.created_at).format('MMM D, YYYY')}</Typography.Text>}>
+                  <AntdList.Item.Meta
+                    title={<Link href={`/customers/show/${c.id}`}>{c.name}</Link>}
+                    description={c.phone}
+                  />
+                </AntdList.Item>
+              )}
+            />
+          </CardWithTitle>
+        </Col>
+        <Col xs={24} lg={10}>
+          <CardWithTitle icon={<DollarOutlined />} title="Classic overview">
+            <Typography.Paragraph type="secondary">
+              Revenue trend, collection rate and upcoming deliveries from the previous dashboard.
+            </Typography.Paragraph>
+            <Link href="/overview">
+              <Button type="primary" ghost icon={<ArrowRightOutlined />}>
+                Open classic overview
+              </Button>
+            </Link>
+          </CardWithTitle>
+        </Col>
+      </Row>
+    </Flex>
   )
 }
 
-function UpcomingDeliveries({
-  orders,
-  isLoading,
-}: {
-  orders: UpcomingOrder[]
-  isLoading: boolean
-}) {
+/** Admin-only, like before: other roles are sent to /customers. */
+export default function DashboardPage() {
   return (
-    <SectionCard className="lg:col-span-4">
-      <SectionCardHeader>
-        {/* "Next 5" not "Upcoming": the API hard-caps this list at five, so a
-            broader title would imply a completeness the data cannot back. */}
-        <SectionCardTitle className="flex items-center gap-2 text-base">
-          <PackageCheck className="size-4" aria-hidden="true" />
-          Next 5 Deliveries
-        </SectionCardTitle>
-        <SectionCardDescription className="text-xs">Soonest first</SectionCardDescription>
-      </SectionCardHeader>
-
-      <SectionCardContent>
-        {isLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-[68px] w-full" />
-            ))}
-          </div>
-        ) : orders.length === 0 ? (
-          <EmptyState
-            icon={Calendar}
-            message="No upcoming deliveries"
-            action={
-              <Link href="/orders" className="no-underline">
-                <Button variant="outline" size="sm">
-                  View all orders
-                </Button>
-              </Link>
-            }
-          />
-        ) : (
-          <div className="space-y-2">
-            {orders.map((order) => (
-              <DeliveryRow key={order.id} order={order} href="/orders" />
-            ))}
-            <Link
-              href="/orders"
-              className="flex items-center justify-center gap-1 pt-1 text-xs text-muted-foreground no-underline transition-colors hover:text-foreground"
-            >
-              View all orders
-              <ArrowUpRight className="size-3" aria-hidden="true" />
-            </Link>
-          </div>
-        )}
-      </SectionCardContent>
-    </SectionCard>
+    <CanAccess resource="dashboard" action="list" fallback={<RedirectTo href="/customers" />}>
+      <DashboardContent />
+    </CanAccess>
   )
 }

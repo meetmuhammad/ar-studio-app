@@ -4,6 +4,9 @@ import "./globals.css";
 import { AuthProvider } from '@/contexts/auth-context'
 import { ThemeProvider } from '@/components/providers/theme-provider'
 import { QueryProvider } from '@/components/providers/query-provider'
+import { RefineProvider } from '@/components/providers/refine-provider'
+import { ColorModeProvider } from '@/components/providers/color-mode-provider'
+import { AntdRegistry } from '@ant-design/nextjs-registry'
 import { Toaster } from '@/components/ui/sonner'
 
 // Manrope for headings: geometric-humanist, gives titles a distinct cut from
@@ -64,19 +67,25 @@ export default function RootLayout({
         className={`${inter.variable} ${manrope.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning={true}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <QueryProvider>
-            <AuthProvider>
-              {children}
-              <Toaster />
-            </AuthProvider>
-          </QueryProvider>
-        </ThemeProvider>
+        {/* antd styles go into @layer antd (ordered in globals.css between
+            Tailwind's base and utilities), so preflight cannot override them. */}
+        <AntdRegistry layer>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <QueryProvider>
+              <AuthProvider>
+                <ColorModeProvider>
+                  <RefineProvider>{children}</RefineProvider>
+                </ColorModeProvider>
+                <Toaster />
+              </AuthProvider>
+            </QueryProvider>
+          </ThemeProvider>
+        </AntdRegistry>
       </body>
     </html>
   );

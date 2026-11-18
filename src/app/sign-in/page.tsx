@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useInvalidateAuthStore, useIsAuthenticated, useLogin } from '@refinedev/core'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useAuth } from '@/contexts/auth-context'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
+import type { LoginParams } from '@/lib/refine/auth-provider'
 
 // Only the OAuth consent page may be returned to after sign-in (no open redirect).
 const afterSignIn = () => {
@@ -20,31 +21,41 @@ export default function SignInPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
-  const { signIn, loading: authLoading, user } = useAuth()
+  const invalidateAuthStore = useInvalidateAuthStore()
+  const { data: auth, isLoading: authLoading } = useIsAuthenticated()
+
+  // Refine's default success handler would follow an unvalidated `?to=` query
+  // parameter, so redirection is handled here with the allow-list above.
+  const { mutate: login, isPending: isSubmitting } = useLogin<LoginParams>({
+    mutationOptions: {
+      onSuccess: async ({ success, error }) => {
+        await invalidateAuthStore()
+        if (!success) {
+          console.error('Sign in error:', error)
+          toast.error(error?.message || 'Failed to sign in')
+          return
+        }
+        toast.success('Successfully signed in!')
+        router.push(afterSignIn())
+      },
+      onError: (error) => {
+        console.error('Sign in error:', error)
+        toast.error(error instanceof Error ? error.message : 'Failed to sign in')
+      },
+    },
+  })
 
   // Redirect if already signed in
   useEffect(() => {
-    if (user && !authLoading) {
+    if (auth?.authenticated && !authLoading && !isSubmitting) {
       router.replace(afterSignIn())
     }
-  }, [user, authLoading, router])
+  }, [auth?.authenticated, authLoading, isSubmitting, router])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    setIsSubmitting(true)
-
-    try {
-      await signIn(email, password)
-      toast.success('Successfully signed in!')
-      router.push(afterSignIn())
-    } catch (error) {
-      console.error('Sign in error:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to sign in')
-    } finally {
-      setIsSubmitting(false)
-    }
+    login({ email, password })
   }
 
   return (

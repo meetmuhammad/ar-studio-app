@@ -14,14 +14,15 @@ export interface NavItem {
 }
 
 /**
- * The single source of truth for navigation. The sidebar (tablet/desktop), the
- * bottom tab bar and the "More" sheet (phones) all read this list, so a role
- * can never see a destination on one surface that another surface hides.
- * Hiding a link is a UI affordance only; access is enforced by RoleGuard and
- * the API.
+ * The single source of truth for which roles may open each module. The Refine
+ * resources (src/lib/refine/resources.tsx) read `roles` from here by route, and
+ * the accessControlProvider filters the sidebar with it. Hiding a link is a UI
+ * affordance only; access is enforced by RoleGuard / CanAccess on the page and
+ * by the API and RLS.
  *
- * Phone tabs follow the native app: admins get Home, Orders, Customers, Ledger;
- * staff get Orders, Customers, Measurements. Everything else is under More.
+ * `tab` / `tabLabel` described the former phone tab bar (admins: Home, Orders,
+ * Customers, Ledger; staff: Orders, Customers, Measurements). The antd shell
+ * uses a drawer on phones instead; the values are kept for a future tab bar.
  */
 export const NAV_ITEMS: NavItem[] = [
   { name: 'Dashboard', tabLabel: 'Home', href: '/', icon: Home, roles: ['admin'], tab: { admin: 0 } },

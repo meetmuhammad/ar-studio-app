@@ -1,3 +1,9 @@
+/* Cascade order: antd (injected by AntdRegistry into @layer antd) sits after
+   Tailwind's preflight (base) so preflight cannot reset antd components, and
+   before utilities so a utility class can still adjust an antd element. This
+   statement must come first: the first declaration of the order wins. */
+@layer theme, base, antd, components, utilities;
+
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -237,30 +243,30 @@
     font-feature-settings: "tnum", "zero";
   }
   
+  /* The legacy rules below apply everywhere except inside the antd (Refine)
+     UI, marked .ar-antd. Legacy shadcn pages rendered inside that shell are
+     wrapped in .legacy-page and keep them. */
+
   /* Mobile-friendly touch targets */
   @media (max-width: 768px) {
-    button:not([role="checkbox"]):not([role="radio"]):not([role="switch"]),
-    a,
-    input,
-    select,
-    textarea {
+    :is(button:not([role="checkbox"]):not([role="radio"]):not([role="switch"]), a, input, select, textarea):where(:not(.ar-antd *), .legacy-page *) {
       min-height: 44px; /* iOS recommended minimum touch target size */
     }
   }
-  
+
   /* Custom link styles.
      Underline behaviour is unchanged (that cleanup is still deferred); only the
      two hardcoded hex values are replaced with the token, so links follow the
      palette in both themes instead of sitting outside it. */
-  a {
+  a:where(:not(.ar-antd *), .legacy-page *) {
     @apply underline;
     color: var(--foreground);
     text-decoration-thickness: 1px;
     text-underline-offset: 2px;
   }
-  
+
   /* Hover effects */
-  a:hover {
+  a:where(:not(.ar-antd *), .legacy-page *):hover {
     @apply opacity-80;
   }
   
