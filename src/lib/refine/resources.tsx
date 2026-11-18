@@ -79,7 +79,28 @@ const MODULES: ModuleDef[] = [
     actionRoles: ADMIN_DELETE,
   },
   // Vendors are admin-only as a whole (roles from NAV_ITEMS).
-  { name: 'vendors', list: '/vendors', show: '/vendors/:id', label: 'Vendors', icon: <ShopOutlined />, businessScoped: true },
+  {
+    name: 'vendors',
+    list: '/vendors',
+    create: '/vendors/create',
+    edit: '/vendors/edit/:id',
+    show: '/vendors/show/:id',
+    label: 'Vendors',
+    icon: <ShopOutlined />,
+    businessScoped: true,
+  },
+  // Managed from the Vendors pages (no menu entry). Admin-only like vendors
+  // (RLS too). Categories are shared by all businesses, but, as before, they
+  // are not edited from the read-only "All businesses" view.
+  { name: 'vendor_tags', label: 'Vendor tags', icon: null, businessScoped: true, roles: ['admin'], hide: true },
+  {
+    name: 'vendor_categories',
+    label: 'Vendor categories',
+    icon: null,
+    businessScoped: true,
+    roles: ['admin'],
+    hide: true,
+  },
   { name: 'ledger', list: '/ledger', label: 'Ledger', icon: <BookOutlined />, businessScoped: true },
   { name: 'pnl', list: '/pnl', label: 'P&L', icon: <FundOutlined />, businessScoped: false },
   // No page of its own: members may read payments, only admins may write them.

@@ -21,7 +21,7 @@ import { BusinessProvider, useBusiness } from '@/contexts/business-context'
  * base styles (links, touch targets) scoped away from the antd shell.
  * Add a module's routes here when it is ported.
  */
-const REFINE_MODULES = ['/customers', '/measurements']
+const REFINE_MODULES = ['/customers', '/measurements', '/vendors']
 const isRefineRoute = (pathname: string) =>
   pathname === '/' || REFINE_MODULES.some((base) => pathname === base || pathname.startsWith(`${base}/`))
 

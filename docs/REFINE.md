@@ -2,10 +2,11 @@
 
 The root Next.js 15 App Router app is a Refine app. Refine (`@refinedev/core` 5) with the
 Ant Design UI kit (`@refinedev/antd` 6, `antd` 5) provides the shell (sidebar, header, theme),
-auth, access control and data access. Customers, Measurements, the Dashboard and the sign-in
-page are fully on Refine + antd. Orders, Vendors, Ledger and P&L are still the previous shadcn
+auth, access control and data access. Customers, Measurements, Vendors, the Dashboard and the
+sign-in page are fully on Refine + antd. Orders, Ledger and P&L are still the previous shadcn
 pages, rendered inside the new shell until they are ported. Refine pages read and write through
-the Supabase data provider only (never the service-role `/api` routes).
+the Supabase data provider. The only `/api` call left on them is the vendor ledger and bills
+section, which has no direct client access by design (see Vendors).
 
 Nothing under `src/app/api/**`, `src/app/.well-known/**`, `src/app/oauth/**`,
 `src/lib/ledger-mcp/**`, `src/lib/ledger-service.ts` or `src/lib/pnl.ts` changed. The mobile
@@ -21,6 +22,8 @@ src/app/(dashboard)/page.tsx            Dashboard (Refine + antd, admin only)
 src/app/(dashboard)/overview/page.tsx   The previous dashboard, unchanged apart from its title
 src/app/(dashboard)/customers/**        list / create / edit/[id] / show/[id] (Refine + antd)
 src/app/(dashboard)/measurements/**     list / create[?customer_id=] / edit/[id] / show/[id] (Refine + antd)
+src/app/(dashboard)/vendors/**          list / create / edit/[id] / show/[id] (Refine + antd, admin only);
+                                        /vendors/[id] redirects to /vendors/show/[id]
 src/app/sign-in/page.tsx                Ant Design Pro style sign-in through Refine useLogin
 
 src/components/providers/refine-provider.tsx      <Refine> root (+ AuthSync, BusinessScopeSync)
@@ -31,6 +34,8 @@ src/components/refine/                  shell (header, business switcher, logo) 
                                         CardWithTitle, KpiCard, WriteGuard
 src/components/customers/               customers types, form fields (rules from the zod schema)
 src/components/measurements/            measurements types, form fields, CustomerSelect
+src/components/vendors/                 constants + zod schemas, vendor form (with tags), CategorySelect,
+                                        ManageCategoriesDrawer, VendorTagsEditor, VendorLedgerCard
 
 src/lib/refine/zod-rule.ts              antd Form rule from a zod schema
 src/lib/refine/notifications.ts         "<Entity> created/updated/deleted successfully" builders
@@ -96,7 +101,8 @@ resource's `meta.roles`.
 | customers | `/customers`, `/customers/create`, `/customers/edit/:id`, `/customers/show/:id` | admin, staff |
 | orders | `/orders` | admin, staff |
 | measurements | `/measurements`, `/measurements/create`, `/measurements/edit/:id`, `/measurements/show/:id` | admin, staff |
-| vendors | `/vendors`, `/vendors/:id` | admin |
+| vendors | `/vendors`, `/vendors/create`, `/vendors/edit/:id`, `/vendors/show/:id` | admin |
+| vendor_tags, vendor_categories | (no pages; managed from Vendors) | admin |
 | ledger | `/ledger` | admin |
 | pnl | `/pnl` | admin |
 
@@ -118,6 +124,7 @@ Where the rules apply:
 - **Buttons:** Refine buttons (`CreateButton`, `EditButton`, `DeleteButton`, `ShowButton`) and the table `RowActions` are disabled with the reason as a tooltip when not allowed (e.g. staff: "Only an admin can delete this").
 - **Create/edit pages:** wrapped in `WriteGuard`, which shows the reason instead of the form.
 - **Dashboard:** wrapped in `CanAccess` and sends other roles to `/customers`.
+- **Admin-only pages (Vendors):** wrapped in `ResourceGuard`, which shows a 403 result with a "Go to Customers" button for other roles (direct or shared URLs).
 - **Legacy pages:** keep their `RoleGuard`.
 
 Hiding UI is only an affordance. The API and RLS still enforce everything.
@@ -160,6 +167,27 @@ Refine's `syncWithLocation` restores the filter form from the URL with no extra 
 | `q` | customers | name ilike *term* OR phone like *term* (same as `GET /api/customers?q=`) |
 | `q` | measurements | measurement name ilike *term* |
 | `customer` | measurements | customer name or phone contains *term*, resolved to `customer_id IN (...)` within the scope (PostgREST cannot OR across an embedded table) |
+| `q` | vendors | as the previous list: a term that is exactly a category name means that category; otherwise name, notes, contact person, phone or category name contains *term* |
+| `tag` | vendors | vendors with a tag containing *term*, resolved to `id IN (...)` |
+
+The vendors category filter uses the real column (`category_id`), so it needs no expansion.
+
+## Vendors (admin only)
+
+- **Data access.** Vendors, tags and categories are read and written through the Supabase data provider (RLS: admin-only; categories are readable by every signed-in user). Rules in `RULES`, mirroring `src/app/api/vendors/**`, `vendor-tags/**` and `vendor-categories/**`:
+  - **vendors:** strings trimmed and empty optional fields stored as `null`. A vendor always has a category; when none is chosen it is Uncategorized (fixed id `00000000-0000-0000-0000-000000000000`, the column default). If the database refuses a delete because ledger rows reference the vendor, the message is "This vendor has ledger entries and cannot be deleted."
+  - **vendor_tags:** no `business_id` (RLS scopes a tag through its vendor). Writes are refused in "All businesses". A duplicate tag on one vendor gives "Tag already exists for this vendor".
+  - **vendor_categories:** one list shared by every business.
+    - Add/rename: trimmed, required, max 120, unique ignoring case ("A category with that name already exists").
+    - Archive/restore: sets or clears `archived_at`.
+    - Delete: a used category is refused by the database (both foreign keys are `ON DELETE RESTRICT`), with "This category is in use and cannot be deleted. Archive it instead."
+    - No API needed: the API's extra delete step is only a pre-count, and rename does not touch the ledger in either path, so writing the table directly has the same effect.
+    - Difference from the API: the delete message has no counts. The browser cannot count other businesses' vendors or the ledger.
+    - Not editable from "All businesses", as before.
+    - Uncategorized cannot be archived or deleted from the app (it is the default every vendor falls back to).
+- **Tags** are edited on the vendor form (`Select mode="tags"`, saved after the vendor) and on the vendor page (add with suggestions, remove with confirmation).
+- **Ledger and bills.** `vendor_ledger` / `general_ledger` have no direct client access by design, so the vendor page keeps `GET /api/vendor-ledger` and the existing shadcn `VendorBillDialog` (`POST /api/vendor-ledger`). Without the API (e.g. locally with no service-role key) the card says the ledger is unavailable, and Create Bill is disabled; details and tags still work. The totals and running balance are as on the previous page.
+- **List.** There is no balance column, as on the previous list (no ledger reads needed).
 
 ## UX baseline (Ant Design Pro patterns)
 
@@ -196,7 +224,9 @@ running balances) should keep going through the existing API routes, for example
 
 - **API vs database roles:** the API routes still allow staff to delete orders and measurements and to record payments (`requireBusiness` defaults to admin + staff). They use the service role, so the new policies don't reach them. Legacy pages that call those routes therefore still allow it until the routes or the pages are changed.
 
-- **Legacy modules:** Orders, Vendors, Ledger and P&L are still shadcn pages using the `/api` routes. They need the service-role key, so they show errors locally without it. The global "Create New Order" / "Add New Payment" dialogs in the header are also still shadcn, and the order dialog's measurement step still uses the `/api/measurements` routes.
+- **Vendor ledger and bills:** still on `/api/vendor-ledger` and the shadcn `VendorBillDialog` (see Vendors). Porting them needs a server-side path for ledger writes (the running balance is maintained by database triggers and must stay atomic). The ledger card filters entries client-side, as before.
+- **Vendor list:** the `tag` and `q` filters resolve at most 1000 matching tags or categories.
+- **Legacy modules:** Orders, Ledger and P&L are still shadcn pages using the `/api` routes. They need the service-role key, so they show errors locally without it. The global "Create New Order" / "Add New Payment" dialogs in the header are also still shadcn, and the order dialog's measurement step still uses the `/api/measurements` routes.
 - **OAuth consent:** untouched (shadcn).
 - **Sign-in "Remember me":** not added. Supabase always keeps the session in `localStorage`, so the checkbox would have had no effect.
 - **Measurement print:** reuses `PrintMeasurement` / `openMeasurementPrintPreview`. `order` is now optional, so a measurement prints on its own (no order number or items). The print window still loads Tailwind from `cdn.tailwindcss.com`, as before, so it needs network access.
@@ -206,7 +236,8 @@ running balances) should keep going through the existing API routes, for example
 - **Dashboard series:** sparklines fetch 6 months of rows without pagination, so each series is capped by the PostgREST row limit (1000 by default). Headline counts are exact. "Payments received" sums the `payments` table only; order advances stored on `orders.advance_paid` are not included. Moving the series to SQL aggregates (views or RPC) needs a database change and was out of scope.
 - **e2e tests:** the Playwright specs in `e2e/` select elements of the old shadcn sidebar and tab bar (`nav.spec.ts`, `states.spec.ts`, `workflows.spec.ts`, `dialogs.spec.ts`, `pwa.spec.ts`) and need updating for the antd shell.
 - **Unused code to delete when modules are ported:**
-  - `useCustomers`, `useCreateCustomer`, `useUpdateCustomer`, `useDeleteCustomer` in `src/hooks/use-api.ts`.
+  - `useCustomers`, `useCreateCustomer`, `useUpdateCustomer`, `useDeleteCustomer` in `src/hooks/use-api.ts`; the vendor-category hooks there (`useVendorCategories`, …) are still used by the legacy Ledger page.
+  - `src/lib/vendor-filter.ts`, kept for `scripts/checks/filters.check.ts`.
   - `itemsFor` / `tabItemsFor` / `moreItemsFor` in `nav-items.ts`.
   - `src/components/dialogs/customer-dialog.tsx` and `src/components/forms/customer-form.tsx`, still used by the order dialog's customer picker.
   - `src/components/data-table/data-table.tsx`, still used by legacy pages.

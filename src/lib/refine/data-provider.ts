@@ -3,6 +3,7 @@ import { dataProvider as supabaseDataProvider } from '@refinedev/supabase'
 import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase-client'
 import { MEASUREMENT_FIELDS } from '@/types/measurements'
+import { UNCATEGORIZED_ID } from '@/components/vendors/constants'
 import { ALL_BUSINESSES } from '@/lib/business-shared'
 import { getActiveBusiness } from '@/lib/business-store'
 import { COMBINED_VIEW_READ_ONLY } from './access-control'
@@ -53,6 +54,13 @@ interface ResourceRules {
   beforeSave?: (values: Record<string, unknown>, ctx: { businessId: string; id?: BaseKey }) => Promise<void>
   /** Resource-specific virtual filters (see VIRTUAL_FILTERS). */
   virtualFilters?: Record<string, VirtualFilter>
+  /** Message for a foreign-key violation (Postgres 23503), e.g. "in use". */
+  inUse?: string
+  /**
+   * Tables without business_id whose writes still belong to one business
+   * (vendor_tags follow their vendor): refused in the "All businesses" view.
+   */
+  singleBusinessWrites?: boolean
 }
 
 /**
@@ -116,6 +124,53 @@ const customerSearch: VirtualFilter = async (value, scopeIds) => {
 
 const MEASUREMENT_NUMBER_FIELDS = MEASUREMENT_FIELDS.map((f) => f.key)
 
+/** Trims every string value and turns the listed empty strings into null. */
+const trimAndNull = (nullable: readonly string[]) => (variables: Record<string, unknown>) => {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(variables)) out[key] = typeof value === 'string' ? value.trim() : value
+  for (const key of nullable) if (out[key] === '' || out[key] === undefined) out[key] = null
+  return out
+}
+
+/**
+ * Vendor search, as the previous list (src/lib/vendor-filter.ts): a term that
+ * is exactly a category's name means that category; otherwise name, notes,
+ * contact person, phone or category name contains the term.
+ */
+const vendorSearch: VirtualFilter = async (value) => {
+  const term = asText(value)
+  if (!term) return []
+  const { data: categories, error } = await supabase
+    .from('vendor_categories')
+    .select('id, name')
+    .ilike('name', `%${term.replace(/[%_\\]/g, '\\$&')}%`)
+  if (error) throw toHttpError(error)
+  const exact = (categories ?? []).filter((c) => c.name.trim().toLowerCase() === term.toLowerCase())
+  if (exact.length) return [{ field: 'category_id', operator: 'in', value: exact.map((c) => c.id) }]
+  // The provider renders each member as field.ilike."%term%" / field.in.("a","b").
+  const members: CrudFilter[] = ['name', 'notes', 'contact_person', 'phone'].map((field) => ({
+    field,
+    operator: 'contains' as const,
+    value: term,
+  }))
+  if (categories?.length) members.push({ field: 'category_id', operator: 'in', value: categories.map((c) => c.id) })
+  return [{ key: 'search', operator: 'or', value: members as never }]
+}
+
+/** Vendors carrying a tag that contains the term (resolved to vendor ids). */
+const vendorTagSearch: VirtualFilter = async (value) => {
+  const term = asText(value)
+  if (!term) return []
+  const { data, error } = await supabase
+    .from('vendor_tags')
+    .select('vendor_id')
+    .ilike('tag_name', `%${term.replace(/[%_\\]/g, '\\$&')}%`)
+    .limit(1000)
+  if (error) throw toHttpError(error)
+  const ids = [...new Set((data ?? []).map((row) => row.vendor_id as string))]
+  return ids.length ? [{ field: 'id', operator: 'in', value: ids }] : [NO_ROWS]
+}
+
 const RULES: Record<string, ResourceRules> = {
   // Mirrors src/app/api/customers/** and src/lib/database.ts.
   customers: {
@@ -169,6 +224,41 @@ const RULES: Record<string, ResourceRules> = {
       },
     },
   },
+  // Mirrors src/app/api/vendors/**: strings trimmed, empty optional fields
+  // stored as null, and a vendor always has a category (Uncategorized when
+  // none is chosen, the column default). Admin-only by RLS.
+  vendors: {
+    notFound: 'Vendor not found',
+    inUse: 'This vendor has ledger entries and cannot be deleted.',
+    prepare: (variables) => {
+      const out = trimAndNull(['contact_person', 'phone', 'email', 'address', 'notes'])(variables)
+      if ('category_id' in out && !out.category_id) out.category_id = UNCATEGORIZED_ID
+      return out
+    },
+    virtualFilters: { q: vendorSearch, tag: vendorTagSearch },
+  },
+  // Mirrors src/app/api/vendor-tags/**. No business_id: RLS scopes a tag
+  // through its vendor (admin-only); writes still need one business.
+  vendor_tags: {
+    duplicate: 'Tag already exists for this vendor',
+    duplicateField: 'tag_name',
+    notFound: 'Tag not found',
+    singleBusinessWrites: true,
+    prepare: trimAndNull([]),
+  },
+  // Mirrors src/app/api/vendor-categories/**. One list shared by every
+  // business; readable by any signed-in user, writable by admins (RLS). A
+  // category in use cannot be deleted: both foreign keys are ON DELETE
+  // RESTRICT, so the database refuses it even though the browser cannot see
+  // every business's vendors or the ledger to count references first.
+  vendor_categories: {
+    duplicate: 'A category with that name already exists',
+    duplicateField: 'name',
+    notFound: 'Category not found',
+    inUse: 'This category is in use and cannot be deleted. Archive it instead.',
+    singleBusinessWrites: true,
+    prepare: (variables) => ({ ...trimAndNull([])(variables), updated_at: new Date().toISOString() }),
+  },
 }
 
 /** Replaces virtual filters with real column filters. */
@@ -190,6 +280,7 @@ function toHttpError(error: PostgrestError, rules?: ResourceRules): HttpError {
       ...(rules.duplicateField ? { errors: { [rules.duplicateField]: rules.duplicate } } : {}),
     }
   }
+  if (error.code === '23503' && rules?.inUse) return httpError(409, rules.inUse)
   if (error.code === '42501') return httpError(403, error.message)
   return { ...error, message: error.message, statusCode: 500 }
 }
@@ -313,14 +404,61 @@ const scoped: Pick<
 
 const isScoped = (resource: string) => SCOPED_TABLES.has(resource)
 
+/**
+ * Writes to tables without business_id that still have rules (vendor_tags,
+ * vendor_categories): prepared values, error wording, and the read-only
+ * "All businesses" view. RLS decides who may write at all.
+ */
+const shared: Pick<Required<DataProvider>, 'create' | 'update' | 'deleteOne'> = {
+  create: async ({ resource, variables, meta }) => {
+    const rules = RULES[resource]
+    if (rules?.singleBusinessWrites) writeScope()
+    const values = rules?.prepare?.({ ...(variables as Record<string, unknown>) }) ?? variables
+    const { data, error } = await supabase.from(resource).insert([values]).select(meta?.select ?? '*').single()
+    if (error) throw toHttpError(error, rules)
+    return { data: data as never }
+  },
+  update: async ({ resource, id, variables, meta }) => {
+    const rules = RULES[resource]
+    if (rules?.singleBusinessWrites) writeScope()
+    const values = rules?.prepare?.({ ...(variables as Record<string, unknown>) }) ?? variables
+    const { data, error } = await supabase
+      .from(resource)
+      .update(values as Record<string, unknown>)
+      .eq('id', id)
+      .select(meta?.select ?? '*')
+      .maybeSingle()
+    if (error) throw toHttpError(error, rules)
+    if (!data) throw httpError(404, rules?.notFound ?? 'Not found')
+    return { data: data as never }
+  },
+  deleteOne: async ({ resource, id }) => {
+    const rules = RULES[resource]
+    if (rules?.singleBusinessWrites) writeScope()
+    const { data, error } = await supabase.from(resource).delete().eq('id', id).select('id')
+    if (error) throw toHttpError(error, rules)
+    if (!data?.length) throw httpError(404, rules?.notFound ?? 'Not found')
+    return { data: data[0] as never }
+  },
+}
+
+const hasRules = (resource: string) => !!RULES[resource]
+
 export const dataProvider: DataProvider = {
   ...base,
   getList: (params) => (isScoped(params.resource) ? scoped.getList(params) : base.getList(params)),
   getOne: (params) => (isScoped(params.resource) ? scoped.getOne(params) : base.getOne(params)),
   getMany: (params) => (isScoped(params.resource) ? scoped.getMany(params) : base.getMany(params)),
-  create: (params) => (isScoped(params.resource) ? scoped.create(params) : base.create(params)),
-  update: (params) => (isScoped(params.resource) ? scoped.update(params) : base.update(params)),
-  deleteOne: (params) => (isScoped(params.resource) ? scoped.deleteOne(params) : base.deleteOne(params)),
+  create: (params) =>
+    isScoped(params.resource) ? scoped.create(params) : hasRules(params.resource) ? shared.create(params) : base.create(params),
+  update: (params) =>
+    isScoped(params.resource) ? scoped.update(params) : hasRules(params.resource) ? shared.update(params) : base.update(params),
+  deleteOne: (params) =>
+    isScoped(params.resource)
+      ? scoped.deleteOne(params)
+      : hasRules(params.resource)
+        ? shared.deleteOne(params)
+        : base.deleteOne(params),
   createMany: async (params) =>
     isScoped(params.resource)
       ? {

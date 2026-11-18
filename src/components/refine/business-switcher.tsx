@@ -1,6 +1,6 @@
 'use client'
 
-import { Grid, Select, Space, Typography } from 'antd'
+import { Flex, Grid, Select, Typography } from 'antd'
 import { AppstoreOutlined, ShopOutlined } from '@ant-design/icons'
 import { useBusiness } from '@/contexts/business-context'
 import { ALL_BUSINESSES } from '@/lib/business-shared'
@@ -20,12 +20,12 @@ export function BusinessSwitcher() {
 
   if (businesses.length === 1 && !canViewAll) {
     return (
-      <Space size={6}>
+      <Flex align="center" gap={6} style={{ minWidth: 0 }}>
         <ShopOutlined />
-        <Typography.Text strong ellipsis style={{ maxWidth: compact ? 120 : 260 }}>
+        <Typography.Text strong ellipsis style={{ maxWidth: compact ? 120 : 260, display: 'inline-block' }}>
           {businesses[0].name}
         </Typography.Text>
-      </Space>
+      </Flex>
     )
   }
 
