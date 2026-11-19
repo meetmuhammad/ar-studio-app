@@ -128,27 +128,6 @@
       "tokenless": false
     },
     {
-      "ep": "POST /api/general-ledger/sync-payments",
-      "cat": "unauth",
-      "name": "no token -> 401",
-      "ok": true,
-      "tokenless": true
-    },
-    {
-      "ep": "POST /api/general-ledger/sync-payments",
-      "cat": "unauth",
-      "name": "garbage token -> 401",
-      "ok": true,
-      "tokenless": false
-    },
-    {
-      "ep": "POST /api/general-ledger/sync-payments",
-      "cat": "norole",
-      "name": "signed in, no users row -> 401",
-      "ok": true,
-      "tokenless": false
-    },
-    {
       "ep": "GET /api/vendor-ledger",
       "cat": "unauth",
       "name": "no token -> 401",
@@ -437,13 +416,6 @@
     },
     {
       "ep": "GET /api/general-ledger/stats",
-      "cat": "staff",
-      "name": "staff -> 403 (admin only)",
-      "ok": true,
-      "tokenless": false
-    },
-    {
-      "ep": "POST /api/general-ledger/sync-payments",
       "cat": "staff",
       "name": "staff -> 403 (admin only)",
       "ok": true,
@@ -1404,7 +1376,7 @@
     },
     {
       "ep": "PATCH /api/payments/[id]",
-      "text": "editing a payment's amount (1500 -> 1600) does NOT update its ledger entry (still 1500); the ledger only catches up when sync-payments is run"
+      "text": "editing a payment's amount (1500 -> 1600) does NOT update its ledger entry (still 1500)"
     },
     {
       "ep": "POST /api/payments",
@@ -1412,7 +1384,7 @@
     },
     {
       "ep": "DELETE /api/payments/[id]",
-      "text": "deleting a payment leaves its order_payment ledger entry behind until sync-payments is run (books keep counting money that was deleted)"
+      "text": "deleting a payment leaves its order_payment ledger entry behind (books keep counting money that was deleted)"
     },
     {
       "ep": "POST /api/orders",
@@ -1448,7 +1420,7 @@
     },
     {
       "ep": "DELETE /api/orders/[id]",
-      "text": "deleting an order leaves its advance-payment ledger entry in the books (order_id becomes null; only sync-payments removes it)"
+      "text": "deleting an order leaves its advance-payment ledger entry in the books (order_id becomes null)"
     },
     {
       "ep": "DELETE /api/orders/[id]",

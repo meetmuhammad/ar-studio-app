@@ -15,15 +15,14 @@
  * guard touch existing data:
  *   1. Before a handler is invoked at all, its own source is checked: a guard
  *      call must appear before its first database access. A handler that fails
- *      this is reported and NOT called, so an unguarded sync-payments can never
- *      delete and rebuild the local ledger.
+ *      this is reported and NOT called, so an unguarded write can never touch
+ *      the local ledger.
  *   2. Requests use bodies and ids that reach nothing even when authorized
  *      (empty bodies, nonexistent ids), so a broken guard shows up as a
  *      missing 401 rather than as a changed row.
  *   3. The one real write flow (staff refused, then admin records, edits and
  *      deletes a payment) uses a disposable customer, order and payment
  *      created and removed here.
- * sync-payments is never run as an authorized user.
  *
  * Local database only. Synthetic users and rows, removed afterward.
  */
@@ -34,7 +33,6 @@ import { service, makeUser, rowCount, step, ensure, finish, cleanup } from './su
 import * as ledger from '../../src/app/api/general-ledger/route'
 import * as ledgerById from '../../src/app/api/general-ledger/[id]/route'
 import * as ledgerStats from '../../src/app/api/general-ledger/stats/route'
-import * as ledgerSync from '../../src/app/api/general-ledger/sync-payments/route'
 import * as vendorLedger from '../../src/app/api/vendor-ledger/route'
 import * as payments from '../../src/app/api/payments/route'
 import * as paymentsById from '../../src/app/api/payments/[id]/route'
@@ -100,10 +98,10 @@ async function main() {
     .insert({ entry_date: today, particulars: 'SEC-CHECK fixture', debit: 7, entry_type: 'miscellaneous' })
     .select('id').single()
   ensure(fixture, `fixture insert failed: ${fErr?.message}`)
-  const { data: syncBait, error: sErr } = await service.from('general_ledger')
+  const { data: paymentBait, error: sErr } = await service.from('general_ledger')
     .insert({ entry_date: today, particulars: 'SEC-CHECK order_payment bait', debit: 3, entry_type: 'order_payment' })
     .select('id').single()
-  ensure(syncBait, `bait insert failed: ${sErr?.message}`)
+  ensure(paymentBait, `bait insert failed: ${sErr?.message}`)
   const tag = Math.random().toString(36).slice(2, 8)
   const { data: customer, error: cErr } = await service.from('customers')
     .insert({ name: `SEC-CHECK ${tag}`, phone: `+000${Date.now()}`.slice(0, 20) }).select('id').single()
@@ -129,7 +127,6 @@ async function main() {
     { name: 'PUT    /general-ledger/[id]', file: `${L}/[id]/route.ts`, method: 'PUT', run: (t) => call(ledgerById.PUT, req(`/general-ledger/${id}`, 'PUT', t, { ...entry, particulars: 'SEC-CHECK hijacked', debit: 99 }), ledgerCtx) },
     { name: 'DELETE /general-ledger/[id]', file: `${L}/[id]/route.ts`, method: 'DELETE', run: (t) => call(ledgerById.DELETE, req(`/general-ledger/${id}`, 'DELETE', t), ledgerCtx) },
     { name: 'GET    /general-ledger/stats', file: `${L}/stats/route.ts`, method: 'GET', run: (t) => call(ledgerStats.GET, req('/general-ledger/stats', 'GET', t)) },
-    { name: 'POST   /general-ledger/sync-payments', file: `${L}/sync-payments/route.ts`, method: 'POST', run: (t) => call(ledgerSync.POST, req('/general-ledger/sync-payments', 'POST', t)) },
     { name: 'GET    /vendor-ledger', file: 'src/app/api/vendor-ledger/route.ts', method: 'GET', run: (t) => call(vendorLedger.GET, req(`/vendor-ledger?vendor_id=${vendor.id}`, 'GET', t)) },
     { name: 'POST   /vendor-ledger', file: 'src/app/api/vendor-ledger/route.ts', method: 'POST', run: (t) => call(vendorLedger.POST, req('/vendor-ledger', 'POST', t, { vendor_id: vendor.id, entry_date: today, particulars: 'SEC-CHECK rejected', credit: 1 })) },
   ]
@@ -160,7 +157,7 @@ async function main() {
     orders: await rowCount('orders'),
     payments: await rowCount('payments'),
     fixture: (await service.from('general_ledger').select('particulars,debit').eq('id', id).single()).data,
-    bait: (await service.from('general_ledger').select('id').eq('id', syncBait.id)).data?.length ?? 0,
+    bait: (await service.from('general_ledger').select('id').eq('id', paymentBait.id)).data?.length ?? 0,
   })
   const before = await snapshot()
 
@@ -200,7 +197,7 @@ async function main() {
       ensure(after[k] === before[k], `${k} row count ${before[k]} -> ${after[k]}`)
     }
     ensure(JSON.stringify(after.fixture) === JSON.stringify(before.fixture), `fixture changed: ${JSON.stringify(after.fixture)}`)
-    ensure(after.bait === 1, 'sync-payments ran for an unauthorized caller and deleted the order_payment row')
+    ensure(after.bait === 1, 'an unauthorized caller deleted the order_payment row')
   })
 
   // ---- authorized behavior must keep working

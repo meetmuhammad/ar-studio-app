@@ -79,7 +79,7 @@ check('every missing field is named, and nothing is guessed', () => {
   for (const word of ['direction', 'amount', 'entry_date', 'entry_type', 'description']) assert(p.includes(word), `${word} not reported in: ${p}`)
 })
 check('order_payment is refused with the reason, opening_balance too', () => {
-  assert.match(problems({ entry_type: 'order_payment' }), /derived|sync|Payments screen/)
+  assert.match(problems({ entry_type: 'order_payment' }), /derived|Payments screen/)
   assert.match(problems({ entry_type: 'opening_balance' }), /one-time/)
   assert.match(problems({ entry_type: 'whatever' }), /entry_type is required/)
 })

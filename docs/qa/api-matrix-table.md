@@ -32,7 +32,6 @@
 | `PUT /api/general-ledger/[id]` | Ledger | admin only | PASS | PASS | – | PASS | PASS | PASS | PASS | PASS |  |
 | `DELETE /api/general-ledger/[id]` | Ledger | admin only | PASS | PASS | – | PASS | – | PASS | PASS | PASS | 1 finding(s) |
 | `GET /api/general-ledger/stats` | Ledger | admin only | PASS | PASS | PASS | PASS | – | – | PASS | PASS |  |
-| `POST /api/general-ledger/sync-payments` | Ledger | admin only | PASS | PASS | – | PASS | – | – | – | PASS (rejections) / BLOCKED (admin path) | destructive: deletes and rebuilds all order_payment rows; admin success path deliberately NOT run |
 | `GET /api/vendor-ledger` | Vendor ledger | admin only | PASS | PASS | – | PASS | PASS | PASS | – | PASS |  |
 | `POST /api/vendor-ledger` | Vendor ledger | admin only | PASS | PASS | PASS | PASS | PASS | – | – | PASS |  |
 | `GET /api/vendors` | Vendors | NONE (open) | OPEN | N/A (open) | – | N/A (open) | – | – | PASS | PASS | 1 finding(s) |

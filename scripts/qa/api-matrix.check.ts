@@ -18,8 +18,6 @@
  *  - A fingerprint (hash of the identifying/financial columns) of every existing
  *    row in the touched tables is taken first and compared at the end, in addition
  *    to row counts. Cleanup runs in a finally block, also after a failure.
- *  - POST /api/general-ledger/sync-payments is NEVER run as an authorized user: it
- *    deletes and rebuilds every order_payment row. Only its 401/403 rejections are tested.
  *
  * Output: PASS/FAIL per check, FINDING lines for behaviour that works but is
  * wrong or risky, a final count, docs/qa/api-matrix-table.md and docs/qa/api-matrix-results.json.
@@ -75,7 +73,6 @@ const EP: Ep[] = [
   { key: 'PUT /api/general-ledger/[id]', module: 'Ledger', auth: 'admin' },
   { key: 'DELETE /api/general-ledger/[id]', module: 'Ledger', auth: 'admin' },
   { key: 'GET /api/general-ledger/stats', module: 'Ledger', auth: 'admin' },
-  { key: 'POST /api/general-ledger/sync-payments', module: 'Ledger', auth: 'admin', note: 'destructive: deletes and rebuilds all order_payment rows; admin success path deliberately NOT run' },
   { key: 'GET /api/vendor-ledger', module: 'Vendor ledger', auth: 'admin' },
   { key: 'POST /api/vendor-ledger', module: 'Vendor ledger', auth: 'admin' },
   { key: 'GET /api/vendors', module: 'Vendors', auth: 'admin' },
@@ -247,7 +244,6 @@ async function main() {
     { ep: 'PUT /api/general-ledger/[id]', method: 'PUT', path: `/api/general-ledger/${UUID0}`, body: {} },
     { ep: 'DELETE /api/general-ledger/[id]', method: 'DELETE', path: `/api/general-ledger/${UUID0}` },
     { ep: 'GET /api/general-ledger/stats', method: 'GET', path: '/api/general-ledger/stats' },
-    { ep: 'POST /api/general-ledger/sync-payments', method: 'POST', path: '/api/general-ledger/sync-payments', body: {} },
     { ep: 'GET /api/vendor-ledger', method: 'GET', path: `/api/vendor-ledger?vendor_id=${UUID0}` },
     { ep: 'POST /api/vendor-ledger', method: 'POST', path: '/api/vendor-ledger', body: {} },
     { ep: 'GET /api/dashboard-stats', method: 'GET', path: '/api/dashboard-stats' },
@@ -700,7 +696,7 @@ async function main() {
     const r = await api('PATCH', `/api/payments/${pay.id}`, { token: staff, body: { amount: 1600, notes: tag('pay edited') } }); ensure(r.status === 200, `status ${r.status}`)
     const g = (await api('GET', `/api/payments?order_id=${order2.id}`, { token: admin })).json.payments.find((p: any) => p.id === pay.id); ensure(num(g.amount) === 1600, 'not persisted')
     const l = (await api('GET', '/api/general-ledger?start_date=2099-03-05&end_date=2099-03-05&entry_type=order_payment', { token: admin })).json.filter((e: any) => e.order_id === order2.id)
-    if (l.length === 1 && num(l[0].debit) !== 1600) finding('PATCH /api/payments/[id]', `editing a payment's amount (1500 -> 1600) does NOT update its ledger entry (still ${l[0].debit}); the ledger only catches up when sync-payments is run`)
+    if (l.length === 1 && num(l[0].debit) !== 1600) finding('PATCH /api/payments/[id]', `editing a payment's amount (1500 -> 1600) does NOT update its ledger entry (still ${l[0].debit})`)
   })
   await check('PATCH /api/payments/[id]', 'missing', 'unknown id -> 404', async () => { ensure((await api('PATCH', `/api/payments/${UUID0}`, { token: admin, body: { amount: 1 } })).status === 404, 'not 404') })
   await check('PATCH /api/payments/[id]', 'invalid', 'negative amount rejected, payment unchanged', async () => {
@@ -720,7 +716,7 @@ async function main() {
     ensure(!(await api('GET', `/api/payments?order_id=${order2.id}`, { token: admin })).json.payments.some((p: any) => p.id === pay.id), 'still listed')
     ensure((await api('DELETE', `/api/payments/${pay.id}`, { token: admin })).status === 404, 'second delete not 404')
     const l = (await api('GET', '/api/general-ledger?start_date=2099-03-05&end_date=2099-03-05&entry_type=order_payment', { token: admin })).json.filter((e: any) => e.order_id === order2.id)
-    if (l.length > 0) finding('DELETE /api/payments/[id]', 'deleting a payment leaves its order_payment ledger entry behind until sync-payments is run (books keep counting money that was deleted)')
+    if (l.length > 0) finding('DELETE /api/payments/[id]', 'deleting a payment leaves its order_payment ledger entry behind (books keep counting money that was deleted)')
   })
   await check('GET /api/payments', 'admin', 'list filters by customer; shape', async () => {
     const r = await api('GET', `/api/payments?customer_id=${cust.id}`, { token: admin }); ensure(r.status === 200 && Array.isArray(r.json.payments), 'shape')
@@ -812,7 +808,7 @@ async function main() {
     ensure((await api('GET', `/api/orders/${order.id}`, { token: admin })).status === 404, 'still readable')
     const { count } = await service.from('order_items').select('*', { count: 'exact', head: true }).eq('order_id', order.id); ensure(count === 0, 'order_items orphaned')
     const l = (await api('GET', '/api/general-ledger?start_date=2099-03-01&end_date=2099-03-01&entry_type=order_payment', { token: admin })).json.filter((e: any) => e.order_id === order.id || e.particulars?.includes(order.order_number))
-    if (l.length > 0) finding('DELETE /api/orders/[id]', 'deleting an order leaves its advance-payment ledger entry in the books (order_id becomes null; only sync-payments removes it)')
+    if (l.length > 0) finding('DELETE /api/orders/[id]', 'deleting an order leaves its advance-payment ledger entry in the books (order_id becomes null)')
     const r = await api('DELETE', `/api/orders/${UUID0}`, { token: admin }); ensure(r.status < 600, 'no response')
     if (r.status === 200) finding('DELETE /api/orders/[id]', 'deleting a nonexistent order returns 200 success instead of 404')
   })
@@ -853,7 +849,6 @@ function cellFor(ep: string, cat: Cat, auth: Auth): string {
 }
 function statusFor(e: Ep): string {
   const rs = recs.filter((r) => r.ep === e.key)
-  if (e.key === 'POST /api/general-ledger/sync-payments') return rs.length && !rs.some((r) => !r.ok) ? 'PASS (rejections) / BLOCKED (admin path)' : 'FAIL'
   if (!rs.length) return 'NOT TESTED'
   if (rs.some((r) => !r.ok)) return 'FAIL'
   return 'PASS'

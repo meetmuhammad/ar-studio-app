@@ -1,7 +1,7 @@
 # Endpoint and MCP regression matrix
 
 Scope: every route handler under `src/app/api/**` and `src/app/.well-known/**` on branch `feat/mobile-first-pwa`
-(47 method+path pairs). Written by `scripts/qa/api-matrix.check.ts` (real HTTP) plus the existing regression suites.
+(46 method+path pairs). Written by `scripts/qa/api-matrix.check.ts` (real HTTP) plus the existing regression suites.
 Nothing here was run against staging or production.
 
 ## How it was tested
@@ -13,10 +13,9 @@ Nothing here was run against staging or production.
 | Identities | real local users via `signInWithPassword`: `qa-admin@arstudio.test` (admin), `qa-staff@arstudio.test` (staff), `qa-norole@arstudio.test` (auth user with no `public.users` row). The service role is used only for baseline, observation and cleanup, never to stand in for a user. |
 | Test data | tagged `QA-API <run id>`, dated **2099** so it sorts after every real ledger row and cannot change an existing running balance. The script refuses to start if real rows already exist in 2099. |
 | Cleanup | runs in a `finally` block. Verified at the end: row counts for 10 tables **and** a hash of every pre-existing row's identifying and financial columns equal the pre-test baseline. |
-| Not run on purpose | `POST /api/general-ledger/sync-payments` as an authorized user: it deletes and rebuilds every `order_payment` ledger row, i.e. existing records. Only its 401/403 rejections are tested. |
 
 Command: `npx tsx --env-file=.env.local scripts/qa/api-matrix.check.ts` (optional `QA_BASE=http://localhost:3100`).
-Result of the last run: **185/186 checks passed, 39 findings, cleanup verified (baseline == final)**.
+Result of the last run: **181/182 checks passed, 39 findings, cleanup verified (baseline == final)**.
 Raw per-check results: `docs/qa/api-matrix-results.json`.
 
 Mocked vs real: the matrix is **real HTTP integration** (fetch to a running Next server, real Supabase Auth tokens, real database,
@@ -67,7 +66,6 @@ Auth column = what the code actually enforces (read from each handler), not what
 | `PUT /api/general-ledger/[id]` | Ledger | admin only | PASS | PASS | – | PASS | PASS | PASS | PASS | PASS |  |
 | `DELETE /api/general-ledger/[id]` | Ledger | admin only | PASS | PASS | – | PASS | – | PASS | PASS | PASS | 1 finding(s) |
 | `GET /api/general-ledger/stats` | Ledger | admin only | PASS | PASS | PASS | PASS | – | – | PASS | PASS |  |
-| `POST /api/general-ledger/sync-payments` | Ledger | admin only | PASS | PASS | – | PASS | – | – | – | PASS (rejections) / BLOCKED (admin path) | destructive: deletes and rebuilds all order_payment rows; admin success path deliberately NOT run |
 | `GET /api/vendor-ledger` | Vendor ledger | admin only | PASS | PASS | – | PASS | PASS | PASS | – | PASS |  |
 | `POST /api/vendor-ledger` | Vendor ledger | admin only | PASS | PASS | PASS | PASS | PASS | – | – | PASS |  |
 | `GET /api/vendors` | Vendors | NONE (open) | OPEN | N/A (open) | – | N/A (open) | – | – | PASS | PASS | 1 finding(s) |
@@ -83,14 +81,13 @@ Auth column = what the code actually enforces (read from each handler), not what
 | `POST /api/vendor-tags` | Vendors | NONE (open) | OPEN | N/A (open) | PASS | N/A (open) | – | – | – | PASS |  |
 | `DELETE /api/vendor-tags/[id]` | Vendors | NONE (open) | OPEN | N/A (open) | – | N/A (open) | – | PASS | PASS | PASS | 1 finding(s) |
 
-Summary of the Status column: **45 PASS, 1 FAIL, 1 PASS (rejections) / BLOCKED (admin path)** = 47 endpoints. The one FAIL is
+Summary of the Status column: **45 PASS, 1 FAIL** = 46 endpoints. The one FAIL is
 `GET /api/measurements` (search, see finding D1). Nothing is marked PASS on the strength of a build or a read of the code.
 
 ## 3. What is NOT covered (do not read the table as more than this)
 
 - **Cross-user / tenant isolation: N/A.** The data model has no tenant or per-user ownership. Every authorized user sees all rows. Only the
   ledger MCP proposals are per-user (covered by `protocol.check`, not by this matrix).
-- `POST /api/general-ledger/sync-payments` admin success path: **BLOCKED by design** (destructive to existing ledger rows).
 - `GET/POST/DELETE /api/mcp` with a *valid* OAuth token: covered only by `protocol.check` (31 checks), not re-run here.
 - Order line-item replacement via `PATCH /api/orders/[id]` with `orderItems`, `sortBy`/`sortDir` params of list endpoints, and the
   `measurementId` link on orders: NOT TESTED.
@@ -110,7 +107,7 @@ Summary of the Status column: **45 PASS, 1 FAIL, 1 PASS (rejections) / BLOCKED (
 | `scripts/security/api-auth.check.ts` | `npx tsx --env-file=.env.local scripts/security/api-auth.check.ts` | **95/95 PASS** | integration, **in-process**: real route handlers, real DB and tokens, no HTTP |
 | `scripts/ledger-mcp/protocol.check.ts` | `LEDGER_MCP_ALLOWED_CLIENT_IDS=local-test-client MCP_TEST_BASE=http://localhost:3100 npx tsx --env-file=.env.local scripts/ledger-mcp/protocol.check.ts` | **31/31 PASS** | real HTTP integration with the official MCP SDK client; synthetic local data, removed afterwards, ledger compared byte-for-byte |
 | `scripts/ledger-mcp/timezone.check.ts` | needs a server started **without** `BUSINESS_TIMEZONE` on another port | **BLOCKED** | needs a differently configured server; the shared server must not be reconfigured |
-| `scripts/qa/api-matrix.check.ts` (new) | `npx tsx --env-file=.env.local scripts/qa/api-matrix.check.ts` | **185/186** (1 FAIL = finding D1) | real HTTP integration |
+| `scripts/qa/api-matrix.check.ts` (new) | `npx tsx --env-file=.env.local scripts/qa/api-matrix.check.ts` | **181/182** (1 FAIL = finding D1) | real HTTP integration |
 
 Note on `protocol.check`: `.env.local` now contains `LEDGER_MCP_ALLOWED_CLIENT_IDS=<the real local Claude Code client>`, and the suite's helper reads that
 variable to choose the client id it mints tokens for. Run without the explicit override it mints for the wrong client and fails with
@@ -135,7 +132,7 @@ answer anyone without a token. Ledger, vendor-ledger, orders and payments **do**
 1. **`PATCH /api/orders/[id]` with a partial body nulls the money fields it was not given.** Sending only `{"comments": "..."}` changed `total_amount` 10000 -> null
    (the route writes `value || null` for omitted fields). A client that sends partial updates loses amounts.
 2. **Ledger drift on payment/order edits.** Editing a payment's amount does not update its `order_payment` ledger entry; deleting a payment or an order leaves the ledger entry in
-   the books (the entry's `order_id` becomes null). The ledger only catches up when `sync-payments` is run, and that endpoint deletes and rebuilds *all* `order_payment` rows.
+   the books (the entry's `order_id` becomes null). The API has no way to bring those ledger rows back in step.
 3. **Negative amounts are accepted by the ledger.** `POST /api/general-ledger` with `debit: -50` returns 201: only debit-XOR-credit is enforced (route and database), not amount > 0.
 4. **No server-side idempotency.** Two identical concurrent `POST /api/payments` create two payments and two ledger rows. Two concurrent `POST /api/orders`: one succeeded, one returned 500 (consistent with a read-then-increment order-number race; two creates can also collide on the order number). The UI is the only protection against a double submit.
 
@@ -154,9 +151,9 @@ In every case above the matrix verified that **nothing was persisted** by the re
 - `DELETE /api/customers/[id]`: deleting a nonexistent customer returns 200 success instead of 404
 - `DELETE /api/general-ledger/[id]`: deleting a nonexistent entry returns 200 success instead of 404
 - `DELETE /api/measurements/[id]`: deleting a nonexistent measurement returns 200 success instead of 404
-- `DELETE /api/orders/[id]`: deleting an order leaves its advance-payment ledger entry in the books (order_id becomes null; only sync-payments removes it)
+- `DELETE /api/orders/[id]`: deleting an order leaves its advance-payment ledger entry in the books (order_id becomes null)
 - `DELETE /api/orders/[id]`: deleting a nonexistent order returns 200 success instead of 404
-- `DELETE /api/payments/[id]`: deleting a payment leaves its order_payment ledger entry behind until sync-payments is run (books keep counting money that was deleted)
+- `DELETE /api/payments/[id]`: deleting a payment leaves its order_payment ledger entry behind (books keep counting money that was deleted)
 - `DELETE /api/vendor-tags/[id]`: deleting a nonexistent tag returns 200 success instead of 404
 - `DELETE /api/vendors/[id]`: deleting a nonexistent vendor returns 200 success instead of 404
 - `GET /api/customers`: returns customer names/phones without authentication (known open route)
@@ -177,7 +174,7 @@ In every case above the matrix verified that **nothing was persisted** by the re
 - `PATCH /api/orders/[id]`: validation failure returns 500 "Failed to update order" instead of 400
 - `PATCH /api/orders/[id]`: unknown id returns 500 instead of 404
 - `PATCH /api/orders/[id]`: a PATCH that sends only "comments" changed total_amount 10000 -> null (route writes total_amount: value || null for omitted fields)
-- `PATCH /api/payments/[id]`: editing a payment's amount (1500 -> 1600) does NOT update its ledger entry (still 1500); the ledger only catches up when sync-payments is run
+- `PATCH /api/payments/[id]`: editing a payment's amount (1500 -> 1600) does NOT update its ledger entry (still 1500)
 - `POST /api/customers`: accepts an unauthenticated create (no auth guard; known open route)
 - `POST /api/customers`: validation failure returns 500 "Failed to create customer" instead of 400 (zod error is not handled)
 - `POST /api/general-ledger`: unknown entry_type returns 500 instead of 400 (database check constraint surfaces as a server error)

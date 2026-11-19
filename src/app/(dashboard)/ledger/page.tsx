@@ -32,10 +32,9 @@ import {
   EditOutlined,
   PlusOutlined,
   SearchOutlined,
-  SyncOutlined,
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { useBusiness, useBusinessLabel } from '@/contexts/business-context'
+import { useBusinessLabel } from '@/contexts/business-context'
 import { DateRangeFilter, FilterBar, dateRangeItemProps } from '@/components/refine/filter-bar'
 import { ResourceTable, type ResourceColumn } from '@/components/refine/resource-table'
 import { FormSection } from '@/components/refine/page-parts'
@@ -49,10 +48,9 @@ import {
   money,
   type LedgerEntryValues,
 } from '@/components/ledger/constants'
-import { deleteNotificationsFor, errorMessage } from '@/lib/refine/notifications'
+import { deleteNotificationsFor } from '@/lib/refine/notifications'
 import {
   fetchLedgerForExport,
-  syncOrderPaymentLedger,
   useLedgerPage,
   useReportScope,
   type LedgerQuery,
@@ -119,14 +117,12 @@ function LedgerScreen() {
   const { token } = theme.useToken()
   const { message, notification } = App.useApp()
   const businessLabel = useBusinessLabel()
-  const { business } = useBusiness()
   const scope = useReportScope()
   const queryClient = useQueryClient()
   const { query, set, formValues, page, size } = useLedgerFilters()
   const [form] = Form.useForm<FilterValues>()
   const [drawer, setDrawer] = useState<{ open: boolean; entry: LedgerEntryValues | null }>({ open: false, entry: null })
   const [exporting, setExporting] = useState(false)
-  const [syncing, setSyncing] = useState(false)
   const { mutate: remove } = useDelete<LedgerRow, HttpError>()
 
   const { data, isLoading, isFetching, isError, error, refetch } = useLedgerPage(query)
@@ -146,20 +142,6 @@ function LedgerScreen() {
   })
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['report'] })
-
-  const syncPayments = async () => {
-    if (!business) return
-    setSyncing(true)
-    try {
-      const result = await syncOrderPaymentLedger(business.id)
-      message.success(`Synced ${result.synced} order payment entries`)
-      await refresh()
-    } catch (e) {
-      notification.error({ message: errorMessage(e, 'Failed to sync order payments') })
-    } finally {
-      setSyncing(false)
-    }
-  }
 
   const exportCsv = async () => {
     setExporting(true)
@@ -349,21 +331,6 @@ function LedgerScreen() {
           <Button icon={<DownloadOutlined />} onClick={() => void exportCsv()} loading={exporting} disabled={!data?.total}>
             Export CSV
           </Button>
-          <Tooltip title={writesAllowed ? 'Rebuild order payment entries from orders and payments' : canWrite?.reason}>
-            <span>
-              <Popconfirm
-                title="Sync order payments?"
-                description="Deletes and rebuilds every order payment entry of this business from its orders and payments."
-                okText="Sync"
-                disabled={!writesAllowed}
-                onConfirm={() => void syncPayments()}
-              >
-                <Button icon={<SyncOutlined />} loading={syncing} disabled={!writesAllowed}>
-                  Sync payments
-                </Button>
-              </Popconfirm>
-            </span>
-          </Tooltip>
           <Tooltip title={writesAllowed ? undefined : canWrite?.reason}>
             <Button type="primary" icon={<PlusOutlined />} disabled={!writesAllowed} onClick={() => setDrawer({ open: true, entry: null })}>
               Add Entry

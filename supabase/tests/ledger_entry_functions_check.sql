@@ -8,9 +8,7 @@
 -- email, in the business named 'Ahsan Tariq Couture':
 --   admin: refine-disposable-admin-20261119@arstudio.test
 --   staff: refine-disposable-staff-20261119@arstudio.test
--- It creates its own vendor (rolled back) and never edits existing rows, except
--- the order-payment sync, which rebuilds that business's order_payment rows
--- and is rolled back with everything else.
+-- It creates its own vendor (rolled back) and never edits existing rows.
 --
 -- Each function call runs as `authenticated` with the user's JWT claims (what
 -- PostgREST does for a browser request); assertions read the tables back as
@@ -36,7 +34,6 @@ declare
   v_mirror   uuid;
   v_owned    uuid;
   v_read     jsonb;
-  v_sync     jsonb;
   v_count    int;
   v_num      numeric;
   v_ok       boolean;
@@ -197,13 +194,9 @@ begin
     perform public.vendor_ledger_entries(v_vendor);
   exception when insufficient_privilege then v_count := v_count + 1;
   end;
-  begin
-    perform public.sync_order_payment_ledger(v_business);
-  exception when insufficient_privilege then v_count := v_count + 1;
-  end;
   perform set_config('role', v_orig_role, true);
-  if v_count <> 7 then raise exception 'staff were refused % of 7 calls', v_count; end if;
-  raise notice 'ok: staff refused (42501) on all 7 calls';
+  if v_count <> 6 then raise exception 'staff were refused % of 6 calls', v_count; end if;
+  raise notice 'ok: staff refused (42501) on all 6 calls';
 
   -- ------------------------------------------------------------- 7. order-owned rows are refused
   insert into public.general_ledger (business_id, entry_date, particulars, debit, entry_type, notes)
@@ -260,25 +253,7 @@ begin
   if v_count > 0 then raise exception 'general_ledger: % mismatches after deletes', v_count; end if;
   raise notice 'ok: deletes removed the entries and their mirror; 0 mismatches';
 
-  -- ------------------------------------------------------------- 10. order-payment sync (admin)
-  perform set_config('role', 'authenticated', true);
-  v_sync := public.sync_order_payment_ledger(v_business);
-  perform set_config('role', v_orig_role, true);
-  select count(*) into v_count from public.general_ledger where business_id = v_business and entry_type = 'order_payment';
-  if v_count <> (v_sync ->> 'synced')::int
-     or (v_sync ->> 'orders')::int <> (select count(*) from public.orders where business_id = v_business and advance_paid > 0)
-     or (v_sync ->> 'payments')::int <> (select count(*) from public.payments where business_id = v_business) then
-    raise exception 'sync result % does not match the orders, payments and rows (% rows)', v_sync, v_count;
-  end if;
-  select count(*) into v_count from (
-    select gl.balance, sum(coalesce(gl.debit, 0) - coalesce(gl.credit, 0))
-             over (order by gl.entry_date, gl.created_at, gl.id rows between unbounded preceding and current row) as expected
-      from public.general_ledger gl where gl.business_id = v_business
-  ) t where t.balance is distinct from t.expected;
-  if v_count > 0 then raise exception 'general_ledger: % mismatches after sync', v_count; end if;
-  raise notice 'ok: sync rebuilt % order payment rows; 0 mismatches', v_sync ->> 'synced';
-
-  -- ------------------------------------------------------------- 11. anonymous caller
+  -- ------------------------------------------------------------- 10. anonymous caller
   perform set_config('request.jwt.claims', '{}', true);
   perform set_config('role', 'authenticated', true);
   begin

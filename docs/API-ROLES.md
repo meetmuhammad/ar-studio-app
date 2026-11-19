@@ -43,7 +43,6 @@ businesses" view (`X-Business-Id: all`) get `400` (`BUSINESS_REQUIRED`).
 | `/api/general-ledger` | admin | admin | — | — |
 | `/api/general-ledger/[id]` | admin | — | PUT: admin | admin |
 | `/api/general-ledger/stats` | admin | — | — | — |
-| `/api/general-ledger/sync-payments` | — | admin | — | — |
 | `/api/dashboard-stats` | admin | — | — | — |
 | `/api/pnl` | admin | — | — | — |
 | `/api/mcp` (GET, POST, DELETE) | MCP transport; see below | | | |

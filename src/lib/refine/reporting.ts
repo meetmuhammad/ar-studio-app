@@ -199,12 +199,6 @@ export function useVendorLedger(vendorId: string | undefined) {
   })
 }
 
-/** Rebuilds the business's order-payment ledger rows (sync_order_payment_ledger). */
-export const syncOrderPaymentLedger = (businessId: string) =>
-  callReport<{ synced: number; orders: number; payments: number }>('sync_order_payment_ledger', {
-    p_business_id: businessId,
-  })
-
 // ---------------------------------------------------------------- P&L
 
 export function usePnlInput(range: { start: string; end: string } | null) {

@@ -13,8 +13,9 @@ mobile app and the MCP server. Every screen is Refine + antd (the OAuth consent 
 JWT → RLS for table reads and simple writes, `SECURITY DEFINER` functions for multi-row writes
 and reports. The `/api` routes (service role) serve the mobile app with the same role rules
 ([API-ROLES.md](API-ROLES.md)); their only change on this branch is that role alignment.
-`src/app/.well-known/**`, `src/app/oauth/**`, `src/lib/ledger-mcp/**`,
-`src/lib/ledger-service.ts` and `src/lib/pnl.ts` are unchanged.
+`src/app/.well-known/**`, `src/app/oauth/**`, `src/lib/ledger-service.ts` and
+`src/lib/pnl.ts` are unchanged; `src/lib/ledger-mcp/**` only had its wording about the
+removed order-payment sync updated (`normalize.ts`).
 
 ## Database functions and migrations on this branch
 
@@ -23,7 +24,8 @@ and reports. The `/api` routes (service role) serve the mobile app with the same
 | `20261119000000_role_scoped_rls.sql` | `current_user_is_admin()` (`users.role = 'admin'`) and role-scoped RLS: members read and write customers, measurements, orders, order items; deletes of those, payment writes, vendors, tags and category writes are admin-only. | `supabase/tests/role_scoped_rls_check.sql` |
 | `20261119000100_order_payment_functions.sql` | `create_order`, `update_order`, `delete_order`, `record_payment`, `update_payment`, `delete_payment` (atomic, ledger kept in step). | `supabase/tests/order_payment_functions_check.sql` |
 | `20261119000200_reporting_functions.sql` | `dashboard_summary`, `ledger_entries`, `pnl_input` (read-only, admin-only). | `supabase/tests/reporting_functions_check.sql` |
-| `20261119000300_ledger_entry_functions.sql` | `create_ledger_entry`, `update_ledger_entry`, `delete_ledger_entry`, `record_vendor_bill`, `update_vendor_bill`, `delete_vendor_bill`, `vendor_ledger_entries`, `sync_order_payment_ledger` (admin-only). | `supabase/tests/ledger_entry_functions_check.sql` |
+| `20261119000300_ledger_entry_functions.sql` | `create_ledger_entry`, `update_ledger_entry`, `delete_ledger_entry`, `record_vendor_bill`, `update_vendor_bill`, `delete_vendor_bill`, `vendor_ledger_entries` (admin-only). | `supabase/tests/ledger_entry_functions_check.sql` |
+| `20261119000400_drop_sync_order_payment_ledger.sql` | Drops the order-payment sync function added in `20261119000300` (the "Sync Payments" feature is removed). | — |
 
 Details for each are in the module sections below.
 
@@ -249,7 +251,7 @@ exercises all of them as the disposable admin and staff users inside a transacti
 
 **Deliberate differences from the API** (also in the migration header):
 - **Atomic writes:** all writes of one operation are in one transaction. The API keeps a payment whose ledger insert failed, and keeps an order whose items or advance failed.
-- **Ledger kept in step:** order advance edits, payment edits and deletes, and order deletes update or remove the matching ledger rows immediately. These are the rows `POST /api/general-ledger/sync-payments` would produce; the API leaves the ledger stale until that sync runs.
+- **Ledger kept in step:** order advance edits, payment edits and deletes, and order deletes update or remove the matching ledger rows immediately. The API leaves the ledger stale on those edits.
 - **Admin-only operations:** deleting orders and all payment writes are admin-only, as in RLS and the API routes (see [API-ROLES.md](API-ROLES.md)).
 - **Partial updates:** `update_order` changes only the keys sent. The API's PATCH nulls amounts, method and measurement when they are absent from the body.
 - **Balance on create:** `create_order` stores `total - advance` as the balance when none is sent.
@@ -323,7 +325,7 @@ has not been applied (PostgREST `PGRST202`), the screens say so instead of faili
 - **Table** (`ResourceTable`, key `ledger`): Date, Particulars (links to the order), Type, Vendor / Category, Debit, Credit, Balance (the running balance within the date range, as before; Business instead in "All businesses"), Notes (hidden by default), Actions. Sticky header, density and column settings. Summary rows: opening balance, totals for the dates, closing balance.
 - **Stat cards:** Total Debit, Total Credit, Current Balance (Net in "All businesses"), Total Entries, over the date range only, as `/api/general-ledger/stats`.
 - **Export CSV:** every row of the current filter (same columns as the previous export).
-- **Writes (admin only):** "Add Entry" and edit open `LedgerEntryDrawer` (`src/components/ledger/`), delete is a popconfirm, and "Sync payments" calls `sync_order_payment_ledger`. All go through the functions below via the data provider (`general_ledger` resource) with Refine notifications. Rows written by an order or a payment are read-only and link to the order.
+- **Writes (admin only):** "Add Entry" and edit open `LedgerEntryDrawer` (`src/components/ledger/`), and delete is a popconfirm. All go through the functions below via the data provider (`general_ledger` resource) with Refine notifications. Rows written by an order or a payment are read-only and link to the order.
 
 ### Ledger entry functions (`supabase/migrations/20261119000300_ledger_entry_functions.sql`)
 
@@ -336,7 +338,6 @@ Admin-only `SECURITY DEFINER` functions (`search_path` pinned, execute granted t
 | `delete_ledger_entry(p_entry_id)` | DELETE /api/general-ledger/[id] | Deletes the mirror first. |
 | `record_vendor_bill` / `update_vendor_bill` / `delete_vendor_bill` | POST /api/vendor-ledger (edit and delete are new) | Bill-only `vendor_ledger` rows (credit); mirror rows are refused. |
 | `vendor_ledger_entries(p_vendor_id)` | GET /api/vendor-ledger | Rows newest first with `owed_after`, `kind` (bill / ledger / order) and totals. |
-| `sync_order_payment_ledger(p_business_id)` | POST /api/general-ledger/sync-payments | Same rebuild, in one transaction. |
 
 Running balances: `general_ledger.balance` stays with the existing per-business triggers; `vendor_ledger.balance` (cumulative debit − credit per vendor) is recomputed for each vendor a call touches. Differences from the routes: atomic; order-owned rows (`order_payment`, or linked to an order) cannot be created, edited or deleted manually (23514) and `order_id` is not accepted; amounts must be > 0.
 
