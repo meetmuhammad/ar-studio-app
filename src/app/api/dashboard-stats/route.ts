@@ -1,105 +1,72 @@
 import { NextResponse } from 'next/server'
-import { createAdminSupabaseClient } from '@/lib/supabase'
-import { inScope, requireBusinessRead } from '@/lib/business-context'
+import { requireBusinessRead } from '@/lib/business-context'
+import { callerSupabaseClient, rpcErrorStatus } from '@/lib/api-auth'
 
-// GET /api/dashboard-stats - Lightweight dashboard stats using SQL aggregates
+/** The part of public.dashboard_summary this route reports (20261119000600). */
+interface DashboardSummaryAllTime {
+  all_time: {
+    customers: number
+    orders: number
+    revenue: number
+    received: { advances: number; payments: number; total: number }
+    outstanding: number
+    recent_orders_this_month: number
+  }
+  upcoming_orders: Array<{
+    id: string
+    order_number: string
+    delivery_date: string
+    status: string | null
+    customers: { name: string; phone: string } | null
+  }>
+  monthly_receipts_6m: Array<{ month: string; label: string; total: number }>
+}
+
+/**
+ * GET /api/dashboard-stats (mobile app). Admin only; one business, or (admin,
+ * X-Business-Id: all) every business the admin belongs to, added together.
+ *
+ * Every figure comes from public.dashboard_summary, the same function as the
+ * web dashboard, called AS the caller (so the database checks admin and
+ * membership again). Nothing is summed here; this only renames keys.
+ *
+ *   totalCustomers / totalOrders  exact counts, all time
+ *   totalRevenue                  sum of order totals, all time
+ *   totalReceived                 money received from customers, all time:
+ *                                 advances + payments
+ *   outstandingBalance            still to collect: per order not Cancelled,
+ *                                 max(total - advance - payments, 0), summed
+ *   recentOrdersCount             orders created this month (Asia/Karachi)
+ *   upcomingOrders                next 5 not Cancelled, delivery today or later
+ *   chartData                     last 6 months (Asia/Karachi), receipts per month
+ */
 export async function GET(request: Request) {
-  // One business, or (admin, X-Business-Id: all) the combined read-only view:
-  // every figure here is a count or a sum, so adding books together is a
-  // meaningful report. No running balance is involved.
   const scope = await requireBusinessRead(request, { roles: ['admin'] })
   if (scope instanceof NextResponse) return scope
 
   try {
-    const supabase = createAdminSupabaseClient()
+    const { data, error } = await callerSupabaseClient(request).rpc('dashboard_summary', {
+      p_business_ids: scope.businessIds,
+      p_from: null,
+      p_to: null,
+    })
+    if (error) {
+      const status = rpcErrorStatus(error)
+      if (status) return NextResponse.json({ error: error.message }, { status })
+      throw new Error(`dashboard_summary: ${error.message}`)
+    }
 
-    // Run all lightweight queries in parallel
-    const [
-      customerCountResult,
-      orderStatsResult,
-      recentOrdersResult,
-      ledgerStatsResult,
-      upcomingDeliveriesResult,
-      chartDataResult,
-    ] = await Promise.all([
-      // 1. Customer count (head-only, no data transferred)
-      inScope(supabase
-        .from('customers')
-        .select('*', { count: 'exact', head: true }), scope),
-
-      // 2. Order count + total revenue
-      inScope(supabase
-        .from('orders')
-        .select('id, total_amount'), scope),
-
-      // 3. Recent orders count (this month)
-      inScope(supabase
-        .from('orders')
-        .select('*', { count: 'exact', head: true }), scope)
-        .gte('created_at', getFirstDayOfMonth()),
-
-      // 4. Ledger totals (only debit/credit columns, no joins)
-      inScope(supabase
-        .from('general_ledger')
-        .select('id, debit, credit'), scope),
-
-      // 5. Upcoming deliveries (LIMIT 5, minimal join)
-      inScope(supabase
-        .from('orders')
-        .select(`
-          id,
-          order_number,
-          delivery_date,
-          status,
-          customers (
-            name,
-            phone
-          )
-        `), scope)
-        .gte('delivery_date', new Date().toISOString().split('T')[0])
-        .neq('status', 'Cancelled')
-        .order('delivery_date', { ascending: true })
-        .limit(5),
-
-      // 6. Chart data: ledger payments grouped by month (last 6 months, only order_payment)
-      inScope(supabase
-        .from('general_ledger')
-        .select('id, entry_date, debit'), scope)
-        .eq('entry_type', 'order_payment')
-        .gte('entry_date', getSixMonthsAgo()),
-    ])
-
-    // Process results (all lightweight - just counting/summing small result sets)
-    const totalCustomers = customerCountResult.count || 0
-
-    const orders = (orderStatsResult.data || []) as Array<{ id: string; total_amount: number | null }>
-    const totalOrders = orders.length
-    const totalRevenue = orders.reduce((sum, o) => sum + (o.total_amount || 0), 0)
-
-    const recentOrdersCount = recentOrdersResult.count || 0
-
-    // Ledger stats from minimal columns
-    const ledgerEntries = (ledgerStatsResult.data || []) as Array<{ id: string; debit: number | null; credit: number | null }>
-    const totalReceived = ledgerEntries.reduce((sum, e) => sum + (e.debit || 0), 0)
-    const totalCredit = ledgerEntries.reduce((sum, e) => sum + (e.credit || 0), 0)
-    const currentBalance = totalReceived - totalCredit
-    const outstandingBalance = totalRevenue - currentBalance
-
-    // Upcoming deliveries
-    const upcomingOrders = upcomingDeliveriesResult.data || []
-
-    // Chart data: group by month
-    const chartData = buildChartData((chartDataResult.data || []) as Array<{ id: string; entry_date: string; debit: number | null }>)
-
+    const d = data as DashboardSummaryAllTime
+    const a = d.all_time
     return NextResponse.json({
-      totalCustomers,
-      totalOrders,
-      totalRevenue,
-      totalReceived: currentBalance,
-      outstandingBalance,
-      recentOrdersCount,
-      upcomingOrders,
-      chartData,
+      totalCustomers: Number(a.customers),
+      totalOrders: Number(a.orders),
+      totalRevenue: Number(a.revenue),
+      totalReceived: Number(a.received.total),
+      outstandingBalance: Number(a.outstanding),
+      recentOrdersCount: Number(a.recent_orders_this_month),
+      upcomingOrders: d.upcoming_orders ?? [],
+      chartData: (d.monthly_receipts_6m ?? []).map((m) => ({ month: m.label, revenue: Number(m.total) })),
     }, {
       headers: {
         // Per user and per business: never cacheable by a shared cache (a
@@ -115,41 +82,4 @@ export async function GET(request: Request) {
       { status: 500 }
     )
   }
-}
-
-// Helpers
-function getFirstDayOfMonth(): string {
-  const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-}
-
-function getSixMonthsAgo(): string {
-  const date = new Date()
-  date.setMonth(date.getMonth() - 6)
-  date.setDate(1)
-  return date.toISOString().split('T')[0]
-}
-
-function buildChartData(entries: Array<{ entry_date: string; debit: number | null }>) {
-  const now = new Date()
-  const chartData: Array<{ month: string; revenue: number }> = []
-
-  for (let i = 5; i >= 0; i--) {
-    const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const monthName = date.toLocaleDateString('en-US', { month: 'short' })
-    const targetMonth = date.getMonth()
-    const targetYear = date.getFullYear()
-
-    const monthRevenue = entries
-      .filter(entry => {
-        const entryDate = new Date(entry.entry_date)
-        return entryDate.getMonth() === targetMonth &&
-               entryDate.getFullYear() === targetYear
-      })
-      .reduce((sum, entry) => sum + (entry.debit || 0), 0)
-
-    chartData.push({ month: monthName, revenue: monthRevenue })
-  }
-
-  return chartData
 }

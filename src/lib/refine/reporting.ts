@@ -49,17 +49,50 @@ export interface DashboardMonth {
   cash_payments: number
 }
 
+/** Money received from customers: advances + payments. */
+export interface DashboardReceived {
+  advances: number
+  payments: number
+  total: number
+}
+
+/**
+ * public.dashboard_summary (20261119000600): the single source of dashboard
+ * figures for this page AND GET /api/dashboard-stats. Range figures use the
+ * period; `all_time` does not. received = advances (by booking date) +
+ * payments (by payment date); outstanding = per order not Cancelled,
+ * max(total - advance - payments, 0), summed. Everything is summed in SQL.
+ */
 export interface DashboardSummary {
   range: { from: string | null; to: string | null; today: string }
+  all_time: {
+    customers: number
+    orders: number
+    revenue: number
+    received: DashboardReceived
+    outstanding: number
+    recent_orders_this_month: number
+  }
+  /** Same value as all_time.customers (kept for builds older than 20261119000600). */
   customers: { total: number; new_in_range: number }
   orders: { total: number; in_range: number; by_status: Record<string, number> }
   revenue_in_range: number
+  /** Same value as all_time.revenue (kept for older builds). */
   revenue_all_time: number
-  cash_received: { advances: number; payments: number; total: number }
+  cash_received: DashboardReceived
+  /** Same value as all_time.outstanding (kept for older builds). */
   outstanding: number
-  ledger_net: number
-  outstanding_api: number
   monthly: DashboardMonth[]
+  /** Last 6 months incl. the current one (Asia/Karachi); /api/dashboard-stats chartData. */
+  monthly_receipts_6m: { month: string; label: string; advances: number; payments: number; total: number }[]
+  /** Next 5 not Cancelled, delivery today or later; /api/dashboard-stats upcomingOrders. */
+  upcoming_orders: {
+    id: string
+    order_number: string
+    delivery_date: string
+    status: string | null
+    customers: { name: string; phone: string } | null
+  }[]
   top_customers: { id: string; name: string; phone: string; orders: number; order_value: number }[]
   upcoming_deliveries: {
     id: string
@@ -208,6 +241,30 @@ export function usePnlInput(range: { start: string; end: string } | null) {
     queryFn: () =>
       callReport<PnlInput>('pnl_input', { p_business_ids: scope.ids, p_from: range!.start, p_to: range!.end }),
     enabled: scope.ready && !!range,
+    retry: false,
+  })
+}
+
+// ---------------------------------------------------------------- customer
+
+/**
+ * One customer's orders, revenue, money received and outstanding balance
+ * (customer_order_summary, 20261119000600): the same per-order definitions as
+ * the dashboard, summed in SQL over every order. Admin or staff, member of the
+ * customer's business.
+ */
+export interface CustomerOrderSummary {
+  orders: number
+  revenue: number
+  received: DashboardReceived
+  outstanding: number
+}
+
+export function useCustomerOrderSummary(customerId: string | undefined) {
+  return useQuery({
+    queryKey: ['report', 'customer_order_summary', customerId],
+    queryFn: () => callReport<CustomerOrderSummary>('customer_order_summary', { p_customer_id: customerId }),
+    enabled: !!customerId,
     retry: false,
   })
 }

@@ -51,7 +51,9 @@ function RedirectTo({ href }: { href: string }) {
  * Admin dashboard in the Ant Design Pro "analysis" layout: four KPI cards with
  * a trend against the previous period, a 12-month chart with a ranking, and
  * the deliveries due soon. Every figure comes from dashboard_summary (exact
- * SQL sums, no row cap), for the selected business or all of them.
+ * SQL sums, no row cap), for the selected business or all of them; all-time
+ * figures from its `all_time` block, the same numbers /api/dashboard-stats
+ * reports to the mobile app. Nothing is summed here.
  */
 function Dashboard() {
   const { token } = theme.useToken()
@@ -120,13 +122,13 @@ function Dashboard() {
             value={formatPKR(Number(d?.revenue_in_range ?? 0))}
             trend={<Trend current={Number(d?.revenue_in_range ?? 0)} previous={p ? Number(p.revenue_in_range) : undefined} />}
             chart={{ kind: 'area', data: mini((m) => Number(m.order_value)), color: token.colorPrimary, format: formatPKR }}
-            footer={`All time ${formatPKR(Number(d?.revenue_all_time ?? 0))}`}
+            footer={`All time ${formatPKR(Number(d?.all_time?.revenue ?? d?.revenue_all_time ?? 0))}`}
           />
         </Col>
         <Col xs={24} sm={12} xl={6}>
           <ChartCard
             title="Cash received"
-            tooltip="Advances on orders booked in the period plus payments dated in the period."
+            tooltip={`Money received from customers: advances on orders booked in the period plus payments dated in the period (advances ${formatPKR(Number(d?.cash_received.advances ?? 0))}, payments ${formatPKR(Number(d?.cash_received.payments ?? 0))}). All time: every advance and payment.`}
             loading={loading}
             value={formatPKR(Number(d?.cash_received.total ?? 0))}
             trend={<Trend current={Number(d?.cash_received.total ?? 0)} previous={p ? Number(p.cash_received.total) : undefined} />}
@@ -136,7 +138,7 @@ function Dashboard() {
               color: token.colorSuccess,
               format: formatPKR,
             }}
-            footer={`Advances ${formatPKR(Number(d?.cash_received.advances ?? 0))} · Payments ${formatPKR(Number(d?.cash_received.payments ?? 0))}`}
+            footer={`Total received, all time ${formatPKR(Number(d?.all_time?.received.total ?? 0))}`}
           />
         </Col>
         <Col xs={24} sm={12} xl={6}>
@@ -153,12 +155,12 @@ function Dashboard() {
         <Col xs={24} sm={12} xl={6}>
           <ChartCard
             title="Outstanding balance"
-            tooltip="Still to collect on orders that are not cancelled: total minus advance minus payments, today."
+            tooltip="Still to collect, all time, on orders that are not cancelled: total minus advance minus payments (never below 0 per order), today."
             loading={loading}
-            value={formatPKR(Number(d?.outstanding ?? 0))}
+            value={formatPKR(Number(d?.all_time?.outstanding ?? d?.outstanding ?? 0))}
             trend={
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                {Number(d?.customers.total ?? 0).toLocaleString()} customers · {Number(d?.customers.new_in_range ?? 0)} new in period
+                {Number(d?.all_time?.customers ?? d?.customers.total ?? 0).toLocaleString()} customers · {Number(d?.customers.new_in_range ?? 0)} new in period
               </Typography.Text>
             }
             footer={
