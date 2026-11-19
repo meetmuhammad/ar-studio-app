@@ -1,5 +1,6 @@
--- Self-contained check for 20261119000100_order_payment_functions.sql and
--- 20261119000500_payment_ledger_link.sql (section 6b).
+-- Self-contained check for 20261119000100_order_payment_functions.sql,
+-- 20261119000500_payment_ledger_link.sql (section 6b) and
+-- 20261119000700_payment_method_matches_table.sql (end of section 3).
 --
 -- Runs in one transaction and ROLLS BACK: nothing it creates is kept.
 -- Run as a role that can switch to `authenticated` (e.g. postgres in the SQL
@@ -42,6 +43,7 @@ declare
   v_ledger_n  int;
   v_fp_before text;
   v_fp_after  text;
+  v_method    text;
 
   -- Runs SQL as the given user (role authenticated + JWT claims), then
   -- returns to the original role. Implemented inline below as a pattern:
@@ -200,6 +202,71 @@ begin
      and particulars = 'Payment for Order #' || v_number and debit = 2000;
   if v_count <> 1 then raise exception 'record_payment did not set payment_id on its ledger row (found %)', v_count; end if;
   raise notice 'ok: record_payment sets general_ledger.payment_id';
+
+  -- 20261119000700: the payment functions accept exactly the payments table's
+  -- methods (cash, bank, card, online, other), case-sensitive.
+  -- Accepted: recorded inside a subtransaction that is then rolled back
+  -- (sentinel SQLSTATE ZZ001), so the rest of this check sees no extra rows.
+  begin
+    foreach v_method in array array['card', 'online'] loop
+      perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+      perform set_config('role', 'authenticated', true);
+      v_payment := public.record_payment(v_order_id,
+        jsonb_build_object('amount', 10, 'payment_method', v_method, 'payment_date', v_today));
+      perform set_config('role', v_orig_role, true);
+      if v_payment ->> 'payment_method' is distinct from v_method then
+        raise exception 'record_payment stored method % for %', v_payment ->> 'payment_method', v_method;
+      end if;
+      select count(*) into v_count from public.general_ledger
+       where payment_id = (v_payment ->> 'id')::uuid and notes = 'Payment via ' || v_method;
+      if v_count <> 1 then raise exception 'no ledger row for the % payment (found %)', v_method, v_count; end if;
+      raise notice 'ok: record_payment accepts %', v_method;
+    end loop;
+
+    perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+    perform set_config('role', 'authenticated', true);
+    v_payment := public.update_payment((v_payment ->> 'id')::uuid, '{"payment_method":"card"}'::jsonb);
+    perform set_config('role', v_orig_role, true);
+    if v_payment ->> 'payment_method' is distinct from 'card' then
+      raise exception 'update_payment did not set method card (got %)', v_payment ->> 'payment_method';
+    end if;
+    raise notice 'ok: update_payment accepts card';
+
+    raise exception 'roll back the method probe' using errcode = 'ZZ001';
+  exception when sqlstate 'ZZ001' then
+    null;
+  end;
+  perform set_config('role', v_orig_role, true);
+  select count(*) into v_count from public.payments where order_id = v_order_id;
+  if v_count <> 1 then raise exception 'method probe left payments behind (% on the order)', v_count; end if;
+
+  -- Rejected: wrong case and unknown methods, by both functions.
+  foreach v_method in array array['Cash', 'cheque'] loop
+    perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+    perform set_config('role', 'authenticated', true);
+    begin
+      perform public.record_payment(v_order_id,
+        jsonb_build_object('amount', 10, 'payment_method', v_method, 'payment_date', v_today));
+      v_ok := false;
+    exception when invalid_parameter_value then
+      v_ok := true;
+    end;
+    perform set_config('role', v_orig_role, true);
+    if not v_ok then raise exception 'record_payment accepted method %', v_method; end if;
+    raise notice 'ok: record_payment rejects %', v_method;
+
+    perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+    perform set_config('role', 'authenticated', true);
+    begin
+      perform public.update_payment(v_pay_id, jsonb_build_object('payment_method', v_method));
+      v_ok := false;
+    exception when invalid_parameter_value then
+      v_ok := true;
+    end;
+    perform set_config('role', v_orig_role, true);
+    if not v_ok then raise exception 'update_payment accepted method %', v_method; end if;
+    raise notice 'ok: update_payment rejects %', v_method;
+  end loop;
 
   -- ------------------------------------------------------------- 4. update payment
   perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
