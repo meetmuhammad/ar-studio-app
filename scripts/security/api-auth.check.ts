@@ -5,10 +5,11 @@
  *
  *   npx tsx --env-file=.env.local scripts/security/api-auth.check.ts
  *
- * Intended access (from the web app's own role guards and callers):
- *   admin only      general-ledger (all), vendor-ledger        -> ledger pages are RoleGuard admin
- *   staff + admin   payments, orders                           -> staff record payments and create orders,
- *                                                                 and both write the ledger server-side
+ * Intended access (docs/API-ROLES.md, same as RLS and the database functions):
+ *   admin only      general-ledger (all), vendor-ledger
+ *   staff + admin   read orders and payments; create and update orders (the
+ *                   order's advance is written to the ledger server-side)
+ *   admin writes    DELETE orders; record, edit and delete payments (staff 403)
  *
  * SAFETY. Verify authorization before any side effect, and never let a missing
  * guard touch existing data:
@@ -19,8 +20,9 @@
  *   2. Requests use bodies and ids that reach nothing even when authorized
  *      (empty bodies, nonexistent ids), so a broken guard shows up as a
  *      missing 401 rather than as a changed row.
- *   3. The one real write flow (staff records a payment) uses a disposable
- *      customer, order and payment created and removed here.
+ *   3. The one real write flow (staff refused, then admin records, edits and
+ *      deletes a payment) uses a disposable customer, order and payment
+ *      created and removed here.
  * sync-payments is never run as an authorized user.
  *
  * Local database only. Synthetic users and rows, removed afterward.
@@ -140,8 +142,13 @@ async function main() {
     { name: 'GET    /orders/all', file: `${A}/orders/all/route.ts`, method: 'GET', run: (t) => call(ordersAll.GET, req('/orders/all', 'GET', t)) },
     { name: 'GET    /orders/[missing]', file: `${A}/orders/[id]/route.ts`, method: 'GET', run: (t) => call(ordersById.GET, req(`/orders/${missing}`, 'GET', t), noOne) },
     { name: 'PATCH  /orders/[missing]', file: `${A}/orders/[id]/route.ts`, method: 'PATCH', run: (t) => call(ordersById.PATCH, req(`/orders/${missing}`, 'PATCH', t, {}), noOne) },
-    { name: 'DELETE /orders/[missing]', file: `${A}/orders/[id]/route.ts`, method: 'DELETE', run: (t) => call(ordersById.DELETE, req(`/orders/${missing}`, 'DELETE', t), noOne) },
     { name: 'GET    /payments', file: `${A}/payments/route.ts`, method: 'GET', run: (t) => call(payments.GET, req(`/payments?order_id=${missing}`, 'GET', t)) },
+  ]
+
+  // ---- members may read, only admins may write (docs/API-ROLES.md): staff 403, admin reaches the
+  // handler. Bodies and ids reach nothing even when allowed.
+  const adminWrites: Case[] = [
+    { name: 'DELETE /orders/[missing]', file: `${A}/orders/[id]/route.ts`, method: 'DELETE', run: (t) => call(ordersById.DELETE, req(`/orders/${missing}`, 'DELETE', t), noOne) },
     { name: 'POST   /payments ({} body)', file: `${A}/payments/route.ts`, method: 'POST', run: (t) => call(payments.POST, req('/payments', 'POST', t, {})) },
     { name: 'PATCH  /payments/[missing]', file: `${A}/payments/[id]/route.ts`, method: 'PATCH', run: (t) => call(paymentsById.PATCH, req(`/payments/${missing}`, 'PATCH', t, { amount: 1 }), noOne) },
     { name: 'DELETE /payments/[missing]', file: `${A}/payments/[id]/route.ts`, method: 'DELETE', run: (t) => call(paymentsById.DELETE, req(`/payments/${missing}`, 'DELETE', t), noOne) },
@@ -179,6 +186,11 @@ async function main() {
   for (const c of signedIn) {
     for (const [who, token] of unauthenticated) await run(c, who, token, (s) => s === 401, '401')
     await run(c, 'staff', staff.token, (s) => s !== 401 && s !== 403, 'allowed (reaches the handler)')
+    await run(c, 'admin', admin.token, (s) => s !== 401 && s !== 403, 'allowed (reaches the handler)')
+  }
+  for (const c of adminWrites) {
+    for (const [who, token] of unauthenticated) await run(c, who, token, (s) => s === 401, '401')
+    await run(c, 'staff', staff.token, (s) => s === 403, '403')
     await run(c, 'admin', admin.token, (s) => s !== 401 && s !== 403, 'allowed (reaches the handler)')
   }
 
@@ -229,11 +241,19 @@ async function main() {
     ensure(res.status === 200, `got ${res.status}`)
   })
 
+  const paymentBody = { order_id: order.id, customer_id: customer.id, amount: 5, payment_method: 'cash', payment_date: today }
+
+  await step('STAFF cannot record a payment (403) and nothing is written', async () => {
+    const res = await call(payments.POST, req('/payments', 'POST', staff.token, paymentBody))
+    ensure(res.status === 403, `got ${res.status}`)
+    const { count: paid } = await service.from('payments').select('*', { count: 'exact', head: true }).eq('order_id', order.id)
+    const { count: rows } = await service.from('general_ledger').select('*', { count: 'exact', head: true }).eq('order_id', order.id)
+    ensure(paid === 0 && rows === 0, `staff POST wrote ${paid} payments, ${rows} ledger rows`)
+  })
+
   let paymentId: string | undefined
-  await step('STAFF records a payment (201) and the server writes the ledger row', async () => {
-    const res = await call(payments.POST, req('/payments', 'POST', staff.token, {
-      order_id: order.id, customer_id: customer.id, amount: 5, payment_method: 'cash', payment_date: today,
-    }))
+  await step('ADMIN records a payment (201) and the server writes the ledger row', async () => {
+    const res = await call(payments.POST, req('/payments', 'POST', admin.token, paymentBody))
     const text = await res.text() // read once: an eager message would consume the body
     ensure(res.status === 201, `got ${res.status}: ${text}`)
     paymentId = JSON.parse(text).payment.id
@@ -241,13 +261,23 @@ async function main() {
     ensure(data?.length === 1 && Number(data[0].debit) === 5 && data[0].entry_type === 'order_payment', `ledger rows: ${JSON.stringify(data)}`)
   })
 
-  await step('STAFF lists orders and payments, and edits then deletes their payment', async () => {
+  await step('STAFF can list orders and payments but not edit or delete the payment (403, unchanged)', async () => {
     ensure((await call(orders.GET, req('/orders?page=1&pageSize=1', 'GET', staff.token))).status === 200, 'staff GET /orders failed')
     ensure((await call(payments.GET, req(`/payments?order_id=${order.id}`, 'GET', staff.token))).status === 200, 'staff GET /payments failed')
-    const patch = await call(paymentsById.PATCH, req(`/payments/${paymentId}`, 'PATCH', staff.token, { amount: 6 }), { params: Promise.resolve({ id: paymentId }) })
-    ensure(patch.status === 200, `staff PATCH got ${patch.status}`)
-    const del = await call(paymentsById.DELETE, req(`/payments/${paymentId}`, 'DELETE', staff.token), { params: Promise.resolve({ id: paymentId }) })
-    ensure(del.status === 200, `staff DELETE got ${del.status}`)
+    const ctx = { params: Promise.resolve({ id: paymentId! }) }
+    const patch = await call(paymentsById.PATCH, req(`/payments/${paymentId}`, 'PATCH', staff.token, { amount: 6 }), ctx)
+    ensure(patch.status === 403, `staff PATCH got ${patch.status}`)
+    const del = await call(paymentsById.DELETE, req(`/payments/${paymentId}`, 'DELETE', staff.token), { params: Promise.resolve({ id: paymentId! }) })
+    ensure(del.status === 403, `staff DELETE got ${del.status}`)
+    const { data } = await service.from('payments').select('amount').eq('id', paymentId!)
+    ensure(data?.length === 1 && Number(data[0].amount) === 5, `payment changed by staff: ${JSON.stringify(data)}`)
+  })
+
+  await step('ADMIN edits then deletes the payment', async () => {
+    const patch = await call(paymentsById.PATCH, req(`/payments/${paymentId}`, 'PATCH', admin.token, { amount: 6 }), { params: Promise.resolve({ id: paymentId! }) })
+    ensure(patch.status === 200, `admin PATCH got ${patch.status}`)
+    const del = await call(paymentsById.DELETE, req(`/payments/${paymentId}`, 'DELETE', admin.token), { params: Promise.resolve({ id: paymentId! }) })
+    ensure(del.status === 200, `admin DELETE got ${del.status}`)
   })
 
   await step('balances still equal debit - credit after all of the above', async () => {

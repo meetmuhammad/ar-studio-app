@@ -99,6 +99,9 @@ returned to, as before.
 
 ## Access control (roles)
 
+The `/api` routes (used by the mobile app) follow the same rules; every route and method with
+its required role, and the staff requests that changed, are in [API-ROLES.md](API-ROLES.md).
+
 Which roles may open a module is defined once, in `NAV_ITEMS`
 (`src/components/dashboard/nav-items.ts`). `resources.tsx` copies those roles into each
 resource's `meta.roles`.
@@ -223,7 +226,7 @@ exercises all of them as the disposable admin and staff users inside a transacti
 **Deliberate differences from the API** (also in the migration header):
 - **Atomic writes:** all writes of one operation are in one transaction. The API keeps a payment whose ledger insert failed, and keeps an order whose items or advance failed.
 - **Ledger kept in step:** order advance edits, payment edits and deletes, and order deletes update or remove the matching ledger rows immediately. These are the rows `POST /api/general-ledger/sync-payments` would produce; the API leaves the ledger stale until that sync runs.
-- **Admin-only operations:** deleting orders and all payment writes are admin-only, as in RLS. The API routes still allow staff.
+- **Admin-only operations:** deleting orders and all payment writes are admin-only, as in RLS and the API routes (see [API-ROLES.md](API-ROLES.md)).
 - **Partial updates:** `update_order` changes only the keys sent. The API's PATCH nulls amounts, method and measurement when they are absent from the body.
 - **Balance on create:** `create_order` stores `total - advance` as the balance when none is sent.
 - **No payments row for the advance:** as in the API, the advance lives on the order and in the ledger only.
@@ -404,7 +407,6 @@ running balances) should keep going through the existing API routes, for example
 
 ## Deferred
 
-- **API vs database roles:** the API routes still allow staff to delete orders and measurements and to record payments (`requireBusiness` defaults to admin + staff). They use the service role, so the new policies don't reach them. Legacy pages that call those routes therefore still allow it until the routes or the pages are changed.
 
 - **Vendor ledger card:** filters entries client-side, as before (one vendor's rows).
 - **Vendor list:** the `tag` and `q` filters resolve at most 1000 matching tags or categories.

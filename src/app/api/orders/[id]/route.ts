@@ -124,12 +124,13 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/orders/[id] - Delete order
+// DELETE /api/orders/[id] - Delete order (with its items). Admin only, as in
+// RLS (20261119000000) and delete_order (20261119000100).
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const scope = await requireBusiness(request)
+  const scope = await requireBusiness(request, { roles: ['admin'] })
   if (scope instanceof NextResponse) return scope
 
   try {

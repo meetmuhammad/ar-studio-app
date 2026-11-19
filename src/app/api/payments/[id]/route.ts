@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { requireBusiness } from "@/lib/business-context";
 
+// Payment writes are admin only, as in RLS (20261119000000) and
+// update_payment / delete_payment (20261119000100).
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const scope = await requireBusiness(request);
+  const scope = await requireBusiness(request, { roles: ['admin'] });
   if (scope instanceof NextResponse) return scope;
 
   try {
@@ -87,7 +89,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const scope = await requireBusiness(request);
+  const scope = await requireBusiness(request, { roles: ['admin'] });
   if (scope instanceof NextResponse) return scope;
 
   try {

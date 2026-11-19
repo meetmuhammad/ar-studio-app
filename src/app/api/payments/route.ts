@@ -61,9 +61,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  // Staff record payments, and this handler writes the matching ledger row
-  // server-side, so staff never need the ledger endpoints themselves.
-  const scope = await requireBusiness(request);
+  // Recording a payment (and its ledger row) is admin only, as in RLS
+  // (20261119000000) and record_payment (20261119000100). Staff may read.
+  const scope = await requireBusiness(request, { roles: ['admin'] });
   if (scope instanceof NextResponse) return scope;
 
   try {
