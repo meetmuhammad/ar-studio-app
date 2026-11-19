@@ -25,7 +25,7 @@ async function callReport<T>(fn: string, args: Record<string, unknown>): Promise
     // PGRST202: the function is not in the database yet (migration not applied).
     const message =
       error.code === 'PGRST202'
-        ? `The report function ${fn} is not installed. Apply supabase/migrations/20261119000200_reporting_functions.sql.`
+        ? `The database function ${fn} is not installed. Apply the pending migrations in supabase/migrations.`
         : error.message
     throw new ReportError(message, error.code)
   }
@@ -158,6 +158,52 @@ export function useLedgerPage(q: LedgerQuery) {
 /** Every row of the current filter, for the CSV export. */
 export const fetchLedgerForExport = (ids: string[], q: LedgerQuery) =>
   callReport<LedgerPage>('ledger_entries', ledgerArgs(ids, { ...q, limit: null, offset: 0 }))
+
+// ---------------------------------------------------------------- vendor sub-ledger
+
+/**
+ * One row of a vendor's sub-ledger (vendor_ledger_entries, newest first).
+ * debit = paid to the vendor, credit = billed by the vendor; owed_after =
+ * billed - paid up to and including this row. kind: 'bill' (bill-only row),
+ * 'ledger' (mirror of a manual general-ledger entry, e.g. a vendor payment),
+ * 'order' (mirror of an order-owned entry, read-only).
+ */
+export interface VendorLedgerRow {
+  id: string
+  entry_date: string
+  particulars: string
+  debit: number | null
+  credit: number | null
+  notes: string | null
+  created_at: string
+  general_ledger_id: string | null
+  entry_type: string | null
+  order_id: string | null
+  order_number: string | null
+  kind: 'bill' | 'ledger' | 'order'
+  owed_after: number
+}
+
+export interface VendorLedger {
+  vendor: { id: string; name: string; business_id: string }
+  rows: VendorLedgerRow[]
+  totals: { billed: number; paid: number; owed: number; entries: number }
+}
+
+export function useVendorLedger(vendorId: string | undefined) {
+  return useQuery({
+    queryKey: ['report', 'vendor_ledger_entries', vendorId],
+    queryFn: () => callReport<VendorLedger>('vendor_ledger_entries', { p_vendor_id: vendorId }),
+    enabled: !!vendorId,
+    retry: false,
+  })
+}
+
+/** Rebuilds the business's order-payment ledger rows (sync_order_payment_ledger). */
+export const syncOrderPaymentLedger = (businessId: string) =>
+  callReport<{ synced: number; orders: number; payments: number }>('sync_order_payment_ledger', {
+    p_business_id: businessId,
+  })
 
 // ---------------------------------------------------------------- P&L
 

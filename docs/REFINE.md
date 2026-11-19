@@ -5,9 +5,9 @@ Ant Design UI kit (`@refinedev/antd` 6, `antd` 5) provides the shell (sidebar, h
 auth, access control and data access. Customers, Measurements, Vendors, Orders (with payments),
 the Dashboard, Ledger, P&L and the sign-in page are on Refine + antd. Refine pages read through
 the Supabase data provider (or, for the admin reports, read-only Postgres functions) and write
-either to tables (RLS) or, for orders and payments, through Postgres functions. The `/api` calls
-left are ledger writes (the Ledger page's add / edit / delete / sync, and the vendor ledger and
-bills section), which have no direct client access by design (see Ledger and Vendors).
+either to tables (RLS) or, for orders, payments, ledger entries and vendor bills, through
+admin-checked Postgres functions. No Refine page calls the `/api` routes any more; they stay for
+the mobile app and the MCP server.
 
 Nothing under `src/app/api/**`, `src/app/.well-known/**`, `src/app/oauth/**`,
 `src/lib/ledger-mcp/**`, `src/lib/ledger-service.ts` or `src/lib/pnl.ts` changed. The mobile
@@ -196,7 +196,7 @@ The vendors category filter uses the real column (`category_id`), so it needs no
     - Not editable from "All businesses", as before.
     - Uncategorized cannot be archived or deleted from the app (it is the default every vendor falls back to).
 - **Tags** are edited on the vendor form (`Select mode="tags"`, saved after the vendor) and on the vendor page (add with suggestions, remove with confirmation).
-- **Ledger and bills.** `vendor_ledger` / `general_ledger` have no direct client access by design, so the vendor page keeps `GET /api/vendor-ledger` and the existing shadcn `VendorBillDialog` (`POST /api/vendor-ledger`). Without the API (e.g. locally with no service-role key) the card says the ledger is unavailable, and Create Bill is disabled; details and tags still work. The totals and running balance are as on the previous page.
+- **Ledger and bills.** The vendor page's "Ledger" card (`src/components/vendors/vendor-ledger-card.tsx`) reads `vendor_ledger_entries` and shows Billed, Paid and Balance owed (billed − paid), then each bill and payment with what is owed after it. "Add bill" (`VendorBillModal`, `record_vendor_bill`) and "Record payment" (`LedgerEntryDrawer` as a vendor payment, `create_ledger_entry`) are admin-only, as are edit and delete. Lines written by an order are read-only and link to it. See "Ledger entry functions" below.
 - **List.** There is no balance column, as on the previous list (no ledger reads needed).
 
 ## Orders and payments
@@ -297,7 +297,22 @@ has not been applied (PostgREST `PGRST202`), the screens say so instead of faili
 - **Table** (`ResourceTable`, key `ledger`): Date, Particulars (links to the order), Type, Vendor / Category, Debit, Credit, Balance (the running balance within the date range, as before; Business instead in "All businesses"), Notes (hidden by default), Actions. Sticky header, density and column settings. Summary rows: opening balance, totals for the dates, closing balance.
 - **Stat cards:** Total Debit, Total Credit, Current Balance (Net in "All businesses"), Total Entries, over the date range only, as `/api/general-ledger/stats`.
 - **Export CSV:** every row of the current filter (same columns as the previous export).
-- **Writes stay on the API:** Add Entry and edit use the existing `LedgerEntryDialog` (`POST` / `PATCH /api/general-ledger`), delete uses `DELETE /api/general-ledger/[id]`, and Sync payments uses `POST /api/general-ledger/sync-payments`. Running balances are maintained by triggers and the API owns those writes. Without the service-role key (locally) the read side works and a failed write shows "The ledger service could not save this change". Order payment rows are not editable here, as before (edit the payment on the order).
+- **Writes (admin only):** "Add Entry" and edit open `LedgerEntryDrawer` (`src/components/ledger/`), delete is a popconfirm, and "Sync payments" calls `sync_order_payment_ledger`. All go through the functions below via the data provider (`general_ledger` resource) with Refine notifications. Rows written by an order or a payment are read-only and link to the order.
+
+### Ledger entry functions (`supabase/migrations/20261119000300_ledger_entry_functions.sql`)
+
+Admin-only `SECURITY DEFINER` functions (`search_path` pinned, execute granted to `authenticated` only; 42501 for non-admins and non-members). Each call is one transaction under the business's ledger lock. Check: `supabase/tests/ledger_entry_functions_check.sql` (ends in an exception, so it always rolls back).
+
+| Function | Replaces | Notes |
+| --- | --- | --- |
+| `create_ledger_entry(p_business_id, p_entry)` | POST /api/general-ledger | Opening balance, vendor payment (needs a vendor; particulars default to its name) or miscellaneous; exactly one of debit / credit, > 0. A vendor's entry gets one mirror row in `vendor_ledger` (debit and credit swapped). |
+| `update_ledger_entry(p_entry_id, p_entry)` | PUT /api/general-ledger/[id] | Rewrites the vendor mirror; keeps `tag_id` unless sent. |
+| `delete_ledger_entry(p_entry_id)` | DELETE /api/general-ledger/[id] | Deletes the mirror first. |
+| `record_vendor_bill` / `update_vendor_bill` / `delete_vendor_bill` | POST /api/vendor-ledger (edit and delete are new) | Bill-only `vendor_ledger` rows (credit); mirror rows are refused. |
+| `vendor_ledger_entries(p_vendor_id)` | GET /api/vendor-ledger | Rows newest first with `owed_after`, `kind` (bill / ledger / order) and totals. |
+| `sync_order_payment_ledger(p_business_id)` | POST /api/general-ledger/sync-payments | Same rebuild, in one transaction. |
+
+Running balances: `general_ledger.balance` stays with the existing per-business triggers; `vendor_ledger.balance` (cumulative debit − credit per vendor) is recomputed for each vendor a call touches. Differences from the routes: atomic; order-owned rows (`order_payment`, or linked to an order) cannot be created, edited or deleted manually (23514) and `order_id` is not accepted; amounts must be > 0.
 
 ### P&L (`/pnl`)
 
@@ -391,9 +406,8 @@ running balances) should keep going through the existing API routes, for example
 
 - **API vs database roles:** the API routes still allow staff to delete orders and measurements and to record payments (`requireBusiness` defaults to admin + staff). They use the service role, so the new policies don't reach them. Legacy pages that call those routes therefore still allow it until the routes or the pages are changed.
 
-- **Vendor ledger and bills:** still on `/api/vendor-ledger` and the shadcn `VendorBillDialog` (see Vendors). Porting them needs a server-side path for ledger writes (the running balance is maintained by database triggers and must stay atomic). The ledger card filters entries client-side, as before.
+- **Vendor ledger card:** filters entries client-side, as before (one vendor's rows).
 - **Vendor list:** the `tag` and `q` filters resolve at most 1000 matching tags or categories.
-- **Ledger writes:** add / edit / delete / sync on `/ledger` still use the `/api/general-ledger` routes and the shadcn `LedgerEntryDialog`. Moving them needs atomic write functions like the order ones.
 - **Reporting functions:** written against the API and the migrations in this repo. Run `supabase/tests/reporting_functions_check.sql` after applying.
 - **Orders "Nearest delivery" sort:** the previous list put upcoming deliveries first and past-due ones after, using three server queries. The Refine list sorts by delivery date ascending, so past-due orders come first. The delivery date is shown in red when an In Process order is late. Restoring the exact order needs a sort expression, which means a view or function.
 - **`orders_with_payment_status` view:** not used. Its definition is not in the repo, so the list computes payment status from the order and its payments, with the same formula as the receipt.

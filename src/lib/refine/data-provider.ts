@@ -276,6 +276,35 @@ const RULES: Record<string, ResourceRules> = {
       deleteOne: (id) => rpc('delete_payment', { p_payment_id: id }),
     },
   },
+  // Manual general-ledger entries (admin only): every write is one function
+  // call (20261119000300_ledger_entry_functions.sql) that keeps the vendor
+  // mirror row and the running balances in step. Order-owned rows are refused
+  // by the functions. Reads go through ledger_entries (reporting functions).
+  general_ledger: {
+    notFound: 'Entry not found',
+    writeVia: {
+      create: (variables, businessId) =>
+        rpc('create_ledger_entry', { p_business_id: businessId, p_entry: ledgerEntryArgs(variables) }),
+      update: (id, variables) => rpc('update_ledger_entry', { p_entry_id: id, p_entry: ledgerEntryArgs(variables) }),
+      deleteOne: (id) => rpc('delete_ledger_entry', { p_entry_id: id }),
+    },
+  },
+  // Vendor bills: vendor_ledger rows with no general-ledger row (admin only).
+  vendor_ledger: {
+    notFound: 'Bill not found',
+    writeVia: {
+      create: (variables) => {
+        const { vendor_id, ...bill } = variables
+        return rpc('record_vendor_bill', { p_vendor_id: vendor_id, p_bill: ledgerEntryArgs(bill) })
+      },
+      update: (id, variables) => {
+        const bill = { ...variables }
+        delete bill.vendor_id // a bill stays with its vendor
+        return rpc('update_vendor_bill', { p_bill_id: id, p_bill: ledgerEntryArgs(bill) })
+      },
+      deleteOne: (id) => rpc('delete_vendor_bill', { p_bill_id: id }),
+    },
+  },
   // Mirrors src/app/api/vendors/**: strings trimmed, empty optional fields
   // stored as null, and a vendor always has a category (Uncategorized when
   // none is chosen, the column default). Admin-only by RLS.
@@ -334,7 +363,7 @@ function toHttpError(error: PostgrestError, rules?: ResourceRules): HttpError {
   }
   if (error.code === '23503' && rules?.inUse) return httpError(409, rules.inUse)
   if (error.code === '42501') return httpError(403, error.message)
-  // Raised by the order/payment functions (20261119000100) with their own wording.
+  // Raised by the order/payment and ledger functions (20261119000100, 0300) with their own wording.
   if (error.code === 'P0002') return httpError(404, error.message)
   if (['22023', '23514', '22P02', '22007', '22008', '23503', '23505'].includes(error.code)) {
     return httpError(400, error.message)
@@ -374,6 +403,13 @@ function orderArgs(variables: Record<string, unknown>) {
     items: Array.isArray(order_items) ? order_items : null,
     advance: advance_paid === undefined ? null : { amount: advance_paid ?? 0, payment_method: payment_method ?? null },
   }
+}
+
+/** Ledger form values -> function arguments: date-only entry_date. */
+function ledgerEntryArgs(variables: Record<string, unknown>) {
+  const out = { ...variables }
+  if ('entry_date' in out) out.entry_date = dateOnly(out.entry_date)
+  return out
 }
 
 /** Date range virtual filter on another date column. */

@@ -4,10 +4,9 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useSelect } from '@refinedev/antd'
-import { CanAccess, useCan } from '@refinedev/core'
+import { CanAccess, useCan, useDelete, type HttpError } from '@refinedev/core'
 import { useQueryClient } from '@tanstack/react-query'
 import {
-  Alert,
   App,
   Button,
   Col,
@@ -36,33 +35,43 @@ import {
   SyncOutlined,
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { authFetch } from '@/lib/auth-fetch'
-import { useBusinessLabel } from '@/contexts/business-context'
+import { useBusiness, useBusinessLabel } from '@/contexts/business-context'
 import { DateRangeFilter, FilterBar, dateRangeItemProps } from '@/components/refine/filter-bar'
 import { ResourceTable, type ResourceColumn } from '@/components/refine/resource-table'
 import { FormSection } from '@/components/refine/page-parts'
 import { CategorySelect } from '@/components/vendors/category-select'
-import { LedgerEntryDialog } from '@/components/dialogs/ledger-entry-dialog'
-import type { GeneralLedger } from '@/lib/supabase-client'
-import { formatPKR } from '@/lib/format'
+import { LedgerEntryDrawer } from '@/components/ledger/ledger-entry-drawer'
+import {
+  ENTRY_TYPES,
+  GENERAL_LEDGER,
+  entryTypeOf as typeOf,
+  isOrderOwned,
+  money,
+  type LedgerEntryValues,
+} from '@/components/ledger/constants'
+import { deleteNotificationsFor, errorMessage } from '@/lib/refine/notifications'
 import {
   fetchLedgerForExport,
+  syncOrderPaymentLedger,
   useLedgerPage,
   useReportScope,
   type LedgerQuery,
   type LedgerRow,
 } from '@/lib/refine/reporting'
 
-const ENTRY_TYPES = [
-  { value: 'opening_balance', label: 'Opening balance', color: 'blue' },
-  { value: 'order_payment', label: 'Order payment', color: 'green' },
-  { value: 'vendor_payment', label: 'Vendor payment', color: 'default' },
-  { value: 'miscellaneous', label: 'Miscellaneous', color: 'red' },
-] as const
-
-const typeOf = (value: string) => ENTRY_TYPES.find((t) => t.value === value)
-const money = (v: number | null | undefined) => formatPKR(Number(v ?? 0))
 const day = (v: string) => dayjs(v).format('MMM D, YYYY')
+
+const entryValues = (e: LedgerRow): LedgerEntryValues => ({
+  id: e.id,
+  entry_date: e.entry_date,
+  entry_type: e.entry_type,
+  particulars: e.particulars,
+  debit: e.debit,
+  credit: e.credit,
+  notes: e.notes,
+  vendor_id: e.vendor_id,
+  vendor_name: e.vendors?.name ?? null,
+})
 
 interface FilterValues {
   dates?: [string, string]
@@ -110,14 +119,15 @@ function LedgerScreen() {
   const { token } = theme.useToken()
   const { message, notification } = App.useApp()
   const businessLabel = useBusinessLabel()
+  const { business } = useBusiness()
   const scope = useReportScope()
   const queryClient = useQueryClient()
   const { query, set, formValues, page, size } = useLedgerFilters()
   const [form] = Form.useForm<FilterValues>()
-  const [dialog, setDialog] = useState<{ open: boolean; entry: LedgerRow | null }>({ open: false, entry: null })
-  const [apiError, setApiError] = useState<string | null>(null)
+  const [drawer, setDrawer] = useState<{ open: boolean; entry: LedgerEntryValues | null }>({ open: false, entry: null })
   const [exporting, setExporting] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const { mutate: remove } = useDelete<LedgerRow, HttpError>()
 
   const { data, isLoading, isFetching, isError, error, refetch } = useLedgerPage(query)
   const { data: canWrite } = useCan({ resource: 'ledger', action: 'create' })
@@ -137,22 +147,17 @@ function LedgerScreen() {
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['report'] })
 
-  /** A write through the API; explains clearly when the server cannot do it. */
-  const apiWrite = async (label: string, run: () => Promise<Response>) => {
+  const syncPayments = async () => {
+    if (!business) return
+    setSyncing(true)
     try {
-      const response = await run()
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}))
-        throw new Error(body.error || `${label} failed (${response.status})`)
-      }
-      setApiError(null)
+      const result = await syncOrderPaymentLedger(business.id)
+      message.success(`Synced ${result.synced} order payment entries`)
       await refresh()
-      return response
     } catch (e) {
-      const text = e instanceof Error ? e.message : `${label} failed`
-      setApiError(text)
-      notification.error({ message: `${label} failed`, description: text })
-      return null
+      notification.error({ message: errorMessage(e, 'Failed to sync order payments') })
+    } finally {
+      setSyncing(false)
     }
   }
 
@@ -269,10 +274,16 @@ function LedgerScreen() {
         fixedVisible: true,
         width: 110,
         render: (_, e) => {
-          if (e.entry_type === 'order_payment') {
+          if (isOrderOwned(e)) {
             return (
-              <Tooltip title="Order payments are managed on the order">
-                <Typography.Text type="secondary">—</Typography.Text>
+              <Tooltip title="Written by an order or a payment; change it on the order">
+                {e.orders ? (
+                  <Link href={`/orders/show/${e.orders.id}`} aria-label={`Open order ${e.orders.order_number}`}>
+                    Read only
+                  </Link>
+                ) : (
+                  <Typography.Text type="secondary">Read only</Typography.Text>
+                )}
               </Tooltip>
             )
           }
@@ -284,7 +295,7 @@ function LedgerScreen() {
                   icon={<EditOutlined />}
                   aria-label={`Edit ledger entry ${e.particulars}`}
                   disabled={!writesAllowed}
-                  onClick={() => setDialog({ open: true, entry: e })}
+                  onClick={() => setDrawer({ open: true, entry: entryValues(e) })}
                 />
               </Tooltip>
               <Tooltip title={writesAllowed ? 'Delete entry' : canWrite?.reason}>
@@ -295,10 +306,12 @@ function LedgerScreen() {
                     okText="Delete"
                     okButtonProps={{ danger: true }}
                     disabled={!writesAllowed}
-                    onConfirm={async () => {
-                      const res = await apiWrite('Delete', () => authFetch(`/api/general-ledger/${e.id}`, { method: 'DELETE' }))
-                      if (res) message.success('Ledger entry deleted successfully')
-                    }}
+                    onConfirm={() =>
+                      remove(
+                        { resource: GENERAL_LEDGER, id: e.id, ...deleteNotificationsFor('Ledger entry') },
+                        { onSuccess: () => void refresh() }
+                      )
+                    }
                   >
                     <Button
                       size="small"
@@ -343,17 +356,7 @@ function LedgerScreen() {
                 description="Deletes and rebuilds every order payment entry of this business from its orders and payments."
                 okText="Sync"
                 disabled={!writesAllowed}
-                onConfirm={async () => {
-                  setSyncing(true)
-                  const res = await apiWrite('Sync payments', () =>
-                    authFetch('/api/general-ledger/sync-payments', { method: 'POST' })
-                  )
-                  setSyncing(false)
-                  if (res) {
-                    const body = await res.json().catch(() => ({}))
-                    message.success(`Synced ${body.synced ?? 0} order payment entries`)
-                  }
-                }}
+                onConfirm={() => void syncPayments()}
               >
                 <Button icon={<SyncOutlined />} loading={syncing} disabled={!writesAllowed}>
                   Sync payments
@@ -362,23 +365,12 @@ function LedgerScreen() {
             </span>
           </Tooltip>
           <Tooltip title={writesAllowed ? undefined : canWrite?.reason}>
-            <Button type="primary" icon={<PlusOutlined />} disabled={!writesAllowed} onClick={() => setDialog({ open: true, entry: null })}>
+            <Button type="primary" icon={<PlusOutlined />} disabled={!writesAllowed} onClick={() => setDrawer({ open: true, entry: null })}>
               Add Entry
             </Button>
           </Tooltip>
         </Space>
       </Flex>
-
-      {apiError && (
-        <Alert
-          type="warning"
-          showIcon
-          closable
-          onClose={() => setApiError(null)}
-          message="The ledger service could not save this change"
-          description={`${apiError}. Ledger changes (add, edit, delete, sync) still go through the server, which needs its service configuration. Reading the ledger is not affected.`}
-        />
-      )}
 
       <FilterBar
         formProps={{
@@ -540,18 +532,11 @@ function LedgerScreen() {
         </Typography.Text>
       )}
 
-      <LedgerEntryDialog
-        open={dialog.open}
-        onOpenChange={(open) => {
-          if (!open) setDialog({ open: false, entry: null })
-        }}
-        entry={dialog.entry as unknown as GeneralLedger | null}
-        onSuccess={() => {
-          message.success(dialog.entry ? 'Ledger entry updated successfully' : 'Ledger entry created successfully')
-          setDialog({ open: false, entry: null })
-          setApiError(null)
-          void refresh()
-        }}
+      <LedgerEntryDrawer
+        open={drawer.open}
+        onClose={() => setDrawer({ open: false, entry: null })}
+        entry={drawer.entry}
+        onSaved={() => void refresh()}
       />
     </Flex>
   )

@@ -90,6 +90,27 @@ export async function chooseSegment(page: Page, option: string) {
 /** The customers list, with or without the list state Refine keeps in the URL. */
 export const CUSTOMERS_URL = /\/customers(\?.*)?$/
 
+/**
+ * Selects `name` in the header business switcher (combobox "Business") and
+ * waits for the shell to show it. No-op when it is already selected. The
+ * switcher's selected value covers its input, so the select is opened by its
+ * selector box.
+ */
+export async function switchBusiness(page: Page, name: string) {
+  const select = page
+    .getByRole('combobox', { name: 'Business' })
+    .locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " ant-select ")][1]')
+  await expect(select).toBeVisible({ timeout: 20_000 })
+  const current = select.locator('.ant-select-selection-item')
+  if ((await current.getAttribute('title').catch(() => null)) === name || (await current.innerText().catch(() => '')) === name) return
+  await select.locator('.ant-select-selector').click()
+  const option = page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: new RegExp(`^${escape(name)}$`) })
+  await expect(option).toBeVisible()
+  await option.click()
+  await expect(current).toHaveText(name)
+  await settle(page)
+}
+
 export async function toggleTheme(page: Page) {
   await page.getByRole('button', { name: /^Switch to (dark|light) mode$/ }).click()
 }
