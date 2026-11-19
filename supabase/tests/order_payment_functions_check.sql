@@ -1,4 +1,5 @@
--- Self-contained check for 20261119000100_order_payment_functions.sql.
+-- Self-contained check for 20261119000100_order_payment_functions.sql and
+-- 20261119000500_payment_ledger_link.sql (section 6b).
 --
 -- Runs in one transaction and ROLLS BACK: nothing it creates is kept.
 -- Run as a role that can switch to `authenticated` (e.g. postgres in the SQL
@@ -34,6 +35,13 @@ declare
   v_num       numeric;
   v_ok        boolean;
   v_today     date := (now() at time zone 'utc')::date;
+  v_pay_a     uuid;
+  v_pay_b     uuid;
+  v_row_a     uuid;
+  v_row_b     uuid;
+  v_ledger_n  int;
+  v_fp_before text;
+  v_fp_after  text;
 
   -- Runs SQL as the given user (role authenticated + JWT claims), then
   -- returns to the original role. Implemented inline below as a pattern:
@@ -186,6 +194,13 @@ begin
   if v_count <> 1 then raise exception 'expected 1 payment ledger row, found %', v_count; end if;
   raise notice 'ok: payment % and its ledger row', v_pay_id;
 
+  -- 20261119000500: the row is linked to the payment.
+  select count(*) into v_count from public.general_ledger
+   where payment_id = v_pay_id and order_id = v_order_id and entry_type = 'order_payment'
+     and particulars = 'Payment for Order #' || v_number and debit = 2000;
+  if v_count <> 1 then raise exception 'record_payment did not set payment_id on its ledger row (found %)', v_count; end if;
+  raise notice 'ok: record_payment sets general_ledger.payment_id';
+
   -- ------------------------------------------------------------- 4. update payment
   perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
   perform set_config('role', 'authenticated', true);
@@ -249,6 +264,128 @@ begin
   if v_count <> 0 then raise exception 'payment ledger row still exists after delete'; end if;
   raise notice 'ok: payment and its ledger row deleted';
 
+  -- ------------------------------------------------------------- 6b. payment <-> ledger link (20261119000500)
+  -- Two equal payments on the same day each get their own linked row.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform set_config('role', 'authenticated', true);
+  v_pay_a := (public.record_payment(v_order_id,
+    jsonb_build_object('amount', 1500, 'payment_method', 'cash', 'payment_date', v_today)) ->> 'id')::uuid;
+  v_pay_b := (public.record_payment(v_order_id,
+    jsonb_build_object('amount', 1500, 'payment_method', 'cash', 'payment_date', v_today)) ->> 'id')::uuid;
+  perform set_config('role', v_orig_role, true);
+
+  select id into v_row_a from public.general_ledger where payment_id = v_pay_a;
+  select id into v_row_b from public.general_ledger where payment_id = v_pay_b;
+  if v_row_a is null or v_row_b is null or v_row_a = v_row_b then
+    raise exception 'equal payments do not have one linked row each (% / %)', v_row_a, v_row_b;
+  end if;
+  select count(*) into v_count from public.general_ledger
+   where order_id = v_order_id and particulars = 'Payment for Order #' || v_number;
+  if v_count <> 2 then raise exception 'expected 2 payment ledger rows for two equal payments, found %', v_count; end if;
+  raise notice 'ok: two equal same-day payments, two distinct linked rows';
+
+  -- update_payment changes the linked row (amount and date) and nothing else.
+  -- Fingerprint of every other row of the business, balance excluded (the
+  -- recalculation legitimately rewrites later balances).
+  select md5(coalesce(string_agg(concat_ws('|', id, entry_date, created_at, particulars, debit, credit,
+                                           entry_type, order_id, payment_id, notes), ',' order by id), ''))
+    into v_fp_before
+    from public.general_ledger where business_id = v_business and id <> v_row_a;
+  select count(*) into v_ledger_n from public.general_ledger where business_id = v_business;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform set_config('role', 'authenticated', true);
+  perform public.update_payment(v_pay_a, jsonb_build_object('amount', 1700, 'payment_date', v_today - 1));
+  perform set_config('role', v_orig_role, true);
+
+  if not exists (select 1 from public.general_ledger
+                  where id = v_row_a and payment_id = v_pay_a and debit = 1700 and entry_date = v_today - 1) then
+    raise exception 'update_payment did not update its linked row in place (amount 1700, date %)', v_today - 1;
+  end if;
+  select md5(coalesce(string_agg(concat_ws('|', id, entry_date, created_at, particulars, debit, credit,
+                                           entry_type, order_id, payment_id, notes), ',' order by id), ''))
+    into v_fp_after
+    from public.general_ledger where business_id = v_business and id <> v_row_a;
+  if v_fp_after <> v_fp_before
+     or (select count(*) from public.general_ledger where business_id = v_business) <> v_ledger_n then
+    raise exception 'update_payment changed ledger rows other than the linked one';
+  end if;
+  raise notice 'ok: update_payment moved only its linked row (1700, %), the twin payment''s row untouched', v_today - 1;
+
+  select count(*) into v_count from (
+    select gl.balance,
+           sum(coalesce(gl.debit, 0) - coalesce(gl.credit, 0))
+             over (order by gl.entry_date, gl.created_at, gl.id rows between unbounded preceding and current row) as expected
+      from public.general_ledger gl where gl.business_id = v_business) t
+   where t.balance is distinct from t.expected;
+  if v_count <> 0 then raise exception 'running balance: % rows out of step after a back-dated payment edit', v_count; end if;
+  raise notice 'ok: every running balance of the business after the edit';
+
+  -- delete_payment removes exactly its linked row.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform set_config('role', 'authenticated', true);
+  perform public.delete_payment(v_pay_a);
+  perform set_config('role', v_orig_role, true);
+
+  if exists (select 1 from public.general_ledger where id = v_row_a)
+     or not exists (select 1 from public.general_ledger where id = v_row_b and payment_id = v_pay_b)
+     or (select count(*) from public.general_ledger where business_id = v_business) <> v_ledger_n - 1 then
+    raise exception 'delete_payment did not remove exactly its linked row';
+  end if;
+  raise notice 'ok: delete_payment removed exactly its linked row';
+
+  -- A direct delete (not through the function) removes the row by cascade
+  -- and the balances are recalculated.
+  delete from public.payments where id = v_pay_b;
+  if exists (select 1 from public.general_ledger where id = v_row_b)
+     or (select count(*) from public.general_ledger where business_id = v_business) <> v_ledger_n - 2 then
+    raise exception 'delete from payments did not cascade to exactly its ledger row';
+  end if;
+  select count(*) into v_count from (
+    select gl.balance,
+           sum(coalesce(gl.debit, 0) - coalesce(gl.credit, 0))
+             over (order by gl.entry_date, gl.created_at, gl.id rows between unbounded preceding and current row) as expected
+      from public.general_ledger gl where gl.business_id = v_business) t
+   where t.balance is distinct from t.expected;
+  if v_count <> 0 then raise exception 'running balance: % rows out of step after a cascaded delete', v_count; end if;
+  raise notice 'ok: direct delete from payments cascades to its ledger row; balances recalculated';
+
+  -- Legacy payment (written before the link): update_payment finds the row by
+  -- the old heuristic and links it; delete_payment then removes it.
+  insert into public.payments (business_id, order_id, customer_id, amount, payment_method, payment_date, notes)
+  values (v_business, v_order_id, v_customer, 900, 'cash', v_today, null)
+  returning id into v_pay_a;
+  insert into public.general_ledger (business_id, entry_date, particulars, debit, entry_type, order_id, notes)
+  values (v_business, v_today, 'Payment for Order #' || v_number, 900, 'order_payment', v_order_id, 'Payment via cash')
+  returning id into v_row_a;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform set_config('role', 'authenticated', true);
+  perform public.update_payment(v_pay_a, '{"amount":950}'::jsonb);
+  perform set_config('role', v_orig_role, true);
+  if not exists (select 1 from public.general_ledger where id = v_row_a and payment_id = v_pay_a and debit = 950) then
+    raise exception 'update_payment did not find and link the legacy ledger row';
+  end if;
+  select count(*) into v_count from public.general_ledger
+   where order_id = v_order_id and particulars = 'Payment for Order #' || v_number;
+  if v_count <> 1 then raise exception 'legacy update created a second row (found %)', v_count; end if;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform set_config('role', 'authenticated', true);
+  perform public.delete_payment(v_pay_a);
+  perform set_config('role', v_orig_role, true);
+  if exists (select 1 from public.general_ledger where id = v_row_a) then
+    raise exception 'delete_payment left the legacy ledger row';
+  end if;
+  raise notice 'ok: legacy payment: row found by the heuristic, linked, then deleted with the payment';
+
+  -- One linked payment stays for delete_order below.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  perform set_config('role', 'authenticated', true);
+  v_pay_id := (public.record_payment(v_order_id,
+    jsonb_build_object('amount', 1200, 'payment_method', 'bank', 'payment_date', v_today)) ->> 'id')::uuid;
+  perform set_config('role', v_orig_role, true);
+
   -- ------------------------------------------------------------- 7. delete order (admin)
   perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
   perform set_config('role', 'authenticated', true);
@@ -263,7 +400,11 @@ begin
   if v_count <> 0 then raise exception 'order items left behind: %', v_count; end if;
   select count(*) into v_count from public.general_ledger where order_id = v_order_id and entry_type = 'order_payment';
   if v_count <> 0 then raise exception 'order ledger rows left behind: %', v_count; end if;
-  raise notice 'ok: order, items and its order_payment ledger rows deleted';
+  if exists (select 1 from public.payments where id = v_pay_id)
+     or exists (select 1 from public.general_ledger where payment_id = v_pay_id) then
+    raise exception 'delete_order left the linked payment or its ledger row';
+  end if;
+  raise notice 'ok: order, items, its payment and its order_payment ledger rows deleted';
 
   select (select gl.balance from public.general_ledger gl
            where gl.business_id = v_business
