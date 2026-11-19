@@ -28,11 +28,11 @@ businesses" view (`X-Business-Id: all`) get `400` (`BUSINESS_REQUIRED`).
 | `/api/customers/[id]/measurements` | member | — | — | — |
 | `/api/measurements` | member | member | — | — |
 | `/api/measurements/[id]` | member | — | PUT: member | **admin** |
-| `/api/orders` | member | member (also writes the advance ledger row) | — | — |
+| `/api/orders` | member | member (`create_order`: order, items and advance ledger row in one transaction) | — | — |
 | `/api/orders/all` | member | — | — | — |
-| `/api/orders/[id]` | member | — | PATCH: member (order and items) | **admin** |
-| `/api/payments` | member | **admin** (also writes the payment's ledger row) | — | — |
-| `/api/payments/[id]` | — | — | PATCH: **admin** | **admin** |
+| `/api/orders/[id]` | member | — | PATCH: member (order and items; direct table writes) | **admin** (`delete_order`: order, items, payments and their ledger rows) |
+| `/api/payments` | member | **admin** (`record_payment`: payment + its linked ledger row, atomic) | — | — |
+| `/api/payments/[id]` | — | — | PATCH: **admin** (`update_payment`: payment + its ledger row, atomic) | **admin** (`delete_payment`: payment + its ledger row, atomic) |
 | `/api/vendors` | admin | admin | — | — |
 | `/api/vendors/[id]` | admin | — | PUT: admin | admin |
 | `/api/vendor-tags` | admin | admin | — | — |
@@ -57,6 +57,19 @@ members: `POST /api/orders` may write the order's advance ledger row (`order_pay
 `PATCH /api/orders/[id]` changes the order and its items only. Recording, editing and deleting
 a payment (`/api/payments`, `/api/payments/[id]`) is admin-only, as `record_payment`,
 `update_payment` and `delete_payment` are.
+
+**Atomic, as the caller.** `POST /api/payments`, `PATCH` / `DELETE /api/payments/[id]`,
+`POST /api/orders` and `DELETE /api/orders/[id]` now call those database functions with a
+Supabase client acting as the caller (anon key + the request's bearer token;
+`callerSupabaseClient` in `src/lib/api-auth.ts`), so the payment or order and its ledger rows
+are written in one transaction and the database checks the same role and membership as for the
+web app. A payment's ledger row is linked by `general_ledger.payment_id`
+(`20261119000500_payment_ledger_link.sql`): editing or deleting the payment always edits or
+deletes exactly that row. The route checks (role, `X-Business-Id`), status codes and response
+JSON are unchanged. One difference: input the database refuses (for example a negative amount
+or an unknown payment method) is now `400` with the function's message instead of being stored
+(negative amounts) or failing with `500`. `PATCH /api/orders/[id]` is unchanged and still
+writes the tables directly (see [REFINE.md](REFINE.md), "API routes").
 
 ## MCP (`/api/mcp`)
 

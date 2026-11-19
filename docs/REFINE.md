@@ -12,7 +12,9 @@ mobile app and the MCP server. Every screen is Refine + antd (the OAuth consent 
 **Architecture in one line:** browser → Refine (antd UI, React Query) → Supabase with the user's
 JWT → RLS for table reads and simple writes, `SECURITY DEFINER` functions for multi-row writes
 and reports. The `/api` routes (service role) serve the mobile app with the same role rules
-([API-ROLES.md](API-ROLES.md)); their only change on this branch is that role alignment.
+([API-ROLES.md](API-ROLES.md)). Their changes on this branch are that role alignment and, for
+payments and for creating and deleting orders, calling the same functions as the web app, as
+the caller (see "API routes" under Orders and payments).
 `src/app/.well-known/**`, `src/app/oauth/**`, `src/lib/ledger-service.ts` and
 `src/lib/pnl.ts` are unchanged; `src/lib/ledger-mcp/**` only had its wording about the
 removed order-payment sync updated (`normalize.ts`).
@@ -26,6 +28,7 @@ removed order-payment sync updated (`normalize.ts`).
 | `20261119000200_reporting_functions.sql` | `dashboard_summary`, `ledger_entries`, `pnl_input` (read-only, admin-only). | `supabase/tests/reporting_functions_check.sql` |
 | `20261119000300_ledger_entry_functions.sql` | `create_ledger_entry`, `update_ledger_entry`, `delete_ledger_entry`, `record_vendor_bill`, `update_vendor_bill`, `delete_vendor_bill`, `vendor_ledger_entries` (admin-only). | `supabase/tests/ledger_entry_functions_check.sql` |
 | `20261119000400_drop_sync_order_payment_ledger.sql` | Drops the order-payment sync function added in `20261119000300` (the "Sync Payments" feature is removed). | — |
+| `20261119000500_payment_ledger_link.sql` | `general_ledger.payment_id` (FK to `payments`, `ON DELETE CASCADE`, unique, `order_payment` rows only), a one-off report-only backfill of existing payments, and `record_payment` / `update_payment` / `delete_payment` working by that link. | `supabase/tests/order_payment_functions_check.sql` (section 6b); per-order report: `scripts/sql/payment_ledger_mismatches.sql` (read-only) |
 
 Details for each are in the module sections below.
 
@@ -249,9 +252,51 @@ only, and do every write of one operation in one transaction. They raise SQLSTAT
 Running balances are kept by the existing `general_ledger` triggers. `supabase/tests/order_payment_functions_check.sql`
 exercises all of them as the disposable admin and staff users inside a transaction that rolls back.
 
+### Payment ↔ ledger link (`20261119000500_payment_ledger_link.sql`)
+
+Each payment owns exactly one `general_ledger` row, recorded in `general_ledger.payment_id`
+(partial unique index; a CHECK allows it only on `order_payment` rows; advances have no payment
+and are never linked).
+
+- `record_payment` writes the row with `payment_id`. `update_payment` / `delete_payment` find it
+  by `payment_id`. Only for a legacy payment without a linked row do they fall back to the old
+  match (order, "Payment for Order #n", amount, date, preferring the notes), restricted to
+  unlinked rows, and link what they find. Two equal payments on the same day therefore each keep
+  their own row.
+- The foreign key is `ON DELETE CASCADE`: deleting a payment by any path (function, service-role
+  API, RLS, SQL editor) deletes its row. The cascade is an ordinary `DELETE` on `general_ledger`,
+  so the per-business lock and the running-balance recalculation triggers fire as for any delete.
+  `delete_payment` still deletes the row explicitly, in the same transaction.
+- **Backfill (one-off, report-only):** existing payments were linked to existing unlinked
+  "Payment for Order #n" rows with the same business, order, amount and date, one-to-one: equal
+  keys are paired oldest-with-oldest by `(created_at, id)`, first requiring the notes, then
+  without. No row was created or deleted; the migration prints how many payments and rows stayed
+  unmatched. `scripts/sql/payment_ledger_mismatches.sql` lists, per order, payments without a
+  row, payment rows without a payment, drifted links, unexpected or wrong advance rows, and
+  expected (advance + payments) vs ledger net. It runs in a read-only transaction.
+- Admins can still insert or update `payments` directly through RLS (the web app does not); such
+  a write does not touch the ledger. A delete is covered by the cascade.
+
+### API routes (mobile app)
+
+`POST /api/payments`, `PATCH` / `DELETE /api/payments/[id]`, `POST /api/orders` and
+`DELETE /api/orders/[id]` call `record_payment`, `update_payment`, `delete_payment`,
+`create_order` and `delete_order` with a client acting as the caller
+(`callerSupabaseClient` in `src/lib/api-auth.ts`: anon key + the request's bearer token, no
+session), so `auth.uid()` is the user and the database applies the same checks as for the web
+app. The routes keep their own role check, their business check (`X-Business-Id`, which the
+functions do not know) and their status codes and JSON; they read the row back with the service
+role to return the same shape as before. Function errors map through `rpcErrorStatus`
+(42501 → 403, P0002 → 404, invalid input → 400, anything else → the route's own 500).
+
+`PATCH /api/orders/[id]` still writes the tables directly: its body semantics differ from
+`update_order` (absent amounts, method and measurement are set to null), so switching would
+change either the stored order or the books for existing mobile clients. It does not touch the
+ledger, so an advance edited through it is not reflected there (as before this branch).
+
 **Deliberate differences from the API** (also in the migration header):
-- **Atomic writes:** all writes of one operation are in one transaction. The API keeps a payment whose ledger insert failed, and keeps an order whose items or advance failed.
-- **Ledger kept in step:** order advance edits, payment edits and deletes, and order deletes update or remove the matching ledger rows immediately. The API leaves the ledger stale on those edits.
+- **Atomic writes:** all writes of one operation are in one transaction. (Before `20261119000500` the API kept a payment whose ledger insert failed, and an order whose items or advance failed; those routes now call the functions.)
+- **Ledger kept in step:** order advance edits, payment edits and deletes, and order deletes update or remove the matching ledger rows immediately. Of the API routes only `PATCH /api/orders/[id]` still leaves the ledger stale (see "API routes" above).
 - **Admin-only operations:** deleting orders and all payment writes are admin-only, as in RLS and the API routes (see [API-ROLES.md](API-ROLES.md)).
 - **Partial updates:** `update_order` changes only the keys sent. The API's PATCH nulls amounts, method and measurement when they are absent from the body.
 - **Balance on create:** `create_order` stores `total - advance` as the balance when none is sent.

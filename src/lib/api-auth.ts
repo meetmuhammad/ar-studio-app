@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createAdminSupabaseClient } from './supabase'
+import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
+import { createAdminSupabaseClient, createCallerSupabaseClient } from './supabase'
 
 export type UserRole = 'admin' | 'staff'
 
@@ -93,4 +94,46 @@ export function requireAdmin(request: Request) {
 
 export function requireAuth(request: Request) {
   return requireRole(request, ['admin', 'staff'])
+}
+
+/**
+ * A Supabase client acting as the request's caller (their bearer token), for
+ * calling the admin/member-checked database functions (record_payment,
+ * delete_order, ...) from an API route. Call it only after requireRole /
+ * requireBusiness accepted the request, so the token is known to be valid.
+ */
+export function callerSupabaseClient(request: Request): SupabaseClient {
+  const token = bearerToken(request)
+  if (!token) throw new Error('callerSupabaseClient: request has no bearer token')
+  return createCallerSupabaseClient(token)
+}
+
+/**
+ * The HTTP status for an error raised by one of those functions (SQLSTATEs as
+ * documented in 20261119000100_order_payment_functions.sql), or null when it
+ * is unexpected and the route should answer with its own 500.
+ *
+ *   42501 not signed in / no role / not a member / admin only  -> 403
+ *   P0002 not found                                             -> 404
+ *   22023 / 23514 / 22P02 / 22007 / 22008 invalid input         -> 400
+ *   PGRST301 / PGRST302 token refused by PostgREST              -> 401
+ */
+export function rpcErrorStatus(error: Pick<PostgrestError, 'code'>): 400 | 401 | 403 | 404 | null {
+  switch (error.code) {
+    case '42501':
+      return 403
+    case 'P0002':
+      return 404
+    case '22023':
+    case '23514':
+    case '22P02':
+    case '22007':
+    case '22008':
+      return 400
+    case 'PGRST301':
+    case 'PGRST302':
+      return 401
+    default:
+      return null
+  }
 }

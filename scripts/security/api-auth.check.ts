@@ -68,7 +68,7 @@ function forgedJwt(sub: string): string {
  * handler's own source, so it holds per handler even in a multi-handler file.
  */
 const SIDE_EFFECT =
-  /createAdminSupabaseClient\(|\b(getOrders|getOrder|createOrder|createOrderItems|updateOrder|updateOrderItems|deleteOrder|getAllOrdersSimple)\(/
+  /(createAdminSupabaseClient|callerSupabaseClient)\(|\b(getOrders|getOrder|createOrder|createOrderItems|updateOrder|updateOrderItems|deleteOrder|getAllOrdersSimple)\(/
 function guardPrecedesSideEffects(file: string, method: string): { ok: boolean; why: string } {
   const src = readFileSync(resolve(process.cwd(), file), 'utf8')
   const start = src.search(new RegExp(`export\\s+async\\s+function\\s+${method}\\b`))
