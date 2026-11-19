@@ -5,13 +5,14 @@
  *
  * Inputs (committed in brand-src/, see brand-src/README.md):
  *   brand-src/lion.png       gold low-poly lion on black, roughly square
- *   brand-src/wordmark.png   thin gold "AHSAN TARIQ" on white
+ *   brand-src/wordmark.png   thin gold "AHSAN TARIQ" on off-white (may carry
+ *                            non-gold artefacts; only gold pixels are kept)
  *
  * Outputs (paths are read by src/lib/brand.ts):
  *   public/brand/lion.png              trimmed lion on black, max 1024
  *   public/brand/lion-mark.png         square lion mark on black, 256
- *   public/brand/wordmark.png          wordmark, gold on transparent (light backgrounds)
- *   public/brand/wordmark-dark.png     wordmark, lighter gold on transparent (dark backgrounds)
+ *   public/brand/wordmark.png          text only, deepened gold on transparent (light backgrounds)
+ *   public/brand/wordmark-dark.png     text only, bright gold #D4AF37 on transparent (dark backgrounds)
  *   public/icons/icon-192.png, icon-512.png           PWA "any" icons (lion on black)
  *   public/icons/icon-maskable-512.png                PWA maskable (20% safe padding each side)
  *   public/icons/apple-touch-icon.png                 180, opaque RGB on black (iOS)
@@ -152,50 +153,131 @@ async function lionOutputs() {
 // ------------------------------------------------------------------ wordmark
 
 const clamp = (v, lo = 0, hi = 255) => Math.max(lo, Math.min(hi, v))
-const luma = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+const chroma = (r, g, b) => Math.max(r, g, b) - Math.min(r, g, b)
+/** Gold/yellow hue: red >= green > blue with real saturation. */
+const isGold = (r, g, b) => chroma(r, g, b) >= 40 && r >= g - 6 && g > b
 
 /**
- * Gold-on-white -> gold-on-transparent. Alpha comes from how far each pixel is
- * from white (by luminance), scaled so the stroke core is fully opaque, and
- * every pixel takes the stroke's gold. Thin strokes keep their smooth edges.
+ * Gold text on an off-white ground -> tightly cropped alpha mask of the text.
+ *
+ * The original has non-text artefacts (a noisy light strip along the top
+ * edge, a small gray bar under the text), so the text is found by gold
+ * hue/saturation rather than by darkness: gray and near-white pixels are
+ * never "text". The crop is the bounding box of the gold pixels plus ~4%
+ * padding. Alpha is the colour distance from the background, scaled so the
+ * stroke core is opaque, and weighted by how gold the pixel is (anti-aliased
+ * gold edges keep the stroke's chroma-to-distance ratio, gray does not).
  */
-async function keyOutWhite(file) {
+async function extractGoldText(file) {
   const { data, info } = await sharp(file)
     .flatten({ background: '#ffffff' })
-    .trim({ background: '#ffffff', threshold: 12 })
+    .removeAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true })
-  const { width, height, channels } = info
-  const n = width * height
+  const { width: W, height: H, channels: C } = info
+  const at = (x, y) => (y * W + x) * C
 
-  // Stroke luminance: the 2nd percentile (robust against stray dark pixels).
-  const lumas = new Float64Array(n)
-  for (let i = 0; i < n; i++) lumas[i] = luma(data[i * channels], data[i * channels + 1], data[i * channels + 2])
-  const sorted = Float64Array.from(lumas).sort()
-  const stroke = sorted[Math.floor(n * 0.02)]
-  const span = Math.max(1, 255 - stroke)
-
-  // Stroke colour: the average of the pixels near the stroke luminance.
-  let r = 0, g = 0, b = 0, count = 0
-  for (let i = 0; i < n; i++) {
-    if (lumas[i] <= stroke + 12) {
-      r += data[i * channels]; g += data[i * channels + 1]; b += data[i * channels + 2]; count++
+  // Text mask and its bounding box. Rows/columns need >= 2 gold pixels so a
+  // stray speck cannot stretch the box.
+  const rowCount = new Uint32Array(H)
+  const colCount = new Uint32Array(W)
+  let gr = 0, gg = 0, gb = 0, goldCount = 0
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = at(x, y)
+      const r = data[i], g = data[i + 1], b = data[i + 2]
+      if (isGold(r, g, b)) {
+        rowCount[y]++; colCount[x]++
+        gr += r; gg += g; gb += b; goldCount++
+      }
     }
   }
-  const gold = count ? [r / count, g / count, b / count] : [0xd4, 0xaf, 0x37]
+  if (!goldCount) throw new Error('brand-src/wordmark.png: no gold text pixels found')
+  const first = (arr) => arr.findIndex((v) => v >= 2)
+  const last = (arr) => arr.length - 1 - [...arr].reverse().findIndex((v) => v >= 2)
+  const x0 = first(colCount), x1 = last(colCount), y0 = first(rowCount), y1 = last(rowCount)
 
-  const out = Buffer.alloc(n * 4)
-  for (let i = 0; i < n; i++) {
-    out[i * 4] = gold[0]
-    out[i * 4 + 1] = gold[1]
-    out[i * 4 + 2] = gold[2]
-    out[i * 4 + 3] = clamp(Math.round(((255 - lumas[i]) / span) * 255))
+  const padX = Math.max(4, Math.round((x1 - x0 + 1) * 0.04))
+  const padY = Math.max(4, Math.round((y1 - y0 + 1) * 0.04))
+  const left = Math.max(0, x0 - padX), top = Math.max(0, y0 - padY)
+  const right = Math.min(W - 1, x1 + padX), bottom = Math.min(H - 1, y1 + padY)
+  const width = right - left + 1, height = bottom - top + 1
+
+  // Background: median of the non-gold pixels in the crop.
+  const bgSamples = [[], [], []]
+  for (let y = top; y <= bottom; y++) {
+    for (let x = left; x <= right; x++) {
+      const i = at(x, y)
+      if (chroma(data[i], data[i + 1], data[i + 2]) < 12) {
+        bgSamples[0].push(data[i]); bgSamples[1].push(data[i + 1]); bgSamples[2].push(data[i + 2])
+      }
+    }
   }
-  return { out, width, height, gold }
+  const median = (a) => (a.length ? a.sort((p, q) => p - q)[a.length >> 1] : 255)
+  const bg = bgSamples.map(median)
+  const dist = (r, g, b) => Math.hypot(r - bg[0], g - bg[1], b - bg[2])
+
+  // Stroke strength: the 75th percentile of gold-pixel distance from the
+  // background (the textured foil core), and its chroma/distance ratio.
+  const goldDists = [], ratios = []
+  for (let y = top; y <= bottom; y++) {
+    for (let x = left; x <= right; x++) {
+      const i = at(x, y)
+      const r = data[i], g = data[i + 1], b = data[i + 2]
+      if (isGold(r, g, b)) {
+        const d = dist(r, g, b)
+        goldDists.push(d)
+        ratios.push(chroma(r, g, b) / Math.max(1, d))
+      }
+    }
+  }
+  goldDists.sort((p, q) => p - q)
+  const strokeDist = Math.max(1, goldDists[Math.floor(goldDists.length * 0.75)])
+  const goldRatio = median(ratios)
+
+  const alpha = new Uint8Array(width * height)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = at(left + x, top + y)
+      const r = data[i], g = data[i + 1], b = data[i + 2]
+      const d = dist(r, g, b)
+      if (d < 6) continue // background noise
+      const warm = r >= g - 6 && g >= b ? 1 : 0
+      const goldness = warm * clamp((chroma(r, g, b) / d) / (goldRatio * 0.6), 0, 1)
+      alpha[y * width + x] = clamp(Math.round((d / strokeDist) * 255 * goldness))
+    }
+  }
+
+  // Stroke colour: the average of the core gold pixels (not the faint edges).
+  let cr = 0, cg = 0, cb = 0, coreCount = 0
+  for (let y = top; y <= bottom; y++) {
+    for (let x = left; x <= right; x++) {
+      const i = at(x, y)
+      const r = data[i], g = data[i + 1], b = data[i + 2]
+      if (isGold(r, g, b) && dist(r, g, b) >= strokeDist) {
+        cr += r; cg += g; cb += b; coreCount++
+      }
+    }
+  }
+  const gold = coreCount ? [cr / coreCount, cg / coreCount, cb / coreCount] : [gr / goldCount, gg / goldCount, gb / goldCount]
+  return { alpha, width, height, gold }
 }
 
-/** Mixes the gold towards white for dark backgrounds. */
-const lighten = (rgb, amount) => rgb.map((c) => Math.round(c + (255 - c) * amount))
+/** RGBA buffer: one flat colour with the given alpha mask. */
+function tint(alpha, rgb) {
+  const out = Buffer.alloc(alpha.length * 4)
+  for (let i = 0; i < alpha.length; i++) {
+    out[i * 4] = rgb[0]
+    out[i * 4 + 1] = rgb[1]
+    out[i * 4 + 2] = rgb[2]
+    out[i * 4 + 3] = alpha[i]
+  }
+  return out
+}
+
+/** Scales a colour towards black (amount 0..1), keeping its hue. */
+const deepen = (rgb, amount) => rgb.map((c) => Math.round(c * (1 - amount)))
 
 async function wordmarkOutputs() {
   const lightFile = path.join(BRAND_OUT, 'wordmark.png')
@@ -211,19 +293,21 @@ async function wordmarkOutputs() {
     return
   }
 
-  const { out, width, height, gold } = await keyOutWhite(file)
-  await sharp(out, { raw: { width, height, channels: 4 } }).png().toFile(lightFile)
+  const { alpha, width, height, gold } = await extractGoldText(file)
+  const raw = { raw: { width, height, channels: 4 } }
+
+  // Light backgrounds: the original gold, slightly deepened for contrast on white.
+  const lightGold = deepen(gold, 0.15)
+  await sharp(tint(alpha, lightGold), raw).png().toFile(lightFile)
   wrote(lightFile)
 
-  const light = lighten(gold, 0.3)
-  const dark = Buffer.from(out)
-  for (let i = 0; i < width * height; i++) {
-    dark[i * 4] = light[0]
-    dark[i * 4 + 1] = light[1]
-    dark[i * 4 + 2] = light[2]
-  }
-  await sharp(dark, { raw: { width, height, channels: 4 } }).png().toFile(darkFile)
+  // Dark backgrounds: the brand's brighter gold.
+  const darkGold = [0xd4, 0xaf, 0x37]
+  await sharp(tint(alpha, darkGold), raw).png().toFile(darkFile)
   wrote(darkFile)
+
+  const hex = (rgb) => '#' + rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('').toUpperCase()
+  console.log(`  wordmark ${width}x${height}, source gold ${hex(gold)}, light ${hex(lightGold)}, dark ${hex(darkGold)}`)
 }
 
 // ------------------------------------------------------------------ run
