@@ -6,12 +6,26 @@ auth, access control and data access. Customers, Measurements, Vendors, Orders (
 the Dashboard, Ledger, P&L and the sign-in page are on Refine + antd. Refine pages read through
 the Supabase data provider (or, for the admin reports, read-only Postgres functions) and write
 either to tables (RLS) or, for orders, payments, ledger entries and vendor bills, through
-admin-checked Postgres functions. No Refine page calls the `/api` routes any more; they stay for
-the mobile app and the MCP server.
+admin-checked Postgres functions. No page calls the `/api` routes any more; they stay for the
+mobile app and the MCP server. Every screen is Refine + antd (the OAuth consent page is untouched).
 
-Nothing under `src/app/api/**`, `src/app/.well-known/**`, `src/app/oauth/**`,
-`src/lib/ledger-mcp/**`, `src/lib/ledger-service.ts` or `src/lib/pnl.ts` changed. The mobile
-app and the MCP server keep using the API routes exactly as before.
+**Architecture in one line:** browser → Refine (antd UI, React Query) → Supabase with the user's
+JWT → RLS for table reads and simple writes, `SECURITY DEFINER` functions for multi-row writes
+and reports. The `/api` routes (service role) serve the mobile app with the same role rules
+([API-ROLES.md](API-ROLES.md)); their only change on this branch is that role alignment.
+`src/app/.well-known/**`, `src/app/oauth/**`, `src/lib/ledger-mcp/**`,
+`src/lib/ledger-service.ts` and `src/lib/pnl.ts` are unchanged.
+
+## Database functions and migrations on this branch
+
+| Migration | What it adds | Check script (rolls back) |
+| --- | --- | --- |
+| `20261119000000_role_scoped_rls.sql` | `current_user_is_admin()` (`users.role = 'admin'`) and role-scoped RLS: members read and write customers, measurements, orders, order items; deletes of those, payment writes, vendors, tags and category writes are admin-only. | `supabase/tests/role_scoped_rls_check.sql` |
+| `20261119000100_order_payment_functions.sql` | `create_order`, `update_order`, `delete_order`, `record_payment`, `update_payment`, `delete_payment` (atomic, ledger kept in step). | `supabase/tests/order_payment_functions_check.sql` |
+| `20261119000200_reporting_functions.sql` | `dashboard_summary`, `ledger_entries`, `pnl_input` (read-only, admin-only). | `supabase/tests/reporting_functions_check.sql` |
+| `20261119000300_ledger_entry_functions.sql` | `create_ledger_entry`, `update_ledger_entry`, `delete_ledger_entry`, `record_vendor_bill`, `update_vendor_bill`, `delete_vendor_bill`, `vendor_ledger_entries`, `sync_order_payment_ledger` (admin-only). | `supabase/tests/ledger_entry_functions_check.sql` |
+
+Details for each are in the module sections below.
 
 ## Structure
 
@@ -20,7 +34,6 @@ src/app/layout.tsx                      AntdRegistry(layer) > next-themes > Reac
                                         > ColorModeProvider (antd ConfigProvider + App) > RefineProvider
 src/app/(dashboard)/layout.tsx          <Authenticated> + BusinessProvider + ThemedLayout (sider + ShellHeader)
 src/app/(dashboard)/page.tsx            Dashboard, Ant Design Pro analysis layout (admin only)
-src/app/(dashboard)/overview/page.tsx   The classic overview over /api/dashboard-stats, unchanged
 src/app/(dashboard)/ledger/page.tsx     General ledger over ledger_entries (admin only)
 src/app/(dashboard)/pnl/page.tsx        Profit & Loss over pnl_input + computePnl (admin only)
 src/app/(dashboard)/customers/**        list / create / edit/[id] / show/[id] (Refine + antd)
@@ -42,7 +55,13 @@ src/components/refine/                  shell (header, business switcher, logo) 
 src/components/customers/               customers types, form fields (rules from the zod schema)
 src/components/measurements/            measurements types, form fields, CustomerSelect
 src/components/vendors/                 constants + zod schemas, vendor form (with tags), CategorySelect,
-                                        ManageCategoriesDrawer, VendorTagsEditor, VendorLedgerCard
+                                        ManageCategoriesDrawer, VendorTagsEditor, VendorLedgerCard,
+                                        VendorBillModal
+src/components/ledger/                  entry types, LedgerEntryDrawer (add / edit manual entries)
+src/components/print-*.tsx + src/lib/print-utils.tsx
+                                        receipt and measurement sheets, self-contained print window
+src/components/dashboard/nav-items.ts   NAV_ITEMS (module roles)
+src/components/ui/                      button, card (OAuth consent page) and sonner (root toaster)
 
 src/lib/refine/zod-rule.ts              antd Form rule from a zod schema
 src/lib/refine/notifications.ts         "<Entity> created/updated/deleted successfully" builders
@@ -138,7 +157,6 @@ Where the rules apply:
 - **Dashboard:** wrapped in `CanAccess` and sends other roles to `/customers`.
 - **Admin-only pages (Vendors):** wrapped in `ResourceGuard`, which shows a 403 result with a "Go to Customers" button for other roles (direct or shared URLs).
 - **Ledger and P&L:** wrapped in `CanAccess` with a 403 result. The reporting functions refuse non-admins as well (42501), so a direct URL shows no data either.
-- **Legacy pages:** keep their `RoleGuard`.
 
 Hiding UI is only an affordance. The API and RLS still enforce everything.
 
@@ -284,7 +302,6 @@ has not been applied (PostgREST `PGRST202`), the screens say so instead of faili
 - **Sales card:** tabs Revenue / Orders with a 12-month bar chart and "Top customers by order value" for the period.
 - **Upcoming deliveries (next 14 days):** In Process orders, nearest first, with the balance due, plus a warning for overdue ones, and "See all orders".
 - Loading skeletons, empty states and light/dark come from antd. The old capped client-side series are gone; every figure is computed in SQL.
-- `/overview` (link "Open the classic overview") keeps the previous screen over `/api/dashboard-stats`.
 
 **Differences from `/api/dashboard-stats`** (also in the migration header):
 - **Cash received:** `advance_paid` (by booking date) + `payments.amount` (by payment date), the money definition used by P&L. The API's "Total received" is ledger debit − credit over every entry, vendor payments included (returned as `ledger_net`).
@@ -386,8 +403,20 @@ E2E_BASE_URL=http://localhost:3100 npm run test:e2e:staging
   - vendors with tags and the categories drawer (staff get 403);
   - an order through the three steps with an item and an advance;
   - recording, editing and deleting a payment, then deleting the order (staff cannot);
-  - dashboard, ledger (filters, CSV export) and P&L rendering (staff get 403 or the redirect).
+  - dashboard, ledger (filters, CSV export) and P&L rendering (staff get 403 or the redirect);
+  - ledger entries through the drawer (add, find, edit, totals, delete), order-owned rows read-only, and a vendor's bills and payments with billed / paid / owed (`ledger.spec.ts`; screenshots when `E2E_SHOTS_DIR` is set).
 - **Data:** each spec creates its own records named `E2E-STG … <unique suffix>` and deletes them through the UI as admin in `afterAll`. Cleanup only matches those unique names and phone numbers, so existing rows are never touched. The reports spec creates nothing.
+
+### API role check: `e2e/staging/api-roles.mjs`
+
+Checks the `/api` role rules ([API-ROLES.md](API-ROLES.md)) with an admin and a staff access token,
+removes what it creates and prints a pass/fail table (never the tokens):
+`BASE_URL=… E2E_ADMIN_TOKEN=… E2E_STAFF_TOKEN=… node e2e/staging/api-roles.mjs`.
+
+### Leftover test data and row counts
+
+- `node e2e/cleanup.mjs` (local, `QA-E2E…` records) or `node e2e/cleanup.mjs --staging` (dummy project only, `E2E-STG…` records, credentials from `E2E_ADMIN_EMAIL` / `E2E_ADMIN_PASSWORD`; refuses any other host and the production ref). Add `--dry-run` to list without removing. It signs in as an admin with the anon key and removes test orders (`delete_order`), vendors with their bills and ledger lines (`delete_vendor_bill`, `delete_ledger_entry`), prefixed manual ledger entries, measurements, customers and categories. No service role, no `/api`.
+- `node e2e/db-counts.mjs baseline|check`: row counts of the tables the tests touch, LOCAL stack only (it needs the local service-role key), to prove a run left nothing behind.
 
 ## Porting the next module
 
@@ -398,12 +427,28 @@ E2E_BASE_URL=http://localhost:3100 npm run test:e2e:staging
    - **Create/edit:** `FormSection`s, `EnterToSubmit`, `PageSkeleton`, and `WriteGuard`.
    - **Validation:** `zodRule` over the API's zod schema.
 4. Add the module's base path to `REFINE_MODULES` in `src/app/(dashboard)/layout.tsx` so the legacy styles stop applying there.
-5. Remove the module's `RoleGuard`, its `use-api` hooks and its shadcn components once nothing else imports them.
-6. Run `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+5. Run `npx tsc --noEmit`, `npm run lint`, `npm run build`.
 
 Multi-table writes that must be atomic (orders with items and payments, ledger postings,
-running balances) should keep going through the existing API routes, for example via a Refine
-`custom` call, rather than through several client-side writes.
+running balances) go through a `SECURITY DEFINER` function wired into `RULES[...].writeVia`
+in `data-provider.ts` (as orders, payments, ledger entries and vendor bills do), never through
+several client-side writes.
+
+## Removed in the cleanup
+
+Deleted because nothing (pages, components, tests, scripts, config) imported them any more:
+
+- `src/components/data-table/data-table.tsx` (and the empty `columns/`), `src/components/filters/date-range-filter.tsx`, `src/components/theme-demo.tsx`, `src/components/theme-toggle.tsx`.
+- `src/hooks/use-debounce.ts`, `src/hooks/use-date-range-preference.ts`, `src/lib/theme-config.ts`.
+- shadcn `src/components/ui/`: `alert-dialog`, `calendar`, `checkbox`, `command`, `date-picker`, `dialog`, `dropdown-menu`, `form`, `input`, `label`, `popover`, `radio-group`, `select`, `separator`, `sheet`, `switch`, `table`, `tabs`, `textarea`, `tooltip`.
+- The classic `/overview` page (replaced by the Refine dashboard) and its link, with what only it used: `src/components/dashboard/*` except `nav-items.ts`, `src/components/auth/role-guard.tsx`, `src/hooks/use-api.ts`, `src/hooks/use-reduced-motion.ts`, `ui/skeleton`, `ui/chart`, `ui/badge`.
+- Earlier units: the shadcn dialogs and forms (`src/components/dialogs/*`, `src/components/forms/*`) and `src/components/refine/kpi-card.tsx`.
+- `NAV_ITEMS`: the phone tab-bar fields (`tab`, `tabLabel`, `icon`) and the unused helpers `itemsFor`, `tabItemsFor`, `moreItemsFor`, `isActivePath`.
+- The print window no longer loads Tailwind from `cdn.tailwindcss.com`: `src/lib/print-utils.tsx` inlines the styles the receipt and measurement sheets use, so printing works offline.
+
+Kept on purpose: `ui/sonner` (root toaster), `ui/button` / `ui/card` (OAuth consent page), `src/lib/auth-fetch.ts` and `src/lib/query-client.ts` (business context and Refine), `src/lib/vendor-filter.ts` (used by `scripts/checks/filters.check.ts`). `GET /api/dashboard-stats` stays for the mobile app.
+
+Unused npm packages removed with `npm uninstall` (nothing imports them any more): `@hookform/resolvers`, `react-hook-form`, `@tanstack/react-table`, `cmdk`, `react-day-picker`, `use-debounce`, `lucide-react`, `@radix-ui/react-alert-dialog`, `@radix-ui/react-checkbox`, `@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu`, `@radix-ui/react-label`, `@radix-ui/react-popover`, `@radix-ui/react-radio-group`, `@radix-ui/react-select`, `@radix-ui/react-separator`, `@radix-ui/react-switch`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip`. Still used: `recharts` (dashboard, P&L), `date-fns` (print sheets), `sonner`, `next-themes`, `class-variance-authority`, `@radix-ui/react-slot`, `clsx`, `tailwind-merge`.
 
 ## Deferred
 
@@ -416,14 +461,8 @@ running balances) should keep going through the existing API routes, for example
 - **Order functions:** written against the API and the migrations in this repo. The base table definitions (column types, foreign-key actions) predate `supabase/migrations`, so run `supabase/tests/order_payment_functions_check.sql` after applying.
 - **OAuth consent:** untouched (shadcn).
 - **Sign-in "Remember me":** not added. Supabase always keeps the session in `localStorage`, so the checkbox would have had no effect.
-- **Measurement print:** reuses `PrintMeasurement` / `openMeasurementPrintPreview`. `order` is now optional, so a measurement prints on its own (no order number or items). The print window still loads Tailwind from `cdn.tailwindcss.com`, as before, so it needs network access.
+- **Measurement print:** reuses `PrintMeasurement` / `openMeasurementPrintPreview`. `order` is optional, so a measurement prints on its own (no order number or items). The print window is self-contained (no network).
 - **Measurement list sorting by customer** is not offered (PostgREST orders embedded rows, not parents). The customer filter resolves at most 1000 matching customers.
-- **Phone layout:** the shell uses Refine's drawer menu on phones. The previous bottom tab bar is gone; `tab` / `tabLabel` in `NAV_ITEMS` are kept for a possible custom tab bar.
+- **Phone layout:** the shell uses Refine's drawer menu on phones; the previous bottom tab bar is gone.
 - **Notifications bell:** static.
-- **Unused code to delete when modules are ported:**
-  - `src/hooks/use-api.ts` now holds only `useDashboardStats` (for `/overview`); delete it with `/overview`.
-  - `src/lib/vendor-filter.ts`, kept for `scripts/checks/filters.check.ts`.
-  - `itemsFor` / `tabItemsFor` / `moreItemsFor` in `nav-items.ts`.
-  - The payment types in `validators.ts` used only by the removed dialogs.
-  - `src/components/data-table/data-table.tsx`, still used by legacy pages.
 - **Existing auth wait:** `AuthContext` awaits the role lookup inside Supabase's `onAuthStateChange`, which can hold the first session read for up to the 10 s role timeout if that query hangs. The previous guard waited on the same path; changing it means touching `AuthContext` timing and was left as is.

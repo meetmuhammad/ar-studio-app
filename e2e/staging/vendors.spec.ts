@@ -69,8 +69,10 @@ test('create a vendor with tags, find it, edit it, add a tag', async ({ page }) 
   await expect(content.getByText(`edited ${sfx}`)).toBeVisible()
   await expect(content.getByText(tags[0])).toBeVisible()
 
-  await page.getByRole('combobox', { name: 'Add tag' }).fill(tags[1])
-  await btn(page, 'Add').last().click()
+  // The Tags card: the innermost card holding the "Add tag" box (the Ledger card has an "Add bill" button).
+  const tagsCard = page.locator('.ant-card').filter({ has: page.getByRole('combobox', { name: 'Add tag' }) }).last()
+  await tagsCard.getByRole('combobox', { name: 'Add tag' }).fill(tags[1])
+  await tagsCard.getByRole('button', { name: /^(\S+ )?Add$/ }).click()
   await expect(content.getByText(tags[1])).toBeVisible()
 })
 

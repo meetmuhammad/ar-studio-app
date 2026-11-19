@@ -6,7 +6,7 @@ import type { MetadataRoute } from 'next'
  *
  * Launch behaviour is deliberately ordinary: start_url is "/", so the normal
  * guards apply. A signed-out launch goes to /sign-in, an admin lands on the
- * dashboard, and staff are redirected to /customers by the dashboard's RoleGuard.
+ * dashboard, and staff are redirected to /customers by the dashboard's access check.
  * Nothing here bypasses authentication, and there is no service worker, so no
  * private data is cached for offline use.
  *

@@ -336,10 +336,6 @@ function Dashboard() {
           }}
         />
       </Card>
-
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        Looking for the previous dashboard? <Link href="/overview">Open the classic overview</Link>.
-      </Typography.Text>
     </Flex>
   )
 }
