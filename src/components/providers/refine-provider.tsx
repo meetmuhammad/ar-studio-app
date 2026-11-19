@@ -13,7 +13,7 @@ import { dataProvider } from '@/lib/refine/data-provider'
 import { useNotificationProvider } from '@refinedev/antd'
 import { resources } from '@/lib/refine/resources'
 import { setMembershipIds } from '@/lib/refine/business-scope'
-import { AppLogo } from '@/components/refine/app-logo'
+import { AppLogo, BrandTitle } from '@/components/refine/app-logo'
 
 /**
  * Refine re-reads auth state whenever the Supabase session or the role changes
@@ -69,7 +69,8 @@ export function RefineProvider({ children }: { children: React.ReactNode }) {
           disableTelemetry: true,
           syncWithLocation: false,
           warnWhenUnsavedChanges: false,
-          title: { text: 'AR Studio', icon: <AppLogo /> },
+          // Expanded sider: lion mark + wordmark; collapsed: the lion mark only.
+          title: { text: <BrandTitle />, icon: <AppLogo size={26} /> },
         }}
       >
         <AuthSync />

@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useInvalidateAuthStore, useIsAuthenticated, useLogin } from '@refinedev/core'
 import { Alert, App, Button, Card, Flex, Form, Input, Typography, theme } from 'antd'
 import { LockOutlined, MailOutlined } from '@ant-design/icons'
-import { AppLogo } from '@/components/refine/app-logo'
+import { AppLogo, BrandWordmark } from '@/components/refine/app-logo'
+import { BRAND } from '@/lib/brand'
 import { useColorMode } from '@/components/providers/color-mode-provider'
 import { cardShadow } from '@/lib/refine/theme'
 import type { LoginParams } from '@/lib/refine/auth-provider'
@@ -21,9 +22,24 @@ interface SignInValues {
   password: string
 }
 
+/** The lion mascot, large, on its black ground; the lion mark if the full image is missing. */
+function BrandMascot() {
+  const [failed, setFailed] = useState(false)
+  if (failed) return <AppLogo size={112} />
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- static brand image of unknown aspect ratio
+    <img
+      src={BRAND.assets.lion}
+      alt={`${BRAND.name} lion`}
+      onError={() => setFailed(true)}
+      style={{ display: 'block', width: 132, height: 132, objectFit: 'contain', borderRadius: 24, background: BRAND.colors.black }}
+    />
+  )
+}
+
 /**
- * Sign-in in the Ant Design Pro login style: centred card with the AR Studio
- * mark, email and password with icons, an inline error and a loading button.
+ * Sign-in in the Ant Design Pro login style: the brand (lion, wordmark, name)
+ * above a centred card with email and password with icons, an inline error and a loading button.
  * Signs in through Refine's useLogin / authProvider (Supabase email +
  * password). Follows the light/dark mode of the rest of the app.
  */
@@ -84,15 +100,12 @@ export default function SignInPage() {
       }}
     >
       <div style={{ width: '100%', maxWidth: 400 }}>
-        <Flex vertical align="center" gap={8} style={{ marginBottom: 28 }}>
-          <Flex align="center" gap={10}>
-            <span style={{ transform: 'scale(1.4)', display: 'inline-flex' }}>
-              <AppLogo />
-            </span>
-            <Typography.Title level={2} style={{ margin: 0, marginLeft: 6 }}>
-              AR Studio
-            </Typography.Title>
-          </Flex>
+        <Flex vertical align="center" gap={12} style={{ marginBottom: 28 }}>
+          <BrandMascot />
+          <BrandWordmark height={22} maxWidth={240} label="Ahsan Tariq" />
+          <Typography.Title level={1} className="brand-font" style={{ margin: 0, fontSize: 26, fontWeight: 300, textAlign: 'center' }}>
+            {BRAND.name}
+          </Typography.Title>
           <Typography.Text type="secondary">Customer &amp; Order Management System</Typography.Text>
         </Flex>
 

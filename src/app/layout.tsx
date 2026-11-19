@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Geist_Mono, Inter, Manrope } from "next/font/google";
+import { Geist_Mono, Inter, Josefin_Sans, Manrope } from "next/font/google";
+import { BRAND } from '@/lib/brand'
 import "./globals.css";
 import { AuthProvider } from '@/contexts/auth-context'
 import { ThemeProvider } from '@/components/providers/theme-provider'
@@ -32,15 +33,30 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Josefin Sans (thin geometric) for BRAND TEXT ONLY: the sidebar name and the
+// sign-in heading, through the `.brand-font` class. UI text stays Inter.
+const josefin = Josefin_Sans({
+  variable: "--font-brand",
+  subsets: ["latin"],
+  weight: ["300", "400"],
+});
+
 export const metadata: Metadata = {
-  title: "AR Studio Dashboard",
-  description: "Customer & Order Management System",
-  applicationName: "AR Studio",
+  title: { default: BRAND.name, template: `%s | ${BRAND.name}` },
+  description: BRAND.description,
+  applicationName: BRAND.name,
   // Home-screen install on iOS/iPadOS. "default" keeps the status bar opaque and
   // readable in both light and dark themes (black-translucent would put white
   // status text over the light theme's header).
-  appleWebApp: { capable: true, title: "AR Studio", statusBarStyle: "default" },
-  icons: { apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }] },
+  appleWebApp: { capable: true, title: BRAND.shortName, statusBarStyle: "default" },
+  // favicon.ico comes from src/app/favicon.ico (Next file convention).
+  icons: {
+    icon: [
+      { url: BRAND.assets.favicon32, sizes: "32x32", type: "image/png" },
+      { url: BRAND.assets.favicon16, sizes: "16x16", type: "image/png" },
+    ],
+    apple: [{ url: BRAND.assets.appleTouchIcon, sizes: "180x180" }],
+  },
 };
 
 // Zoom stays enabled (no maximumScale / userScalable). viewport-fit=cover lets
@@ -51,8 +67,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f8f8f9" },
-    { media: "(prefers-color-scheme: dark)", color: "#0b0c0d" },
+    { media: "(prefers-color-scheme: light)", color: "#f5f7fa" },
+    { media: "(prefers-color-scheme: dark)", color: BRAND.colors.black },
   ],
 };
 
@@ -64,7 +80,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${inter.variable} ${manrope.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.variable} ${manrope.variable} ${geistMono.variable} ${josefin.variable} antialiased`}
         suppressHydrationWarning={true}
       >
         {/* antd styles go into @layer antd (ordered in globals.css between

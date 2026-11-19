@@ -1,6 +1,6 @@
 # Ledger MCP pilot
 
-An MCP server that lets an AI assistant read the AR Studio general ledger and record
+An MCP server that lets an AI assistant read the Ahsan Tariq Studio general ledger and record
 **one ledger entry at a time, after the user has seen a preview and said yes**.
 Ledger only: no measurements, customers, orders, payments, edits or deletes.
 

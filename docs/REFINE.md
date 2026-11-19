@@ -1,4 +1,4 @@
-# Refine app shell
+# Ahsan Tariq Studio: Refine app shell
 
 The root Next.js 15 App Router app is a Refine app. Refine (`@refinedev/core` 5) with the
 Ant Design UI kit (`@refinedev/antd` 6, `antd` 5) provides the shell (sidebar, header, theme),
@@ -99,10 +99,16 @@ returned to, as before.
 
 ## Theme, accent and dark mode
 
-- Base theme: `RefineThemes.Blue` through antd `ConfigProvider` (`getAntdTheme` in `src/lib/refine/theme.ts`).
-- **To change the accent**, edit `ACCENT` in `src/lib/refine/theme.ts`, for example
-  `RefineThemes.Purple.token?.colorPrimary` or any hex value. The sidebar highlight, buttons,
-  links, tags and dashboard charts all read the antd token, so nothing else needs to change.
+- **Brand:** Ahsan Tariq Studio ("ATS" where space is short). Name, assets and colours live in
+  `src/lib/brand.ts`; the sidebar shows the lion mark (alone when collapsed) and the wordmark, the
+  sign-in page the lion, wordmark and name. Details and contrast ratios: [THEMING.md](THEMING.md).
+- Base theme: `RefineThemes.Blue` layout tokens through antd `ConfigProvider` (`getAntdTheme` in
+  `src/lib/refine/theme.ts`), with the accent replaced by the brand gold.
+- **Accent:** `ACCENT` in `src/lib/refine/theme.ts` is the one place the theme takes it from (values
+  in `src/lib/brand.ts`): deep gold `#8A6A12` with white button text in light mode, bright gold
+  `#D4AF37` with `#141414` button text in dark mode. The sidebar highlight, buttons, links, tags,
+  focus rings and dashboard charts all read the antd token. Check changes with
+  `node scripts/brand/contrast.mjs`.
 - **Light / dark**: `next-themes` is the single source of truth. It saves the choice in
   `localStorage` (`theme`), follows `prefers-color-scheme` while nothing is saved
   (`defaultTheme="system"`), and sets the `dark` class used by the legacy shadcn pages.
@@ -354,7 +360,7 @@ Shared components in `src/components/refine/`, used by Customers and Measurement
   - **Phones:** below 768px the table collapses into a list of cards (`renderMobile`).
 - **`RowActions`**: inline View / Edit / Delete with Popconfirm on delete. Each action is checked with the access control provider; a denied action stays visible but disabled, with the reason as its tooltip.
 - **Forms**: sections in cards (`FormSection`), first field auto-focused, Enter submits (`EnterToSubmit`, since Refine's Save button is outside the `<form>`), validation from the API's zod schemas (`zodRule`), success/error notifications from `notifications.ts`. Edit and show pages show a `PageSkeleton` while loading; the edit form stays mounted (hidden) so Refine can fill it.
-- **Sign-in**: centred card with the AR Studio mark, Email / Password with icons, an inline error `Alert`, and a loading Sign In button. Works in light and dark mode.
+- **Sign-in**: the lion mascot, wordmark and "Ahsan Tariq Studio" above a centred card with Email / Password with icons, an inline error `Alert`, and a loading Sign In button. Works in light and dark mode.
 
 ## Browser tests (Playwright)
 

@@ -1,4 +1,5 @@
 import type { MetadataRoute } from 'next'
+import { BRAND } from '@/lib/brand'
 
 /**
  * Web app manifest: lets a phone or tablet add the dashboard to the home screen
@@ -10,25 +11,25 @@ import type { MetadataRoute } from 'next'
  * Nothing here bypasses authentication, and there is no service worker, so no
  * private data is cached for offline use.
  *
- * Colours come from the app's own dark and light background tokens (the app
- * defaults to dark). Icons are placeholders until brand artwork exists; see
- * scripts/pwa/generate-icons.mjs.
+ * Name, colours and icons come from src/lib/brand.ts: brand black for the
+ * splash and status bar, the gold lion icons from `npm run brand:assets`
+ * (scripts/brand/generate-assets.mjs).
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: '/',
-    name: 'AR Studio Dashboard',
-    short_name: 'AR Studio',
-    description: 'Customer & Order Management System',
+    name: BRAND.name,
+    short_name: BRAND.shortName,
+    description: BRAND.description,
     start_url: '/',
     scope: '/',
     display: 'standalone',
-    background_color: '#0b0c0d',
-    theme_color: '#0b0c0d',
+    background_color: BRAND.colors.black,
+    theme_color: BRAND.colors.black,
     icons: [
-      { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-      { src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: BRAND.assets.icon192, sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: BRAND.assets.icon512, sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: BRAND.assets.iconMaskable512, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
   }
 }
