@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Geist_Mono, Inter, Josefin_Sans, Manrope } from "next/font/google";
+import { Geist_Mono, Inter, Manrope } from "next/font/google";
+import localFont from "next/font/local";
 import { BRAND } from '@/lib/brand'
 import "./globals.css";
 import { AuthProvider } from '@/contexts/auth-context'
@@ -35,10 +36,15 @@ const geistMono = Geist_Mono({
 
 // Josefin Sans (thin geometric) for BRAND TEXT ONLY: the sidebar name and the
 // sign-in heading, through the `.brand-font` class. UI text stays Inter.
-const josefin = Josefin_Sans({
+// Self-hosted (latin subset, SIL Open Font License: src/fonts/josefin-sans/OFL.txt)
+// so the build does not fetch it from Google Fonts.
+const josefin = localFont({
   variable: "--font-brand",
-  subsets: ["latin"],
-  weight: ["300", "400"],
+  display: "swap",
+  src: [
+    { path: "../fonts/josefin-sans/josefin-sans-latin-300-normal.woff2", weight: "300", style: "normal" },
+    { path: "../fonts/josefin-sans/josefin-sans-latin-400-normal.woff2", weight: "400", style: "normal" },
+  ],
 });
 
 export const metadata: Metadata = {

@@ -21,6 +21,10 @@ The app is Refine + Ant Design (see `docs/REFINE.md`). Its look comes from three
   Check after any change: `node scripts/brand/contrast.mjs` (reads `src/lib/brand.ts`, exits 1 on a failure).
 - **Fonts:** Inter for all UI text; Josefin Sans (light weights) only for brand text, through the
   `.brand-font` class (sidebar fallback name, sign-in heading); Geist Mono for numbers.
+  Josefin Sans is self-hosted with `next/font/local` (weights 300 and 400, latin subset) from
+  `src/fonts/josefin-sans/`, so builds never fetch it. It is licensed under the **SIL Open Font
+  License 1.1**; the licence text ships next to the files (`src/fonts/josefin-sans/OFL.txt`) and must
+  stay with them.
 - **Artwork:** originals in `brand-src/`, generated files in `public/brand/` and `public/icons/`
   (`npm run brand:assets`, see `brand-src/README.md`).
 
