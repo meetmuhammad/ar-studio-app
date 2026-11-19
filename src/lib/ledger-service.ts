@@ -1,5 +1,6 @@
 import { createAdminSupabaseClient } from '@/lib/supabase'
 import { centsToDecimal, toCents } from '@/lib/ledger-mcp/normalize'
+import { readAll } from '@/lib/read-all'
 
 /**
  * The ledger reads that the REST routes and the MCP server both use, so there
@@ -28,7 +29,7 @@ export interface LedgerFilters {
   /** Matches the vendor's CURRENT category (vendors.category_id). */
   vendorCategoryId?: string | null
   search?: string | null
-  /** 1-based. 0 or undefined returns every row (the legacy REST behaviour). */
+  /** 1-based. 0 or undefined returns every row (the legacy REST behaviour), read in 1,000-row pages. */
   page?: number
   pageSize?: number
 }
@@ -46,35 +47,44 @@ export async function listLedgerEntries(f: LedgerFilters) {
   // drop every entry that has no vendor (order payments, direct expenses).
   const vendorJoin = f.vendorCategoryId ? 'vendors!inner' : 'vendors'
 
-  let query = scoped(supabase
-    .from('general_ledger')
-    .select(`
-      *,
-      ${vendorJoin} (id, name, category_id, vendor_categories (id, name)),
-      orders (id, order_number),
-      vendor_tags (id, tag_name)
-    `, { count: 'exact' }), f.businessIds)
-    .order('entry_date', { ascending: false })
-    .order('created_at', { ascending: false })
-    // Imported rows share entry_date and created_at; id is the tie-break the
-    // database uses for the running balance, so each row sits next to its balance.
-    .order('id', { ascending: false })
+  // A fresh builder per request (a builder is mutated by .range()).
+  const build = () => {
+    let query = scoped(supabase
+      .from('general_ledger')
+      .select(`
+        *,
+        ${vendorJoin} (id, name, category_id, vendor_categories (id, name)),
+        orders (id, order_number),
+        vendor_tags (id, tag_name)
+      `, { count: 'exact' }), f.businessIds)
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      // Imported rows share entry_date and created_at; id is the tie-break the
+      // database uses for the running balance, so each row sits next to its balance.
+      .order('id', { ascending: false })
 
-  if (f.startDate) query = query.gte('entry_date', f.startDate)
-  if (f.endDate) query = query.lte('entry_date', f.endDate)
-  if (f.entryType) query = query.eq('entry_type', f.entryType)
-  if (f.vendorId) query = query.eq('vendor_id', f.vendorId)
-  if (f.vendorCategoryId) query = query.eq('vendors.category_id', f.vendorCategoryId)
-  if (f.search) query = query.ilike('particulars', `%${f.search}%`)
+    if (f.startDate) query = query.gte('entry_date', f.startDate)
+    if (f.endDate) query = query.lte('entry_date', f.endDate)
+    if (f.entryType) query = query.eq('entry_type', f.entryType)
+    if (f.vendorId) query = query.eq('vendor_id', f.vendorId)
+    if (f.vendorCategoryId) query = query.eq('vendors.category_id', f.vendorCategoryId)
+    if (f.search) query = query.ilike('particulars', `%${f.search}%`)
+    return query
+  }
 
   if (page > 0) {
     const offset = (page - 1) * pageSize
-    query = query.range(offset, offset + pageSize - 1)
+    const { data, error, count } = await build().range(offset, offset + pageSize - 1)
+    if (error) throw new Error(`Failed to fetch ledger entries: ${error.message}`)
+    return { entries: data ?? [], count: count ?? 0 }
   }
 
-  const { data, error, count } = await query
-  if (error) throw new Error(`Failed to fetch ledger entries: ${error.message}`)
-  return { entries: data ?? [], count: count ?? 0 }
+  // page 0: every row. A single response stops at PostgREST's 1,000-row cap,
+  // which this branch used to hit silently; read it in pages instead (the
+  // order above is total, id last, so pages neither skip nor repeat rows).
+  type Entry = NonNullable<Awaited<ReturnType<typeof build>>['data']>[number]
+  const entries = await readAll<Entry>('ledger entries', (from, to) => build().range(from, to))
+  return { entries, count: entries.length }
 }
 
 /**

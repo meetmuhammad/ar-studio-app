@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { inScope, requireBusiness, requireBusinessRead } from "@/lib/business-context";
 import { callerSupabaseClient, rpcErrorStatus } from "@/lib/api-auth";
+import { readAll } from "@/lib/read-all";
 
 export async function GET(request: NextRequest) {
   const scope = await requireBusinessRead(request);
@@ -13,35 +14,33 @@ export async function GET(request: NextRequest) {
     const orderId = searchParams.get("order_id");
     const customerId = searchParams.get("customer_id");
 
-    let query = inScope(supabase
-      .from("payments")
-      .select(`
-        *,
-        order:orders(
-          id,
-          order_number,
-          total_amount,
-          advance_paid,
-          balance,
-          booking_date,
-          customer:customers(id, name, phone)
-        )
-      `), scope)
-      .order("payment_date", { ascending: false });
-
-    // Filter by order if provided
-    if (orderId) {
-      query = query.eq("order_id", orderId);
-    }
-
-    // Filter by customer if provided
-    if (customerId) {
-      query = query.eq("customer_id", customerId);
-    }
-
-    const { data: payments, error } = await query;
-
-    if (error) {
+    // Every matching payment, newest first. Read in pages: one PostgREST
+    // response stops at 1,000 rows, and an unfiltered list passes that.
+    // id breaks ties so pages neither skip nor repeat rows.
+    let payments: unknown[];
+    try {
+      payments = await readAll("payments", (from, to) => {
+        let query = inScope(supabase
+          .from("payments")
+          .select(`
+            *,
+            order:orders(
+              id,
+              order_number,
+              total_amount,
+              advance_paid,
+              balance,
+              booking_date,
+              customer:customers(id, name, phone)
+            )
+          `), scope)
+          .order("payment_date", { ascending: false })
+          .order("id", { ascending: true });
+        if (orderId) query = query.eq("order_id", orderId);
+        if (customerId) query = query.eq("customer_id", customerId);
+        return query.range(from, to);
+      });
+    } catch (error) {
       console.error("Error fetching payments:", error);
       return NextResponse.json(
         { error: "Failed to fetch payments" },
@@ -50,7 +49,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      payments: payments || [],
+      payments,
     });
   } catch (error) {
     console.error("Payments API error:", error);

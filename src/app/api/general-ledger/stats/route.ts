@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireBusinessRead } from '@/lib/business-context'
-import { getLedgerTotals } from '@/lib/ledger-service'
+import type { PostgrestError } from '@supabase/supabase-js'
+import { callerSupabaseClient, rpcErrorStatus } from '@/lib/api-auth'
 import { isValidDateString } from '@/lib/date-range'
 
 // GET /api/general-ledger/stats - Get ledger statistics using lightweight queries
@@ -26,28 +27,52 @@ export async function GET(request: Request) {
     const startDate = rawStart || null
     const endDate = rawEnd || null
 
-    // The totals' definition (sum of debits, sum of credits, balance = debit -
-    // credit, entry count) lives in the shared ledger service so the MCP server
-    // reports exactly the same figures. It also pages through the table, where
-    // this route used to read a single response and so stopped counting at
-    // PostgREST's 1,000-row cap.
+    // Totals come from public.ledger_entries (20261119000200), the function
+    // the web Ledger page reads, called AS the caller (the database checks admin
+    // and membership again): debit, credit, net = debit - credit and the entry
+    // count over the dates, summed in SQL over every row. p_limit 0: no rows,
+    // only the totals. Nothing is summed here.
     //
-    // Totals are per business. In the admin combined view the response also
-    // breaks them down by business; the combined currentBalance is the sum of
-    // each book's net for the range (a report total, not a running balance).
-    const perBusiness = await Promise.all(
-      scope.businessIds.map(async (id) => ({
-        id,
-        totals: await getLedgerTotals({ businessIds: [id], startDate, endDate }),
-      }))
-    )
-    const sum = (k: 'totalDebit' | 'totalCredit' | 'currentBalance') =>
-      perBusiness.reduce((acc, b) => acc + Math.round(Number(b.totals[k]) * 100), 0) / 100
-    const totals = {
-      totalDebit: sum('totalDebit'),
-      totalCredit: sum('totalCredit'),
-      currentBalance: sum('currentBalance'),
-      entryCount: perBusiness.reduce((acc, b) => acc + b.totals.entryCount, 0),
+    // Totals are per business (one call each). In the admin combined view the
+    // response also breaks them down by business; the combined figures come
+    // from one call over every id (the same sums, a report total, not a
+    // running balance).
+    const supabase = callerSupabaseClient(request)
+    const totalsFor = async (ids: string[]) => {
+      const { data, error } = await supabase.rpc('ledger_entries', {
+        p_business_ids: ids,
+        p_from: startDate,
+        p_to: endDate,
+        p_search: null,
+        p_entry_type: null,
+        p_vendor_id: null,
+        p_limit: 0,
+        p_offset: 0,
+        p_vendor_category_id: null,
+      })
+      if (error) throw error
+      const t = (data as { totals: { debit: number; credit: number; net: number; entry_count: number } }).totals
+      return {
+        totalDebit: Number(t.debit),
+        totalCredit: Number(t.credit),
+        currentBalance: Number(t.net),
+        entryCount: Number(t.entry_count),
+      }
+    }
+
+    let totals: Awaited<ReturnType<typeof totalsFor>>
+    let perBusiness: Array<{ id: string; totals: typeof totals }> = []
+    try {
+      ;[totals, perBusiness] = await Promise.all([
+        totalsFor(scope.businessIds),
+        scope.business
+          ? Promise.resolve([])
+          : Promise.all(scope.businessIds.map(async (id) => ({ id, totals: await totalsFor([id]) }))),
+      ])
+    } catch (error) {
+      const status = rpcErrorStatus(error as PostgrestError)
+      if (status) return NextResponse.json({ error: (error as PostgrestError).message }, { status })
+      throw error
     }
     const names = new Map(scope.memberships.map((b) => [b.id, b.name]))
 
@@ -55,9 +80,9 @@ export async function GET(request: Request) {
     // `public, s-maxage=30`, which lets a CDN cache it by URL and hand it to
     // someone with no token at all, defeating the guard above.
     return NextResponse.json({
-      totalDebit: Number(totals.totalDebit),
-      totalCredit: Number(totals.totalCredit),
-      currentBalance: Number(totals.currentBalance),
+      totalDebit: totals.totalDebit,
+      totalCredit: totals.totalCredit,
+      currentBalance: totals.currentBalance,
       entryCount: totals.entryCount,
       startDate,
       endDate,
@@ -66,10 +91,7 @@ export async function GET(request: Request) {
         byBusiness: perBusiness.map((b) => ({
           businessId: b.id,
           businessName: names.get(b.id) ?? null,
-          totalDebit: Number(b.totals.totalDebit),
-          totalCredit: Number(b.totals.totalCredit),
-          currentBalance: Number(b.totals.currentBalance),
-          entryCount: b.totals.entryCount,
+          ...b.totals,
         })),
       }),
     }, {

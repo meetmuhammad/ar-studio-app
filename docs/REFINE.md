@@ -12,12 +12,16 @@ mobile app and the MCP server. Every screen is Refine + antd (the OAuth consent 
 **Architecture in one line:** browser → Refine (antd UI, React Query) → Supabase with the user's
 JWT → RLS for table reads and simple writes, `SECURITY DEFINER` functions for multi-row writes
 and reports. The `/api` routes (service role) serve the mobile app with the same role rules
-([API-ROLES.md](API-ROLES.md)). Their changes on this branch are that role alignment and, for
+([API-ROLES.md](API-ROLES.md)). Their changes on this branch are that role alignment; for
 payments and for creating and deleting orders, calling the same functions as the web app, as
-the caller (see "API routes" under Orders and payments).
-`src/app/.well-known/**`, `src/app/oauth/**`, `src/lib/ledger-service.ts` and
-`src/lib/pnl.ts` are unchanged; `src/lib/ledger-mcp/**` only had its wording about the
-removed order-payment sync updated (`normalize.ts`).
+the caller (see "API routes" under Orders and payments); and, for `/api/dashboard-stats` and
+`/api/general-ledger/stats`, reading their figures from the same reporting functions as the web
+app instead of summing rows (see "No row cap" under Reports).
+`src/app/.well-known/**`, `src/app/oauth/**` and `src/lib/pnl.ts` are unchanged;
+`src/lib/ledger-service.ts` only changed so that `listLedgerEntries` with no page reads every
+row in pages (it stopped at 1,000 rows; the MCP server always asks for a page and is not
+affected); `src/lib/ledger-mcp/**` only had its wording about the removed order-payment sync
+updated (`normalize.ts`).
 
 ## Database functions and migrations on this branch
 
@@ -29,6 +33,7 @@ removed order-payment sync updated (`normalize.ts`).
 | `20261119000300_ledger_entry_functions.sql` | `create_ledger_entry`, `update_ledger_entry`, `delete_ledger_entry`, `record_vendor_bill`, `update_vendor_bill`, `delete_vendor_bill`, `vendor_ledger_entries` (admin-only). | `supabase/tests/ledger_entry_functions_check.sql` |
 | `20261119000400_drop_sync_order_payment_ledger.sql` | Drops the order-payment sync function added in `20261119000300` (the "Sync Payments" feature is removed). | — |
 | `20261119000500_payment_ledger_link.sql` | `general_ledger.payment_id` (FK to `payments`, `ON DELETE CASCADE`, unique, `order_payment` rows only), a one-off report-only backfill of existing payments, and `record_payment` / `update_payment` / `delete_payment` working by that link. | `supabase/tests/order_payment_functions_check.sql` (section 6b); per-order report: `scripts/sql/payment_ledger_mismatches.sql` (read-only) |
+| `20261119000600_dashboard_single_source.sql` | `dashboard_summary` rebuilt as the single source of dashboard figures for the web app and `/api/dashboard-stats`: new `all_time`, `upcoming_orders` and `monthly_receipts_6m` blocks, `ledger_net` / `outstanding_api` removed; internal `report_order_balances` / `report_customer_receipts` (the only copies of the per-order balance and money-received formulas); `customer_order_summary` for the customer page (admin or staff, member); index on `payments(order_id)` if none exists. | `supabase/tests/reporting_functions_check.sql` (second block) |
 
 Details for each are in the module sections below.
 
@@ -78,6 +83,7 @@ src/lib/refine/data-provider.ts         @refinedev/supabase wrapped with busines
 src/lib/refine/business-scope.ts        membership ids for the "All businesses" view
 src/lib/refine/theme.ts                 antd theme: ACCENT, light/dark algorithm, tokens
 src/lib/refine/reporting.ts             typed React Query hooks over the reporting functions
+src/lib/read-all.ts                     reads every page of a list past PostgREST's 1,000-row cap (API routes)
 src/lib/auth/role.ts                    role lookup + cache shared by AuthContext and Refine
 ```
 
@@ -335,14 +341,31 @@ Asia/Karachi.
 
 | Function | Returns | Mirrors |
 | --- | --- | --- |
-| `dashboard_summary(p_business_ids, p_from, p_to)` | jsonb: customers, orders (total, in range, by status), revenue in range, cash received (advances / payments / total), outstanding, 12-month series, top 5 customers, upcoming and overdue deliveries | `/api/dashboard-stats` where a figure exists (differences below) |
-| `ledger_entries(p_business_ids, p_from, p_to, p_search, p_entry_type, p_vendor_id, p_limit, p_offset, p_vendor_category_id)` | jsonb `{rows, total, combined, opening_balance, totals: {debit, credit, net, entry_count}}` | `ledger-service.ts`: `listLedgerEntries` (filters, newest first), `getRangeRunningBalances` (`range_balance`, one business only) and `getLedgerTotals` (date range only) |
+| `dashboard_summary(p_business_ids, p_from, p_to)` | jsonb: `all_time` (customers, orders, revenue, received {advances, payments, total}, outstanding, orders created this month), customers, orders (total, in range, by status), revenue in range, cash received in range (advances / payments / total), 12-month series, 6-month receipts, top 5 customers, upcoming deliveries (14 days), next 5 upcoming orders, overdue deliveries | The single source for the web dashboard **and** `GET /api/dashboard-stats` (20261119000600) |
+| `customer_order_summary(p_customer_id)` | jsonb `{orders, revenue, received: {advances, payments, total}, outstanding}` for one customer, every order | The customer page's totals (admin or staff, member of the customer's business; 20261119000600) |
+| `ledger_entries(p_business_ids, p_from, p_to, p_search, p_entry_type, p_vendor_id, p_limit, p_offset, p_vendor_category_id)` | jsonb `{rows, total, combined, opening_balance, totals: {debit, credit, net, entry_count}}` | `ledger-service.ts`: `listLedgerEntries` (filters, newest first), `getRangeRunningBalances` (`range_balance`, one business only) and `getLedgerTotals` (date range only). `GET /api/general-ledger/stats` now reads its totals from here (`p_limit` 0). |
 | `pnl_input(p_business_ids, p_from, p_to)` | jsonb `{orders, payments, ledger, vendorLedger, vendors}` | `/api/pnl` `fetchRows`, for both bases at once |
 
 `supabase/tests/reporting_functions_check.sql` impersonates disposable admin and staff users
 inside a transaction that rolls back: staff gets 42501 from all three, an admin asking for a
 business they don't belong to gets 42501, and the admin's figures equal direct sums (cash received
-= advances + payments, ledger debit / credit / count, running balance, opening balance).
+= advances + payments, ledger debit / credit / count, running balance, opening balance). Its
+second block (20261119000600) checks every `all_time` figure, `upcoming_orders`,
+`monthly_receipts_6m` and `customer_order_summary` against direct SQL sums over every row, for
+one business and for all of the admin's businesses, and that staff, a non-member business in the
+array and a user with no membership are refused.
+
+**One definition of the money.** `report_order_balances` (per order: payments total, received =
+advance + payments, balance due = max(total − advance − payments, 0), 0 when Cancelled) and
+`report_customer_receipts` (advances by booking date, payments by payment date) are the only
+places those formulas exist. Received (in a range or all time), outstanding, the monthly series,
+the customer totals and the upcoming-deliveries balance are all sums over them. Both are internal
+(not executable by clients).
+
+**No row cap.** Report figures are summed in SQL; no page or route adds up rows in JavaScript.
+Where a full row list is genuinely needed (CSV export, legacy "everything" API responses) it is
+read in 1,000-row pages (`src/lib/read-all.ts`) or returned whole by a function. The audit of every
+place is in [qa/row-cap-audit.md](qa/row-cap-audit.md).
 
 `src/lib/refine/reporting.ts` wraps them in React Query hooks (`useDashboardSummary`,
 `useLedgerPage`, `usePnlInput`, query key `['report', fn, businessIds, args]`). If the migration
@@ -351,17 +374,30 @@ has not been applied (PostgREST `PGRST202`), the screens say so instead of faili
 ### Dashboard (`/`)
 
 - **Period:** `PeriodPicker` (This Month / This Quarter / This Year / Custom), default This Month. Trends compare with the previous month / quarter / year, or the same number of days before a custom range.
-- **KPI cards:** Revenue (orders booked in the period), Cash received (advances + later payments, split in the footer), Orders (booked in the period), Outstanding balance (unpaid on every order that is not Cancelled, today). The first three have a trend and a 12-month mini chart; Outstanding shows customers and overdue deliveries instead (it is a balance today, not a period figure).
+- **KPI cards:** Revenue (orders booked in the period; footer: all time), Cash received (money received from customers in the period: advances on orders booked in it + payments dated in it, split in the tooltip; footer: total received, all time), Orders (booked in the period), Outstanding balance (still to collect on every order that is not Cancelled, today). The first three have a trend and a 12-month mini chart; Outstanding shows customers and overdue deliveries instead (it is a balance today, not a period figure).
+- **All-time figures** (revenue, total received, outstanding, customers) come from the `all_time` block, the same numbers `GET /api/dashboard-stats` sends the mobile app.
 - **Sales card:** tabs Revenue / Orders with a 12-month bar chart and "Top customers by order value" for the period.
 - **Upcoming deliveries (next 14 days):** In Process orders, nearest first, with the balance due, plus a warning for overdue ones, and "See all orders".
-- Loading skeletons, empty states and light/dark come from antd. The old capped client-side series are gone; every figure is computed in SQL.
+- Loading skeletons, empty states and light/dark come from antd. Every figure is computed in SQL; the page only formats.
 
-**Differences from `/api/dashboard-stats`** (also in the migration header):
-- **Cash received:** `advance_paid` (by booking date) + `payments.amount` (by payment date), the money definition used by P&L. The API's "Total received" is ledger debit − credit over every entry, vendor payments included (returned as `ledger_net`).
-- **Outstanding:** Σ max(total − advance − payments, 0) per order that isn't Cancelled. The API reports total revenue − ledger net (returned as `outstanding_api`).
-- **Revenue:** for the selected period. The API reports all-time (returned as `revenue_all_time`).
-- **Upcoming:** In Process orders due in the next 14 days, up to 10. The API listed the next 5 orders that weren't Cancelled.
-- **Series:** 12 months of order value and cash. The API charted 6 months of ledger `order_payment` debits.
+**Shared with `/api/dashboard-stats`.** The API calls `dashboard_summary` as the caller (all
+time, the request's business or, with `X-Business-Id: all`, every membership) and only renames
+keys: `totalCustomers` / `totalOrders` / `totalRevenue` = `all_time.customers` / `.orders` /
+`.revenue`, `totalReceived` = `all_time.received.total`, `outstandingBalance` =
+`all_time.outstanding`, `recentOrdersCount` = `all_time.recent_orders_this_month`,
+`upcomingOrders` = `upcoming_orders`, `chartData` = `monthly_receipts_6m` as `{month: label,
+revenue: total}`. The mobile-facing definition changes are listed in [API-ROLES.md](API-ROLES.md).
+The web dashboard keeps its own period figures, 12-month series and 14-day deliveries list; those
+are views the mobile app does not have, not different definitions.
+
+### Customer page (`/customers/show/:id`)
+
+The Orders, Revenue, Received and Outstanding cards come from `customer_order_summary` (every
+order of the customer, same definitions as the dashboard). They used to sum at most 100 loaded
+orders in the browser, with "Paid" = advances only and "Balance" = the stored `orders.balance`
+(set at booking, never updated by payments). The order history still lists the latest 100 and
+says so when there are more; each order's "pending" is total − advance − payments (not for
+Cancelled orders), as on the order pages.
 
 ### Ledger (`/ledger`)
 
@@ -506,7 +542,7 @@ Unused npm packages removed with `npm uninstall` (nothing imports them any more)
 
 
 - **Vendor ledger card:** filters entries client-side, as before (one vendor's rows).
-- **Vendor list:** the `tag` and `q` filters resolve at most 1000 matching tags or categories.
+- **Vendor list:** the `tag` and `q` filters resolve at most 1000 matching tags or categories (see [qa/row-cap-audit.md](qa/row-cap-audit.md)).
 - **Reporting functions:** written against the API and the migrations in this repo. Run `supabase/tests/reporting_functions_check.sql` after applying.
 - **Orders "Nearest delivery" sort:** the previous list put upcoming deliveries first and past-due ones after, using three server queries. The Refine list sorts by delivery date ascending, so past-due orders come first. The delivery date is shown in red when an In Process order is late. Restoring the exact order needs a sort expression, which means a view or function.
 - **`orders_with_payment_status` view:** not used. Its definition is not in the repo, so the list computes payment status from the order and its payments, with the same formula as the receipt.

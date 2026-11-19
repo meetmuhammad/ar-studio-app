@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 import { inScope, requireBusiness, requireBusinessRead } from '@/lib/business-context'
+import { readAll } from '@/lib/read-all'
 
 // GET /api/vendors - List all vendors
 export async function GET(request: Request) {
@@ -11,15 +12,21 @@ export async function GET(request: Request) {
     const supabase = createAdminSupabaseClient()
 
     // Vendors belong to one business. Categories stay shared (global chart).
-    const { data: vendors, error } = await inScope(supabase
-      .from('vendors')
-      .select(`
-        *,
-        vendor_categories (id, name, archived_at)
-      `), scope)
-      .order('name', { ascending: true })
-
-    if (error) {
+    // Every vendor, read in pages (one PostgREST response stops at 1,000
+    // rows); id breaks name ties so pages neither skip nor repeat rows.
+    let vendors: unknown[]
+    try {
+      vendors = await readAll('vendors', (from, to) =>
+        inScope(supabase
+          .from('vendors')
+          .select(`
+            *,
+            vendor_categories (id, name, archived_at)
+          `), scope)
+          .order('name', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to))
+    } catch (error) {
       console.error('Error fetching vendors:', error)
       return NextResponse.json(
         { error: 'Failed to fetch vendors' },

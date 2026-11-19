@@ -2,8 +2,8 @@
 
 Who may call each route under `src/app/api/**`. The rules are the same as the database's
 (RLS in `supabase/migrations/20261119000000_role_scoped_rls.sql` and the functions in
-`20261119000100`, `20261119000200` and `20261119000300`), so the web app, the mobile app and
-direct database access all agree.
+`20261119000100`, `20261119000200`, `20261119000300` and `20261119000600`), so the web app, the
+mobile app and direct database access all agree.
 
 **How "admin" is decided.** `public.current_user_is_admin()` is `public.users.role = 'admin'`
 for the signed-in user: one global role, not per business. The API checks the same column
@@ -42,8 +42,8 @@ businesses" view (`X-Business-Id: all`) get `400` (`BUSINESS_REQUIRED`).
 | `/api/vendor-ledger` | admin | admin | — | — |
 | `/api/general-ledger` | admin | admin | — | — |
 | `/api/general-ledger/[id]` | admin | — | PUT: admin | admin |
-| `/api/general-ledger/stats` | admin | — | — | — |
-| `/api/dashboard-stats` | admin | — | — | — |
+| `/api/general-ledger/stats` | admin (totals from `ledger_entries`, as the caller) | — | — | — |
+| `/api/dashboard-stats` | admin (figures from `dashboard_summary`, as the caller) | — | — | — |
 | `/api/pnl` | admin | — | — | — |
 | `/api/mcp` (GET, POST, DELETE) | MCP transport; see below | | | |
 
@@ -71,6 +71,44 @@ or an unknown payment method) is now `400` with the function's message instead o
 (negative amounts) or failing with `500`. `PATCH /api/orders/[id]` is unchanged and still
 writes the tables directly (see [REFINE.md](REFINE.md), "API routes").
 
+## Reports: dashboard and ledger stats
+
+`GET /api/dashboard-stats` and `GET /api/general-ledger/stats` no longer read rows and add them
+up in the route. They call the same reporting functions as the web app, as the caller
+(`callerSupabaseClient`), so the figures are summed in SQL over every row and the database
+checks admin and membership again (errors map through `rpcErrorStatus`):
+
+- `/api/dashboard-stats` → `dashboard_summary` (`20261119000600_dashboard_single_source.sql`),
+  `all_time`, `upcoming_orders` and `monthly_receipts_6m`, for the request's business or (admin,
+  `X-Business-Id: all`) every business the admin belongs to.
+- `/api/general-ledger/stats` → `ledger_entries` totals (`20261119000200`), per business, and
+  once over every id for the combined figures. Same definitions and same JSON as before (it
+  already paged through every row; now it is the exact figure the web Ledger page shows).
+
+Role checks, status codes, `Cache-Control: private, no-store` and the JSON keys and types are
+unchanged.
+
+### Behaviour changes for the mobile app (`GET /api/dashboard-stats`)
+
+The route read at most 1,000 rows per query (PostgREST's cap), so on a book with more ledger
+rows or orders its totals were silently wrong, and two of its definitions were not the
+dashboard's. Every figure now comes from `dashboard_summary`. Measured on the dummy project
+(Ahsan Tariq Couture, 2,452 ledger rows) before the change:
+
+| Key | Before | Now | Why |
+| --- | --- | --- | --- |
+| `totalRevenue` | sum of `orders.total_amount` over at most 1,000 orders (48,555,660 on the dummy) | the same sum over every order | row cap |
+| `totalOrders` | count of at most 1,000 rows | exact count | row cap |
+| `totalCustomers` | exact count | exact count (unchanged) | — |
+| `totalReceived` | ledger debit − credit over at most 1,000 ledger rows, **every** entry type, vendor payments included (3,599,035 on the dummy; over all rows it would be −98,405) | money received from customers, all time: Σ `orders.advance_paid` + Σ `payments.amount` (26,747,500 + 22,082,560 = 48,830,060 on the dummy) | the old figure was the ledger's net cash position, not money received, and was capped |
+| `outstandingBalance` | `totalRevenue − totalReceived` (44,956,625 on the dummy) | still to collect: Σ over orders that are not Cancelled of max(total − advance − payments for that order, 0) (5,083,000 on the dummy) | the old figure mixed vendor payments in and ignored cancellations and overpayments |
+| `recentOrdersCount` | orders with `created_at` ≥ the 1st of the month in the **server's** time zone (UTC on Vercel) | orders with `created_at` ≥ the 1st of the month in **Asia/Karachi** | the business time zone, as everywhere else |
+| `upcomingOrders` | next 5 orders not Cancelled with `delivery_date` ≥ today (server date, UTC), nearest first | same list and shape (`{id, order_number, delivery_date, status, customers: {name, phone}}`); "today" is Asia/Karachi and ties on a date are ordered by order number | time zone; deterministic order |
+| `chartData` | last 6 months of ledger `order_payment` debits (capped at 1,000 rows; months in the server's time zone) | last 6 calendar months including the current one (Asia/Karachi): advances by booking date + payments by payment date, `{month: 'Jun', revenue}` | same money definition as `totalReceived`; no cap |
+
+The web dashboard shows the same all-time figures (its "Total received, all time" and
+"Outstanding balance").
+
 ## MCP (`/api/mcp`)
 
 Unchanged. The endpoint is off (404) unless `LEDGER_MCP_ENABLED=true`. Every request needs a
@@ -95,7 +133,11 @@ Staff requests that now succeed (they got 403 before):
 
 - `GET /api/vendor-categories` (the list is readable by every signed-in user, as in RLS).
 
-Nothing changes for admins, and no other route or method changes.
+No other route or method changes who may call it. For admins, the figures of
+`GET /api/dashboard-stats` changed (see "Behaviour changes for the mobile app" above), and these
+GET responses now include every row where they used to stop at 1,000: `/api/payments`,
+`/api/orders/all`, `/api/vendors`, `/api/vendor-ledger` and `/api/general-ledger` without `page` (same JSON;
+details in [qa/row-cap-audit.md](qa/row-cap-audit.md)).
 
 ## Checking it
 

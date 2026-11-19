@@ -1,6 +1,7 @@
 import { createAdminSupabaseClient } from './supabase'
 import type { Customer, Order, OrderWithCustomer, OrderItem } from './supabase-client'
 import { todayInBusinessZone } from './date-range'
+import { readAll } from './read-all'
 
 /**
  * Every function here takes the business it acts on (or, for reads, the list
@@ -420,34 +421,35 @@ export type OrderSummary = Pick<Order, 'id' | 'order_number' | 'customer_id' | '
   customers: Pick<Customer, 'id' | 'name' | 'phone'> | null
 }
 
+/**
+ * Every order in scope, newest first, for pickers (GET /api/orders/all). Read
+ * in pages: this used to stop at `.limit(1000)` (PostgREST's cap anyway), so a
+ * book past 1,000 orders lost its oldest ones. id breaks created_at ties.
+ */
 export async function getAllOrdersSimple(scope: Scope): Promise<OrderSummary[]> {
   const supabase = createAdminSupabaseClient()
 
-  const { data, error } = await inBusinesses(supabase
-    .from('orders')
-    .select(`
-      id,
-      order_number,
-      customer_id,
-      booking_date,
-      total_amount,
-      advance_paid,
-      created_at,
-      customers (
-        id,
-        name,
-        phone
-      )
-    `), scope)
-    .order('created_at', { ascending: false })
-    .limit(1000)
-
-  if (error) {
-    throw new Error(`Failed to fetch orders: ${error.message}`)
-  }
-
   // customers is a to-one embed; the client has no generated schema, so it types it as an array.
-  return (data || []) as unknown as OrderSummary[]
+  return readAll<OrderSummary>('orders', (from, to) =>
+    inBusinesses(supabase
+      .from('orders')
+      .select(`
+        id,
+        order_number,
+        customer_id,
+        booking_date,
+        total_amount,
+        advance_paid,
+        created_at,
+        customers (
+          id,
+          name,
+          phone
+        )
+      `), scope)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, to))
 }
 
 export async function getOrder(id: string, scope: Scope): Promise<OrderWithCustomer | null> {

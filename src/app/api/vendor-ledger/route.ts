@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
 import { inScope, requireBusiness, requireBusinessRead } from '@/lib/business-context'
 import { belongsToBusiness } from '@/lib/database'
+import { readAll } from '@/lib/read-all'
 
 // GET /api/vendor-ledger?vendor_id={id} - Get vendor sub-ledger
 export async function GET(request: Request) {
@@ -21,23 +22,29 @@ export async function GET(request: Request) {
     }
 
     // A vendor's sub-ledger is one book of one business; another business's
-    // vendor matches nothing.
-    const { data: entries, error } = await inScope(supabase
-      .from('vendor_ledger')
-      .select(`
-        *,
-        general_ledger (
-          id,
-          entry_type,
-          order_id,
-          orders (id, order_number)
-        )
-      `)
-      .eq('vendor_id', vendorId), scope)
-      .order('entry_date', { ascending: false })
-      .order('created_at', { ascending: false })
-
-    if (error) {
+    // vendor matches nothing. Every row, newest first, read in pages (one
+    // PostgREST response stops at 1,000 rows); id breaks ties so pages
+    // neither skip nor repeat rows.
+    let entries: unknown[]
+    try {
+      entries = await readAll('vendor ledger', (from, to) =>
+        inScope(supabase
+          .from('vendor_ledger')
+          .select(`
+            *,
+            general_ledger (
+              id,
+              entry_type,
+              order_id,
+              orders (id, order_number)
+            )
+          `)
+          .eq('vendor_id', vendorId), scope)
+          .order('entry_date', { ascending: false })
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to))
+    } catch (error) {
       console.error('Error fetching vendor ledger:', error)
       return NextResponse.json(
         { error: 'Failed to fetch vendor ledger' },

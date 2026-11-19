@@ -36,6 +36,8 @@ import { PageSkeleton, transparentContent, withSubtitle } from '@/components/ref
 import { MEASUREMENTS, formatReading, type MeasurementRow } from '@/components/measurements/types'
 import { deleteNotifications } from '@/components/customers/customer-form-fields'
 import { CUSTOMERS, type CustomerRow } from '@/components/customers/types'
+import { paymentSummary } from '@/components/orders/constants'
+import { useCustomerOrderSummary } from '@/lib/refine/reporting'
 
 interface CustomerOrder {
   id: string
@@ -45,10 +47,13 @@ interface CustomerOrder {
   status?: string | null
   total_amount?: number | null
   advance_paid?: number | null
-  balance?: number | null
   payment_method?: string | null
   comments?: string | null
+  payments?: { amount: number }[]
 }
+
+/** Orders listed on the page; the totals above cover every order. */
+const ORDER_LIST_LIMIT = 100
 
 const pkr = (value: number) => `PKR ${value.toLocaleString()}`
 const day = (value: string) => dayjs(value).format('MMM D, YYYY')
@@ -65,9 +70,10 @@ export default function CustomerShowPage() {
     resource: 'orders',
     filters: [{ field: 'customer_id', operator: 'eq', value: id }],
     sorters: [{ field: 'booking_date', order: 'desc' }],
-    pagination: { pageSize: 100 },
+    pagination: { pageSize: ORDER_LIST_LIMIT },
     meta: {
-      select: 'id, order_number, booking_date, delivery_date, status, total_amount, advance_paid, balance, payment_method, comments',
+      select:
+        'id, order_number, booking_date, delivery_date, status, total_amount, advance_paid, payment_method, comments, payments(amount)',
     },
     queryOptions: { enabled: !!id },
   })
@@ -79,6 +85,11 @@ export default function CustomerShowPage() {
     meta: { select: 'id, name, is_default, created_at, chest, waist, shoulder, sleeves' },
     queryOptions: { enabled: !!id },
   })
+  // Totals over EVERY order of the customer, summed in SQL (the list below
+  // shows at most ORDER_LIST_LIMIT orders).
+  const summary = useCustomerOrderSummary(id)
+  const totals = summary.data
+  const totalsLoading = summary.isLoading
   const { data: canAddMeasurement } = useCan({ resource: MEASUREMENTS, action: 'create' })
   const newMeasurementHref = `/measurements/create?customer_id=${id}`
   const newMeasurement = canAddMeasurement?.can ? (
@@ -113,9 +124,7 @@ export default function CustomerShowPage() {
   }
 
   const list = orders.data ?? []
-  const totalRevenue = list.reduce((sum, o) => sum + (o.total_amount || 0), 0)
-  const totalPaid = list.reduce((sum, o) => sum + (o.advance_paid || 0), 0)
-  const totalBalance = list.reduce((sum, o) => sum + (o.balance || 0), 0)
+  const totalOf = (value: number | undefined) => (summary.isError ? '—' : Number(value ?? 0))
 
   return (
     <Show
@@ -150,22 +159,32 @@ export default function CustomerShowPage() {
         <Row gutter={[16, 16]}>
           <Col xs={12} lg={6} xl={4}>
             <CardWithTitle icon={<ShoppingOutlined />} title="Orders">
-              <Statistic value={list.length} loading={ordersQuery.isLoading} />
+              <Statistic value={totalOf(totals?.orders)} loading={totalsLoading} />
             </CardWithTitle>
           </Col>
           <Col xs={12} lg={6} xl={5}>
             <CardWithTitle icon={<DollarOutlined />} title="Revenue">
-              <Statistic value={totalRevenue} prefix="PKR" loading={ordersQuery.isLoading} />
+              <Statistic value={totalOf(totals?.revenue)} prefix="PKR" loading={totalsLoading} />
             </CardWithTitle>
           </Col>
           <Col xs={12} lg={6} xl={5}>
-            <CardWithTitle icon={<DollarOutlined />} title="Paid">
-              <Statistic value={totalPaid} prefix="PKR" valueStyle={{ color: token.colorSuccess }} loading={ordersQuery.isLoading} />
+            <CardWithTitle icon={<DollarOutlined />} title="Received">
+              <Statistic
+                value={totalOf(totals?.received.total)}
+                prefix="PKR"
+                valueStyle={{ color: token.colorSuccess }}
+                loading={totalsLoading}
+              />
             </CardWithTitle>
           </Col>
           <Col xs={12} lg={6} xl={5}>
-            <CardWithTitle icon={<DollarOutlined />} title="Balance">
-              <Statistic value={totalBalance} prefix="PKR" valueStyle={{ color: token.colorWarning }} loading={ordersQuery.isLoading} />
+            <CardWithTitle icon={<DollarOutlined />} title="Outstanding">
+              <Statistic
+                value={totalOf(totals?.outstanding)}
+                prefix="PKR"
+                valueStyle={{ color: token.colorWarning }}
+                loading={totalsLoading}
+              />
             </CardWithTitle>
           </Col>
           <Col xs={24} lg={24} xl={5}>
@@ -231,35 +250,47 @@ export default function CustomerShowPage() {
               loading={ordersQuery.isLoading}
               dataSource={list}
               locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No orders found" /> }}
-              renderItem={(order) => (
-                <AntdList.Item
-                  extra={
-                    <Space direction="vertical" align="end" size={4}>
-                      <Typography.Text strong>{pkr(order.total_amount || 0)}</Typography.Text>
-                      {!!order.balance && order.balance > 0 && <Tag color="orange">{pkr(order.balance)} pending</Tag>}
-                    </Space>
-                  }
-                >
-                  <AntdList.Item.Meta
-                    title={
-                      <Space size={8} wrap>
-                        <span>{order.order_number}</span>
-                        {order.status && <Tag>{order.status}</Tag>}
-                        {order.payment_method && <Tag color="blue">{order.payment_method}</Tag>}
+              footer={
+                totals && totals.orders > list.length ? (
+                  <Typography.Text type="secondary">
+                    Showing the latest {list.length} of {Number(totals.orders).toLocaleString()} orders. The totals above include all of them.
+                  </Typography.Text>
+                ) : undefined
+              }
+              renderItem={(order) => {
+                // Per order, as the order pages: paid = advance + payments.
+                const money = paymentSummary(order, order.payments)
+                const pending = order.status !== 'Cancelled' && money.balance > 0
+                return (
+                  <AntdList.Item
+                    extra={
+                      <Space direction="vertical" align="end" size={4}>
+                        <Typography.Text strong>{pkr(money.total)}</Typography.Text>
+                        {pending && <Tag color="orange">{pkr(money.balance)} pending</Tag>}
                       </Space>
                     }
-                    description={
-                      <Space direction="vertical" size={2}>
-                        <span>
-                          Booking: {day(order.booking_date)} • Delivery: {day(order.delivery_date)} • Paid:{' '}
-                          {pkr(order.advance_paid || 0)}
-                        </span>
-                        {order.comments && <Typography.Text type="secondary">{order.comments}</Typography.Text>}
-                      </Space>
-                    }
-                  />
-                </AntdList.Item>
-              )}
+                  >
+                    <AntdList.Item.Meta
+                      title={
+                        <Space size={8} wrap>
+                          <span>{order.order_number}</span>
+                          {order.status && <Tag>{order.status}</Tag>}
+                          {order.payment_method && <Tag color="blue">{order.payment_method}</Tag>}
+                        </Space>
+                      }
+                      description={
+                        <Space direction="vertical" size={2}>
+                          <span>
+                            Booking: {day(order.booking_date)} • Delivery: {day(order.delivery_date)} • Paid:{' '}
+                            {pkr(money.paid)}
+                          </span>
+                          {order.comments && <Typography.Text type="secondary">{order.comments}</Typography.Text>}
+                        </Space>
+                      }
+                    />
+                  </AntdList.Item>
+                )
+              }}
             />
           )}
         </CardWithTitle>
