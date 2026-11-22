@@ -6,6 +6,8 @@ import { useCreate, useList, useOne, useUpdate, type HttpError } from '@refinede
 import { Alert, DatePicker, Descriptions, Form, Input, InputNumber, Modal, Radio, Select, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { errorMessage } from '@/lib/refine/notifications'
+import { joinSearchText } from '@/lib/refine/select-search'
+import { useSearchSelect } from '@/components/refine/use-search-select'
 import { ORDERS, PAYMENTS, PAYMENT_METHODS, paymentSummary, pkr, type OrderRow, type PaymentRow } from './constants'
 
 interface PaymentModalProps {
@@ -37,21 +39,27 @@ interface PaymentFormValues {
  * Accessible names: "Order" (picker), "Amount", "Payment Method",
  * "Payment Date", "Notes"; buttons "Add Payment" / "Update Payment", "Cancel".
  */
+const orderSearchText = (o: OrderRow) => joinSearchText(o.customers?.phone)
+
 export function PaymentModal({ open, onClose, orderId, payment, onSaved }: PaymentModalProps) {
   const [form] = Form.useForm<PaymentFormValues>()
   const editing = !!payment
   const chosenOrder = Form.useWatch('order_id', form) ?? orderId ?? payment?.order_id
 
-  const { selectProps } = useSelect<OrderRow, HttpError>({
-    resource: ORDERS,
-    optionLabel: (o) => `${o.order_number} · ${o.customers?.name ?? ''}`,
-    optionValue: 'id',
-    onSearch: (term) => [{ field: 'q', operator: 'contains', value: term }],
-    sorters: [{ field: 'created_at', order: 'desc' }],
-    pagination: { pageSize: 20 },
-    meta: { select: 'id, order_number, created_at, customers(name)' },
-    queryOptions: { enabled: open && !orderId && !editing },
-  })
+  const orderSelect = useSearchSelect(
+    useSelect<OrderRow, HttpError>({
+      resource: ORDERS,
+      optionLabel: (o) => `${o.order_number} · ${o.customers?.name ?? ''}`,
+      optionValue: 'id',
+      onSearch: (term) => [{ field: 'q', operator: 'contains', value: term }],
+      sorters: [{ field: 'created_at', order: 'desc' }],
+      pagination: { pageSize: 20 },
+      meta: { select: 'id, order_number, created_at, customers(name, phone)' },
+      queryOptions: { enabled: open && !orderId && !editing },
+    }),
+    // The server search also matches the customer's phone, which the label does not show.
+    { searchText: orderSearchText, open },
+  )
 
   const { result: order } = useOne<OrderRow, HttpError>({
     resource: ORDERS,
@@ -142,11 +150,7 @@ export function PaymentModal({ open, onClose, orderId, payment, onSaved }: Payme
         {!orderId && !editing && (
           <Form.Item label="Order" name="order_id" rules={[{ required: true, message: 'Please select an order' }]}>
             <Select
-              showSearch
-              filterOption={false}
-              onSearch={selectProps.onSearch}
-              options={selectProps.options as { label: string; value: string }[] | undefined}
-              loading={selectProps.loading}
+              {...orderSelect}
               placeholder="Search by order number, customer name or phone"
               aria-label="Order"
               autoFocus

@@ -1,6 +1,6 @@
 'use client'
 
-import { Children, useState } from 'react'
+import { Children, useEffect, useRef, useState } from 'react'
 import { Button, Card, Col, DatePicker, Form, Grid, Row, Space, type FormProps } from 'antd'
 import { DownOutlined, ReloadOutlined, SearchOutlined, UpOutlined } from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
@@ -16,7 +16,15 @@ interface FilterBarProps<T> {
   collapsedCount?: number
   /** Accessible name of the filter form. */
   label?: string
+  /**
+   * Fields that search as the user types (debounced), including clearing
+   * them, without pressing Search. Opt-in; other fields still wait for Search.
+   */
+  liveFields?: readonly (keyof T & string)[]
 }
+
+/** Typing pause before a live field searches, as Refine's select search. */
+export const LIVE_SEARCH_DELAY_MS = 300
 
 /**
  * Ant Design Pro style query form above a table: fields in a responsive grid,
@@ -27,13 +35,36 @@ interface FilterBarProps<T> {
  * Name each field after the filter it produces (see the virtual filters in
  * src/lib/refine/data-provider.ts) so Refine can restore it from the URL.
  */
-export function FilterBar<T>({ formProps, children, collapsedCount = 2, label = 'Filters' }: FilterBarProps<T>) {
+export function FilterBar<T>({ formProps, children, collapsedCount = 2, label = 'Filters', liveFields }: FilterBarProps<T>) {
   const { mode } = useColorMode()
   const screens = Grid.useBreakpoint()
   const [expanded, setExpanded] = useState(false)
   const fields = Children.toArray(children)
   const collapsible = fields.length > collapsedCount
   const visible = expanded || !collapsible ? fields : fields.slice(0, collapsedCount)
+
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const cancelLive = () => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = undefined
+  }
+  useEffect(() => cancelLive, [])
+
+  const onValuesChange: FormProps<T>['onValuesChange'] = (changed, all) => {
+    formProps.onValuesChange?.(changed, all)
+    if (!liveFields?.some((f) => f in (changed as object))) return
+    cancelLive()
+    timer.current = setTimeout(() => {
+      timer.current = undefined
+      formProps.form?.submit()
+    }, LIVE_SEARCH_DELAY_MS)
+  }
+
+  const onFinish: FormProps<T>['onFinish'] = (values) => {
+    // Search / Enter / Reset submit now; a pending live search would only repeat it.
+    cancelLive()
+    return formProps.onFinish?.(values)
+  }
 
   const reset = () => {
     formProps.form?.resetFields()
@@ -45,7 +76,7 @@ export function FilterBar<T>({ formProps, children, collapsedCount = 2, label = 
       style={{ marginBottom: 16, boxShadow: cardShadow(mode) }}
       styles={{ body: { padding: screens.md ? '20px 24px 4px' : '16px 16px 4px' } }}
     >
-      <Form {...formProps} layout="vertical" aria-label={label} role="search">
+      <Form {...formProps} onValuesChange={onValuesChange} onFinish={onFinish} layout="vertical" aria-label={label} role="search">
         <Row gutter={[16, 0]} align="bottom">
           {visible.map((field, i) => (
             <Col key={i} xs={24} sm={12} lg={8}>
