@@ -13,30 +13,11 @@ import {
   type PnlVendorLedgerRow,
   type PnlVendorRow,
 } from '@/lib/pnl'
+import { readAll } from '@/lib/read-all'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
-const PAGE = 1000
 
 const bad = (error: string) => NextResponse.json({ error }, { status: 400, headers: NO_STORE })
-
-/**
- * Read every page of a query. PostgREST caps one response (1,000 rows by
- * default), so a single read would silently stop counting. `build` must apply a
- * total order (here: by id) so pages neither skip nor repeat rows.
- */
-async function readAll<T>(
-  label: string,
-  build: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>
-): Promise<T[]> {
-  const out: T[] = []
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await build(from, from + PAGE - 1)
-    if (error) throw new Error(`Failed to read ${label}: ${error.message}`)
-    const rows = (data ?? []) as T[]
-    out.push(...rows)
-    if (rows.length < PAGE) return out
-  }
-}
 
 /**
  * GET /api/pnl?mode=cash|accrual&preset=this_month|this_quarter|this_year|custom&start=&end=

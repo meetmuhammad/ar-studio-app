@@ -72,7 +72,7 @@ test.describe('launch behaviour and no offline/private caching', () => {
     await a.goto('/'); await settle(a); await expect(a).toHaveURL(/localhost:\d+\/$/); await expect(a.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
     await admin.close()
     const staff = await ctxFor(browser, 'staff', VIEWPORTS[1]); const s = await staff.newPage()
-    await s.goto('/'); await expect(s).toHaveURL(/\/customers$/, { timeout: 15000 })
+    await s.goto('/'); await expect(s).toHaveURL(/\/customers(\?.*)?$/, { timeout: 15000 })
     await staff.close()
   })
 
@@ -94,7 +94,7 @@ test.describe('launch behaviour and no offline/private caching', () => {
 })
 
 test.describe('keyboard, focus and motion', () => {
-  test('keyboard focus is visible on the tab bar, header action and form fields', async ({ browser }) => {
+  test('keyboard focus is visible on the header actions, menu and filter fields', async ({ browser }) => {
     const ctx = await ctxFor(browser, 'admin', VIEWPORTS[1]); const page = await ctx.newPage()
     await page.goto('/customers'); await settle(page)
     const visible = async () => page.evaluate(() => {
@@ -110,12 +110,17 @@ test.describe('keyboard, focus and motion', () => {
   })
 
   test('prefers-reduced-motion removes animation and transition time', async ({ browser }) => {
-    const ctx = await ctxFor(browser, 'admin', VIEWPORTS[1]); const page = await ctx.newPage()
+    const ctx = await ctxFor(browser, 'admin', VIEWPORTS[VIEWPORTS.length - 1]); const page = await ctx.newPage()
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.goto('/customers'); await settle(page)
-    await page.getByRole('button', { name: 'New Customer', exact: true }).click()
-    const d = await page.getByRole('dialog').evaluate((e) => parseFloat(getComputedStyle(e).animationDuration))
-    expect(d, 'dialog animation duration in seconds').toBeLessThan(0.01)
+    await page.getByRole('button', { name: /^(\S+ )?Add New Payment$/ }).click()
+    const modal = page.locator('.ant-modal-wrap:visible .ant-modal').last()
+    await expect(modal).toBeVisible()
+    const d = await modal.evaluate((e) => {
+      const cs = getComputedStyle(e)
+      return Math.max(parseFloat(cs.animationDuration) || 0, parseFloat(cs.transitionDuration) || 0)
+    })
+    expect(d, 'modal animation/transition duration in seconds').toBeLessThan(0.01)
     await ctx.close()
   })
 })

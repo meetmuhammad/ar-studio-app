@@ -1,493 +1,522 @@
 'use client'
 
-import { ErrorState } from '@/components/dashboard/error-state'
-import { useEffect, useState, useRef } from 'react'
-import { Plus, BookOpen, TrendingUp, TrendingDown, DollarSign, Edit, Search, Download, Trash2 } from 'lucide-react'
-import { RoleGuard } from '@/components/auth/role-guard'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { DateRangeFilter } from '@/components/filters/date-range-filter'
-import { useDateRangePreference } from '@/hooks/use-date-range-preference'
-import { Label } from '@/components/ui/label'
-import { LedgerEntryDialog } from '@/components/dialogs/ledger-entry-dialog'
-import { DeleteConfirmationDialog } from '@/components/dialogs/delete-confirmation-dialog'
+import { useMemo, useState } from 'react'
+import Link from 'next/link'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useSelect } from '@refinedev/antd'
+import { CanAccess, useCan, useDelete, type HttpError } from '@refinedev/core'
+import { useQueryClient } from '@tanstack/react-query'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
-import {
+  App,
+  Button,
+  Col,
+  Flex,
+  Form,
+  Input,
+  Popconfirm,
+  Result,
+  Row,
   Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import type { GeneralLedgerWithRelations } from '@/lib/supabase-client'
-import { toast } from 'sonner'
-import { useBusiness, useBusinessLabel } from '@/contexts/business-context'
-import { useLedgerEntries, useLedgerStats, useDeleteLedgerEntry, useVendorCategories } from '@/hooks/use-api'
+  Space,
+  Statistic,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  theme,
+} from 'antd'
+import {
+  BookOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  EditOutlined,
+  PlusOutlined,
+  SearchOutlined,
+} from '@ant-design/icons'
+import dayjs from 'dayjs'
+import { useBusinessLabel } from '@/contexts/business-context'
+import { DateRangeFilter, FilterBar, dateRangeItemProps } from '@/components/refine/filter-bar'
+import { ResourceTable, type ResourceColumn } from '@/components/refine/resource-table'
+import { FormSection } from '@/components/refine/page-parts'
+import { CategorySelect } from '@/components/vendors/category-select'
+import { LedgerEntryDrawer } from '@/components/ledger/ledger-entry-drawer'
+import {
+  ENTRY_TYPES,
+  GENERAL_LEDGER,
+  entryTypeOf as typeOf,
+  isOrderOwned,
+  money,
+  type LedgerEntryValues,
+} from '@/components/ledger/constants'
+import { deleteNotificationsFor } from '@/lib/refine/notifications'
+import {
+  fetchLedgerForExport,
+  useLedgerPage,
+  useReportScope,
+  type LedgerQuery,
+  type LedgerRow,
+} from '@/lib/refine/reporting'
 
-// Sentinel for "no filter" -- Radix Select cannot use an empty string as an
-// item value.
-const ALL_CATEGORIES = 'all'
+const day = (v: string) => dayjs(v).format('MMM D, YYYY')
 
-export default function LedgerPage() {
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingEntry, setEditingEntry] = useState<GeneralLedgerWithRelations | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<GeneralLedgerWithRelations | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  // Remembered per user across sign-out (Supabase Auth user_metadata).
-  const { selection: dateRange, setSelection: setDateRange, ready: dateRangeReady, start: startDate, end: endDate } =
-    useDateRangePreference('ledgerDateRange', { preset: 'all_time' })
-  const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 20
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null)
+const entryValues = (e: LedgerRow): LedgerEntryValues => ({
+  id: e.id,
+  entry_date: e.entry_date,
+  entry_type: e.entry_type,
+  particulars: e.particulars,
+  debit: e.debit,
+  credit: e.credit,
+  notes: e.notes,
+  vendor_id: e.vendor_id,
+  vendor_name: e.vendors?.name ?? null,
+})
 
-  const { data: categories = [] } = useVendorCategories()
-  // Each business has its own book. In the admin combined view the page is
-  // read-only and shows no running balance (one series across two books would
-  // be meaningless); rows are labelled with their business instead.
-  const { isAll } = useBusiness()
+interface FilterValues {
+  dates?: [string, string]
+  q?: string
+  type?: string
+  vendor?: string
+  category?: string
+}
+
+/** Filters live in the URL, so a filtered ledger can be shared or reloaded. */
+function useLedgerFilters() {
+  const params = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const get = (k: string) => params.get(k) || undefined
+  const query: LedgerQuery = {
+    from: get('from') ?? null,
+    to: get('to') ?? null,
+    search: get('q') ?? null,
+    entryType: get('type') ?? null,
+    vendorId: get('vendor') ?? null,
+    vendorCategoryId: get('category') ?? null,
+    limit: Number(get('size') ?? 20),
+    offset: (Number(get('page') ?? 1) - 1) * Number(get('size') ?? 20),
+  }
+  const set = (next: Record<string, string | number | undefined | null>) => {
+    const sp = new URLSearchParams(params.toString())
+    for (const [k, v] of Object.entries(next)) {
+      if (v === undefined || v === null || v === '') sp.delete(k)
+      else sp.set(k, String(v))
+    }
+    router.replace(`${pathname}?${sp.toString()}`, { scroll: false })
+  }
+  const formValues: FilterValues = {
+    dates: query.from && query.to ? [dayjs(query.from).startOf('day').toISOString(), dayjs(query.to).endOf('day').toISOString()] : undefined,
+    q: query.search ?? undefined,
+    type: query.entryType ?? undefined,
+    vendor: query.vendorId ?? undefined,
+    category: query.vendorCategoryId ?? undefined,
+  }
+  return { query, set, formValues, page: Number(get('page') ?? 1), size: Number(get('size') ?? 20) }
+}
+
+function LedgerScreen() {
+  const { token } = theme.useToken()
+  const { message, notification } = App.useApp()
   const businessLabel = useBusinessLabel()
+  const scope = useReportScope()
+  const queryClient = useQueryClient()
+  const { query, set, formValues, page, size } = useLedgerFilters()
+  const [form] = Form.useForm<FilterValues>()
+  const [drawer, setDrawer] = useState<{ open: boolean; entry: LedgerEntryValues | null }>({ open: false, entry: null })
+  const [exporting, setExporting] = useState(false)
+  const { mutate: remove } = useDelete<LedgerRow, HttpError>()
 
-  // React Query hooks
-  const { data: entriesResult, isLoading, isError: loadFailed, error: loadError, refetch: fetchData } = useLedgerEntries({
-    page: currentPage,
-    pageSize: itemsPerPage,
-    search: debouncedSearch,
-    startDate,
-    endDate,
-    vendorCategoryId: categoryFilter === ALL_CATEGORIES ? undefined : categoryFilter,
-  }, { enabled: dateRangeReady })
-  // Debit/credit/count follow the selected date range, like the table.
-  const { data: stats = { totalDebit: 0, totalCredit: 0, currentBalance: 0, entryCount: 0 }, refetch: refetchStats } =
-    useLedgerStats({ startDate, endDate }, { enabled: dateRangeReady })
-  const rangeActive = Boolean(startDate || endDate)
-  const deleteMutation = useDeleteLedgerEntry()
-  
-  // Balance column: the running balance within the selected date range (starts
-  // at 0, debit - credit in ledger order), computed by the API over the whole
-  // range, so the newest in-range entry matches the Current Balance card on any
-  // page. The stored `balance` is all-time and is only a fallback.
-  const entries = (entriesResult?.data || []).map((entry) => ({
-    ...entry,
-    calculatedBalance: entry.range_balance ?? entry.balance,
-  })) as GeneralLedgerWithRelations[]
-  const totalEntries = entriesResult?.pagination?.total || 0
-  const totalPages = entriesResult?.pagination?.pages || 1
+  const { data, isLoading, isFetching, isError, error, refetch } = useLedgerPage(query)
+  const { data: canWrite } = useCan({ resource: 'ledger', action: 'create' })
+  const writesAllowed = canWrite?.can !== false
+  const combined = data?.combined ?? scope.isAll
 
-  // Debounce search
-  const handleSearchChange = (value: string) => {
-    setSearchQuery(value)
-    if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    debounceTimer.current = setTimeout(() => {
-      setDebouncedSearch(value)
-      setCurrentPage(1)
-    }, 300)
-  }
+  const { selectProps: vendorSelect } = useSelect({
+    resource: 'vendors',
+    optionLabel: 'name',
+    optionValue: 'id',
+    onSearch: (term) => [{ field: 'q', operator: 'contains', value: term }],
+    sorters: [{ field: 'name', order: 'asc' }],
+    pagination: { pageSize: 50 },
+    defaultValue: query.vendorId ?? undefined,
+    meta: { select: 'id, name' },
+  })
 
-  // Reset page when date or category filters change
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [startDate, endDate, categoryFilter])
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['report'] })
 
-  const handleEdit = (entry: GeneralLedgerWithRelations) => {
-    setEditingEntry(entry)
-    setDialogOpen(true)
-  }
-
-  // Asks first with the in-app dialog (not the browser's confirm()); confirmDelete does the delete.
-  const handleDelete = (entry: GeneralLedgerWithRelations) => setDeleteTarget(entry)
-
-  const confirmDelete = async () => {
-    if (!deleteTarget) return
-    await deleteMutation.mutateAsync(deleteTarget.id)
-  }
-
-  const handleCloseDialog = () => {
-    setDialogOpen(false)
-    setEditingEntry(null)
-  }
-
-  const exportToCSV = () => {
+  const exportCsv = async () => {
+    setExporting(true)
     try {
-      // CSV headers
-      const headers = ['Date', 'Particulars', 'Type', 'Debit', 'Credit', isAll ? 'Business' : 'Balance', 'Vendor', 'Vendor Category', 'Order Number', 'Notes']
-      
-      // Convert entries to CSV rows
-      const rows = entries.map(entry => [
-        new Date(entry.entry_date).toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-        }),
-        `"${entry.particulars.replace(/"/g, '""')}"`, // Escape double quotes
-        entry.entry_type.replace('_', ' '),
-        entry.debit || 0,
-        entry.credit || 0,
-        isAll
-          ? (entry as GeneralLedgerWithRelations & { business_name?: string | null }).business_name ?? ''
-          : entry.calculatedBalance ?? entry.balance,
-        entry.vendors?.name ? `"${entry.vendors.name.replace(/"/g, '""')}"` : '',
-        // The vendor's CURRENT category, matching what the filter selects on.
-        entry.vendor_id ? `"${(entry.vendors?.vendor_categories?.name || 'Uncategorized').replace(/"/g, '""')}"` : '',
-        entry.orders?.order_number ? `"${entry.orders.order_number.replace(/"/g, '""')}"` : '',
-        entry.notes ? `"${entry.notes.replace(/"/g, '""')}"` : '',
+      const all = await fetchLedgerForExport(scope.ids, query)
+      const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+      const headers = ['Date', 'Particulars', 'Type', 'Debit', 'Credit', combined ? 'Business' : 'Balance', 'Vendor', 'Vendor Category', 'Order Number', 'Notes']
+      const rows = all.rows.map((e) => [
+        day(e.entry_date),
+        esc(e.particulars),
+        typeOf(e.entry_type)?.label ?? e.entry_type,
+        e.debit ?? 0,
+        e.credit ?? 0,
+        combined ? esc(e.business_name) : e.range_balance ?? e.balance ?? '',
+        e.vendors ? esc(e.vendors.name) : '',
+        e.vendor_id ? esc(e.vendors?.vendor_categories?.name ?? 'Uncategorized') : '',
+        e.orders ? esc(e.orders.order_number) : '',
+        e.notes ? esc(e.notes) : '',
       ])
-      
-      // Combine headers and rows
-      const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.join(','))
-      ].join('\n')
-      
-      // Create blob and download
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
       const link = document.createElement('a')
-      const url = URL.createObjectURL(blob)
-      
-      link.setAttribute('href', url)
-      link.setAttribute('download', `ledger_entries_${new Date().toISOString().split('T')[0]}.csv`)
-      link.style.visibility = 'hidden'
-      
+      link.href = url
+      link.download = `ledger_entries_${dayjs().format('YYYY-MM-DD')}.csv`
       document.body.appendChild(link)
       link.click()
-      document.body.removeChild(link)
-      
-      toast.success(`Exported ${entries.length} ledger entries to CSV`)
-    } catch (error) {
-      console.error('Error exporting CSV:', error)
-      toast.error('Failed to export CSV')
+      link.remove()
+      URL.revokeObjectURL(url)
+      message.success(`Exported ${all.rows.length} ledger entries to CSV`)
+    } catch (e) {
+      notification.error({ message: 'Failed to export CSV', description: e instanceof Error ? e.message : undefined })
+    } finally {
+      setExporting(false)
     }
   }
 
-  // Server handles pagination — use entries directly
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = Math.min(startIndex + entries.length, startIndex + itemsPerPage)
+  const columns = useMemo((): ResourceColumn<LedgerRow>[] => {
+    const cols: ResourceColumn<LedgerRow>[] = [
+      { key: 'date', title: 'Date', width: 130, render: (_, e) => day(e.entry_date) },
+      {
+        key: 'particulars',
+        title: 'Particulars',
+        width: 280,
+        render: (_, e) => (
+          <Space direction="vertical" size={0}>
+            <Typography.Text>{e.particulars}</Typography.Text>
+            {e.orders && (
+              <Link href={`/orders/show/${e.orders.id}`} onClick={(ev) => ev.stopPropagation()}>
+                Order {e.orders.order_number}
+              </Link>
+            )}
+          </Space>
+        ),
+      },
+      {
+        key: 'type',
+        title: 'Type',
+        width: 150,
+        render: (_, e) => <Tag color={typeOf(e.entry_type)?.color}>{typeOf(e.entry_type)?.label ?? e.entry_type}</Tag>,
+      },
+      {
+        key: 'vendor',
+        title: 'Vendor / Category',
+        width: 200,
+        render: (_, e) =>
+          e.vendors ? (
+            <Space direction="vertical" size={0}>
+              <Link href={`/vendors/show/${e.vendors.id}`}>{e.vendors.name}</Link>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {e.vendors.vendor_categories?.name ?? 'Uncategorized'}
+              </Typography.Text>
+            </Space>
+          ) : (
+            <Typography.Text type="secondary">—</Typography.Text>
+          ),
+      },
+      {
+        key: 'debit',
+        title: 'Debit',
+        align: 'right',
+        width: 140,
+        render: (_, e) => (e.debit ? <Typography.Text type="success">{money(e.debit)}</Typography.Text> : '—'),
+      },
+      {
+        key: 'credit',
+        title: 'Credit',
+        align: 'right',
+        width: 140,
+        render: (_, e) => (e.credit ? <Typography.Text type="danger">{money(e.credit)}</Typography.Text> : '—'),
+      },
+      combined
+        ? { key: 'business', title: 'Business', width: 170, render: (_, e) => e.business_name ?? '—' }
+        : {
+            key: 'balance',
+            title: 'Balance',
+            align: 'right',
+            width: 150,
+            render: (_, e) => <Typography.Text strong>{money(e.range_balance ?? e.balance)}</Typography.Text>,
+          },
+      {
+        key: 'notes',
+        title: 'Notes',
+        width: 220,
+        ellipsis: true,
+        defaultHidden: true,
+        render: (_, e) => e.notes || '—',
+      },
+      {
+        key: 'actions',
+        title: 'Actions',
+        fixed: 'right',
+        fixedVisible: true,
+        width: 110,
+        render: (_, e) => {
+          if (isOrderOwned(e)) {
+            return (
+              <Tooltip title="Written by an order or a payment; change it on the order">
+                {e.orders ? (
+                  <Link href={`/orders/show/${e.orders.id}`} aria-label={`Open order ${e.orders.order_number}`}>
+                    Read only
+                  </Link>
+                ) : (
+                  <Typography.Text type="secondary">Read only</Typography.Text>
+                )}
+              </Tooltip>
+            )
+          }
+          return (
+            <Space size={4} onClick={(ev) => ev.stopPropagation()}>
+              <Tooltip title={writesAllowed ? 'Edit entry' : canWrite?.reason}>
+                <Button
+                  size="small"
+                  icon={<EditOutlined />}
+                  aria-label={`Edit ledger entry ${e.particulars}`}
+                  disabled={!writesAllowed}
+                  onClick={() => setDrawer({ open: true, entry: entryValues(e) })}
+                />
+              </Tooltip>
+              <Tooltip title={writesAllowed ? 'Delete entry' : canWrite?.reason}>
+                <span>
+                  <Popconfirm
+                    title="Delete this ledger entry?"
+                    description="Its vendor ledger entry, if any, is deleted too."
+                    okText="Delete"
+                    okButtonProps={{ danger: true }}
+                    disabled={!writesAllowed}
+                    onConfirm={() =>
+                      remove(
+                        { resource: GENERAL_LEDGER, id: e.id, ...deleteNotificationsFor('Ledger entry') },
+                        { onSuccess: () => void refresh() }
+                      )
+                    }
+                  >
+                    <Button
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      aria-label={`Delete ledger entry ${e.particulars}`}
+                      disabled={!writesAllowed}
+                    />
+                  </Popconfirm>
+                </span>
+              </Tooltip>
+            </Space>
+          )
+        },
+      },
+    ]
+    return cols
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [combined, writesAllowed])
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PK', {
-      style: 'currency',
-      currency: 'PKR',
-    }).format(amount)
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    })
-  }
-
-  const getEntryTypeBadge = (type: string) => {
-    const variants: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
-      opening_balance: 'default',
-      order_payment: 'secondary',
-      vendor_payment: 'outline',
-      miscellaneous: 'destructive',
-    }
-    return <Badge variant={variants[type] || 'default'}>{type.replace('_', ' ')}</Badge>
-  }
-
-  if (isLoading || !dateRangeReady) {
-    return (
-      <RoleGuard allowedRoles={['admin']}>
-      <div className="space-y-6">
-        <h1 className="text-3xl font-bold">General Ledger</h1>
-        <div className="text-center py-12">Loading ledger...</div>
-      </div>
-      </RoleGuard>
-    )
-  }
+  const totals = data?.totals
+  const opening = Number(data?.opening_balance ?? 0)
+  const rangeActive = !!(query.from || query.to)
 
   return (
-    <RoleGuard allowedRoles={['admin']}>
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold sm:text-3xl">General Ledger</h1>
-          <p className="text-muted-foreground mt-1">
-            <span className="font-medium text-foreground">{businessLabel}</span>
-            {' · '}Track all financial transactions and balances
-          </p>
+    <Flex vertical gap={16}>
+      <Flex justify="space-between" align="center" wrap gap={12}>
+        <div>
+          <Typography.Title level={3} style={{ margin: 0 }}>
+            General Ledger
+          </Typography.Title>
+          <Typography.Text type="secondary">{businessLabel} · Track all financial transactions and balances</Typography.Text>
         </div>
-        <div className="flex gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
-          <Button
-            variant="outline"
-            onClick={exportToCSV}
-            disabled={entries.length === 0}
-          >
-            <Download className="h-4 w-4 mr-2" />
+        <Space wrap>
+          <Button icon={<DownloadOutlined />} onClick={() => void exportCsv()} loading={exporting} disabled={!data?.total}>
             Export CSV
           </Button>
-          <Button onClick={() => setDialogOpen(true)} disabled={isAll}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Entry
-          </Button>
-        </div>
-      </div>
+          <Tooltip title={writesAllowed ? undefined : canWrite?.reason}>
+            <Button type="primary" icon={<PlusOutlined />} disabled={!writesAllowed} onClick={() => setDrawer({ open: true, entry: null })}>
+              Add Entry
+            </Button>
+          </Tooltip>
+        </Space>
+      </Flex>
 
-      {/* Search, Category, and Date Range Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-        <div className="relative sm:min-w-[240px] sm:flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-          placeholder="Search by particulars..."
-          value={searchQuery}
-          onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-10"
+      <FilterBar
+        formProps={{
+          form,
+          initialValues: formValues,
+          onFinish: (v: FilterValues) =>
+            set({
+              from: v.dates?.[0] ? dayjs(v.dates[0]).format('YYYY-MM-DD') : undefined,
+              to: v.dates?.[1] ? dayjs(v.dates[1]).format('YYYY-MM-DD') : undefined,
+              q: v.q?.trim(),
+              type: v.type,
+              vendor: v.vendor,
+              category: v.category,
+              page: undefined,
+            }),
+        }}
+        label="Ledger filters"
+        collapsedCount={2}
+      >
+        <Form.Item name="dates" label="Dates" {...dateRangeItemProps}>
+          <DateRangeFilter aria-label="Entry dates" />
+        </Form.Item>
+        <Form.Item name="q" label="Search particulars">
+          <Input allowClear prefix={<SearchOutlined />} placeholder="e.g. rent, AR-00042" />
+        </Form.Item>
+        <Form.Item name="type" label="Entry type">
+          <Select allowClear placeholder="All types" aria-label="Entry type" options={ENTRY_TYPES.map(({ value, label }) => ({ value, label }))} />
+        </Form.Item>
+        <Form.Item name="vendor" label="Vendor">
+          <Select
+            allowClear
+            showSearch
+            filterOption={false}
+            placeholder="All vendors"
+            aria-label="Vendor"
+            options={vendorSelect.options as { label: string; value: string }[] | undefined}
+            onSearch={vendorSelect.onSearch}
+            loading={vendorSelect.loading}
           />
-        </div>
-        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-          <Label className="text-sm text-muted-foreground whitespace-nowrap">Category</Label>
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="All categories" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_CATEGORIES}>All categories</SelectItem>
-              {categories.map((category) => (
-                <SelectItem key={category.id} value={category.id}>
-                  {category.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <DateRangeFilter value={dateRange} onChange={setDateRange} />
-      </div>
+        </Form.Item>
+        <Form.Item name="category" label="Category">
+          <CategorySelect allowClear placeholder="All categories" aria-label="Category" />
+        </Form.Item>
+      </FilterBar>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
-        <Card className="gap-2 py-4 sm:gap-6 sm:py-6">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0 sm:pb-2">
-            <CardTitle className="text-sm font-medium">Total Debit</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold tabular-nums sm:text-2xl">{formatCurrency(stats.totalDebit)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Money in{rangeActive ? ' · selected dates' : ''}</p>
-          </CardContent>
-        </Card>
+      <Row gutter={[16, 16]}>
+        {[
+          {
+            title: 'Total Debit',
+            value: money(totals?.debit),
+            note: rangeActive ? 'Money in · selected dates' : 'Money in',
+            color: token.colorSuccess,
+          },
+          {
+            title: 'Total Credit',
+            value: money(totals?.credit),
+            note: rangeActive ? 'Money out · selected dates' : 'Money out',
+            color: token.colorError,
+          },
+          {
+            title: combined ? 'Net, all businesses' : 'Current Balance',
+            value: money(totals?.net),
+            note: rangeActive ? 'Debit − credit · selected dates' : 'Debit − credit · all time',
+          },
+          { title: 'Total Entries', value: Number(totals?.entry_count ?? 0).toLocaleString(), note: rangeActive ? 'In selected dates' : 'All transactions' },
+        ].map((s) => (
+          <Col key={s.title} xs={12} lg={6}>
+            <FormSection title={s.title}>
+              <Statistic value={s.value} loading={isLoading} valueStyle={{ color: s.color, fontSize: 22 }} />
+              <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', paddingBottom: 12 }}>
+                {s.note}
+              </Typography.Text>
+            </FormSection>
+          </Col>
+        ))}
+      </Row>
 
-        <Card className="gap-2 py-4 sm:gap-6 sm:py-6">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0 sm:pb-2">
-            <CardTitle className="text-sm font-medium">Total Credit</CardTitle>
-            <TrendingDown className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold tabular-nums sm:text-2xl">{formatCurrency(stats.totalCredit)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Money out{rangeActive ? ' · selected dates' : ''}</p>
-          </CardContent>
-        </Card>
+      <ResourceTable<LedgerRow>
+        tableKey="ledger"
+        icon={<BookOutlined />}
+        title={`Ledger Entries (${data?.total ?? 0})`}
+        columns={columns}
+        rowKey="id"
+        onRefresh={() => refetch()}
+        refreshing={isFetching}
+        error={isError && !data ? error : null}
+        empty={{ description: query.search || query.entryType || query.vendorId ? 'No entries match these filters.' : 'No ledger entries found.' }}
+        tableProps={{
+          dataSource: data?.rows ?? [],
+          loading: isLoading,
+          pagination: { current: page, pageSize: size, total: data?.total ?? 0 },
+          onChange: (pagination) => set({ page: pagination.current, size: pagination.pageSize }),
+          summary: () =>
+            data && data.rows.length > 0 ? (
+              <Table.Summary fixed="bottom">
+                {!!query.from && (
+                  <Table.Summary.Row>
+                    <Table.Summary.Cell index={0} colSpan={4}>
+                      <Typography.Text type="secondary">Opening balance before {day(query.from)}</Typography.Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={4} colSpan={3} align="right">
+                      <Typography.Text strong>{money(opening)}</Typography.Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={7} colSpan={2} />
+                  </Table.Summary.Row>
+                )}
+                <Table.Summary.Row>
+                  <Table.Summary.Cell index={0} colSpan={4}>
+                    <Typography.Text strong>{rangeActive ? 'Totals for the selected dates' : 'Totals'}</Typography.Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={4} align="right">
+                    <Typography.Text type="success" strong>
+                      {money(totals?.debit)}
+                    </Typography.Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={5} align="right">
+                    <Typography.Text type="danger" strong>
+                      {money(totals?.credit)}
+                    </Typography.Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={6} align="right">
+                    <Tooltip title={query.from ? 'Opening balance + debit − credit' : 'Debit − credit'}>
+                      <Typography.Text strong>{money(opening + Number(totals?.net ?? 0))}</Typography.Text>
+                    </Tooltip>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={7} colSpan={2} />
+                </Table.Summary.Row>
+              </Table.Summary>
+            ) : null,
+        }}
+        renderMobile={(e) => (
+          <div style={{ width: '100%', border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, padding: 12 }}>
+            <Flex justify="space-between" gap={8}>
+              <Typography.Text strong>{e.particulars}</Typography.Text>
+              <Tag color={typeOf(e.entry_type)?.color} style={{ marginInlineEnd: 0 }}>
+                {typeOf(e.entry_type)?.label ?? e.entry_type}
+              </Tag>
+            </Flex>
+            <Flex justify="space-between" style={{ marginTop: 6 }}>
+              <Typography.Text type="secondary">{day(e.entry_date)}</Typography.Text>
+              {e.debit ? (
+                <Typography.Text type="success">+{money(e.debit)}</Typography.Text>
+              ) : (
+                <Typography.Text type="danger">−{money(e.credit)}</Typography.Text>
+              )}
+            </Flex>
+            {!combined && (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Balance {money(e.range_balance ?? e.balance)}
+              </Typography.Text>
+            )}
+          </div>
+        )}
+      />
 
-        <Card className="gap-2 py-4 sm:gap-6 sm:py-6">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0 sm:pb-2">
-            <CardTitle className="text-sm font-medium">{isAll ? 'Net, all businesses' : 'Current Balance'}</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold tabular-nums sm:text-2xl">{formatCurrency(stats.currentBalance)}</div>
-            <p className="text-xs text-muted-foreground mt-1" title="Total debit minus total credit for the dates shown">
-              {rangeActive ? 'Debit − credit · selected dates' : 'Debit − credit · all time'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="gap-2 py-4 sm:gap-6 sm:py-6">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-0 sm:pb-2">
-            <CardTitle className="text-sm font-medium">Total Entries</CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold tabular-nums sm:text-2xl">{stats.entryCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">{rangeActive ? 'In selected dates' : 'All transactions'}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Entries Table */}
-      {loadFailed && entries.length === 0 ? (
-        <ErrorState
-          title="Couldn't load the ledger"
-          detail={loadError instanceof Error ? loadError.message : undefined}
-          onRetry={() => fetchData()}
-        />
-      ) : (
-      <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Ledger Entries</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table stack="wide">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Particulars</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="text-right">Debit</TableHead>
-                <TableHead className="text-right">Credit</TableHead>
-                {isAll ? <TableHead>Business</TableHead> : <TableHead className="text-right">Balance</TableHead>}
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {entries.map((entry) => (
-                <TableRow key={entry.id}>
-                  <TableCell data-label="Date" className="font-medium">
-                    {formatDate(entry.entry_date)}
-                  </TableCell>
-                  <TableCell data-label="Particulars">
-                    <div>
-                      <div className="font-medium">{entry.particulars}</div>
-                      {entry.vendors && (
-                        <div className="text-xs text-muted-foreground">
-                          Vendor: {entry.vendors.name}
-                          {' · '}{entry.vendors?.vendor_categories?.name || 'Uncategorized'}
-                        </div>
-                      )}
-                      {entry.orders && (
-                        <div className="text-xs text-muted-foreground">
-                          Order: {entry.orders.order_number}
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell data-label="Type">{getEntryTypeBadge(entry.entry_type)}</TableCell>
-                  <TableCell data-label="Debit" className="text-right text-green-600">
-                    {entry.debit ? formatCurrency(entry.debit) : '-'}
-                  </TableCell>
-                  <TableCell data-label="Credit" className="text-right text-red-600">
-                    {entry.credit ? formatCurrency(entry.credit) : '-'}
-                  </TableCell>
-                  {isAll ? (
-                    <TableCell data-label="Business">
-                      {(entry as GeneralLedgerWithRelations & { business_name?: string | null }).business_name ?? '-'}
-                    </TableCell>
-                  ) : (
-                    <TableCell data-label="Balance" className="text-right font-medium">
-                      {formatCurrency(entry.calculatedBalance ?? entry.balance)}
-                    </TableCell>
-                  )}
-                  <TableCell data-label="Actions" className="text-right">
-                    {entry.entry_type !== 'order_payment' && !isAll && (
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEdit(entry)}
-                          aria-label="Edit ledger entry"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(entry)}
-                          aria-label="Delete ledger entry"
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-
-          {entries.length === 0 && !isLoading && (
-            <div className="text-center py-12 text-muted-foreground">
-              {debouncedSearch ? 'No entries match your search' : 'No ledger entries found'}
-            </div>
-          )}
-
-          {/* Pagination */}
-          {totalEntries > 0 && (
-            <div className="flex items-center justify-between pt-4">
-              <div className="text-sm text-muted-foreground">
-                Showing {startIndex + 1} to {Math.min(endIndex, totalEntries)} of {totalEntries} entries
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                >
-                  Previous
-                </Button>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter(page => {
-                      // Show first page, last page, current page, and pages around current
-                      return page === 1 || 
-                             page === totalPages || 
-                             (page >= currentPage - 1 && page <= currentPage + 1)
-                    })
-                    .map((page, index, array) => (
-                      <div key={page} className="flex items-center">
-                        {index > 0 && array[index - 1] !== page - 1 && (
-                          <span className="px-2 text-muted-foreground">...</span>
-                        )}
-                        <Button
-                          variant={currentPage === page ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setCurrentPage(page)}
-                        >
-                          {page}
-                        </Button>
-                      </div>
-                    ))
-                  }
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      </>
+      {combined && (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          All businesses: each business keeps its own book, so there is no running balance; rows show their business.
+        </Typography.Text>
       )}
 
-      <LedgerEntryDialog
-        open={dialogOpen}
-        onOpenChange={handleCloseDialog}
-        entry={editingEntry}
-        onSuccess={() => {
-          toast.success(editingEntry ? 'Ledger entry updated successfully' : 'Ledger entry created successfully')
-          handleCloseDialog()
-          // The dialog saves with its own request, so refresh the totals as well as the rows.
-          fetchData()
-          refetchStats()
-        }}
+      <LedgerEntryDrawer
+        open={drawer.open}
+        onClose={() => setDrawer({ open: false, entry: null })}
+        entry={drawer.entry}
+        onSaved={() => void refresh()}
       />
+    </Flex>
+  )
+}
 
-      <DeleteConfirmationDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
-        title="Delete Ledger Entry"
-        description="Are you sure you want to delete this ledger entry? This will also delete the corresponding vendor ledger entry if any."
-        onConfirm={confirmDelete}
-      />
-    </div>
-    </RoleGuard>
+export default function LedgerPage() {
+  return (
+    <CanAccess
+      resource="ledger"
+      action="list"
+      fallback={<Result status="403" title="403" subTitle="Sorry, you are not authorized to access this page." />}
+    >
+      <LedgerScreen />
+    </CanAccess>
   )
 }

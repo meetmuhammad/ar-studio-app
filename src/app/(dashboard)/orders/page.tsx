@@ -1,409 +1,281 @@
-"use client"
+'use client'
 
-import { ErrorState } from '@/components/dashboard/error-state'
-import { useState, useEffect } from "react"
-import { Button } from '@/components/ui/button'
-import { Plus } from 'lucide-react'
-import { useOrders, useCreateOrder, useUpdateOrder, useDeleteOrder } from '@/hooks/use-api'
+import { useMemo } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { CreateButton, List, getDefaultSortOrder, useTable } from '@refinedev/antd'
+import { useCan, type CrudFilter, type CrudSort, type HttpError } from '@refinedev/core'
+import { Button, Card, Flex, Form, Input, Select, Space, Tag, Tooltip, Typography } from 'antd'
+import { CheckCircleFilled, CloseCircleOutlined, PlusOutlined, SearchOutlined, ShoppingOutlined } from '@ant-design/icons'
+import dayjs from 'dayjs'
+import { DateRangeFilter, FilterBar, dateRangeItemProps } from '@/components/refine/filter-bar'
+import { ResourceTable, type ResourceColumn } from '@/components/refine/resource-table'
+import { RowActions } from '@/components/refine/row-actions'
+import { transparentContent, withSubtitle } from '@/components/refine/page-parts'
+import { deleteNotificationsFor } from '@/lib/refine/notifications'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Label } from '@/components/ui/label'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Eye, Pencil, Trash2, Search } from 'lucide-react'
+  ORDERS,
+  ORDER_LIST_SELECT,
+  ORDER_STATUSES,
+  PAYMENT_STATUS_COLOR,
+  STATUS_COLOR,
+  paymentSummary,
+  pkr,
+  type OrderRow,
+} from '@/components/orders/constants'
 
-import { OrderDialog } from '@/components/dialogs/order-dialog'
-import { OrderDetailsDialog } from '@/components/dialogs/order-details-dialog'
-import { DeleteConfirmationDialog } from '@/components/dialogs/delete-confirmation-dialog'
-import { CreateOrderInput } from '@/lib/validators'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import type { OrderWithCustomer } from '@/lib/supabase-client'
+const PAGE_SIZE = 20
+const ALL = 'all'
+const orderDeleteNotifications = deleteNotificationsFor('Order')
+const DELETE_DETAIL = 'Its items, payments and their ledger entries are removed too. This cannot be undone.'
 
-// The two orderings staff asked for. Each maps to a column + direction the
-// orders API accepts (see ORDER_SORT_COLUMNS in src/lib/validators.ts).
-const ORDER_SORTS = {
-  nearest_delivery: { label: 'Nearest delivery', sortBy: 'delivery_date', sortDir: 'asc' },
-  newest_order: { label: 'Newest order date', sortBy: 'booking_date', sortDir: 'desc' },
-} as const
-type OrderSort = keyof typeof ORDER_SORTS
+interface SearchValues {
+  /** Order number, or customer name / phone (virtual filter "q"). */
+  q?: string
+  status?: string
+  delivery_range?: [string, string]
+  booking_range?: [string, string]
+}
+
+const toFilters = ({ q, status, delivery_range, booking_range }: SearchValues): CrudFilter[] => [
+  { field: 'q', operator: 'contains', value: q?.trim() || undefined },
+  { field: 'status', operator: 'eq', value: status && status !== ALL ? status : undefined },
+  { field: 'delivery_range', operator: 'between', value: delivery_range },
+  { field: 'booking_range', operator: 'between', value: booking_range },
+]
+
+const mono = { fontFamily: 'var(--font-geist-mono), monospace' }
+const day = (value?: string | null) => (value ? dayjs(value).format('MMM D, YYYY') : '—')
+
+function PaymentCell({ order }: { order: OrderRow }) {
+  const s = paymentSummary(order, order.payments)
+  return (
+    <Tooltip title={`Paid ${pkr(s.paid)} · Balance ${pkr(s.balance)}`}>
+      <Tag color={PAYMENT_STATUS_COLOR[s.status]}>{s.status}</Tag>
+    </Tooltip>
+  )
+}
+
+function orderColumns(sorters: CrudSort[]): ResourceColumn<OrderRow>[] {
+  return [
+    {
+      key: 'order_number',
+      dataIndex: 'order_number',
+      title: 'Order #',
+      width: 120,
+      render: (value: string) => <Typography.Text strong style={mono}>{value}</Typography.Text>,
+    },
+    {
+      key: 'customer',
+      title: 'Customer',
+      width: 200,
+      render: (_, o) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text>{o.customers?.name}</Typography.Text>
+          <Typography.Text type="secondary" style={mono}>
+            {o.customers?.phone}
+          </Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      key: 'booking_date',
+      dataIndex: 'booking_date',
+      title: 'Booking Date',
+      sorter: true,
+      defaultSortOrder: getDefaultSortOrder('booking_date', sorters),
+      width: 140,
+      defaultHidden: true,
+      render: (value: string) => day(value),
+    },
+    {
+      key: 'delivery_date',
+      dataIndex: 'delivery_date',
+      title: 'Delivery Date',
+      sorter: true,
+      defaultSortOrder: getDefaultSortOrder('delivery_date', sorters),
+      width: 140,
+      render: (value: string | null, o) => {
+        const late = value && o.status === 'In Process' && dayjs(value).isBefore(dayjs(), 'day')
+        return <Typography.Text type={late ? 'danger' : undefined}>{day(value)}</Typography.Text>
+      },
+    },
+    {
+      key: 'status',
+      dataIndex: 'status',
+      title: 'Status',
+      width: 120,
+      render: (value: string) => <Tag color={STATUS_COLOR[value]}>{value}</Tag>,
+    },
+    {
+      key: 'total_amount',
+      dataIndex: 'total_amount',
+      title: 'Total Amount',
+      align: 'right',
+      width: 150,
+      render: (value: number | null) => <Typography.Text strong>{pkr(value || 0)}</Typography.Text>,
+    },
+    { key: 'payment', title: 'Payment', width: 110, render: (_, o) => <PaymentCell order={o} /> },
+    {
+      key: 'measurements',
+      title: 'Measurements',
+      width: 130,
+      defaultHidden: true,
+      render: (_, o) =>
+        o.measurement_id ? (
+          <CheckCircleFilled style={{ color: 'var(--ant-color-success, #52c41a)' }} aria-label="Linked" />
+        ) : (
+          <CloseCircleOutlined aria-label="None" />
+        ),
+    },
+    {
+      key: 'comments',
+      dataIndex: 'comments',
+      title: 'Comments',
+      ellipsis: true,
+      width: 220,
+      defaultHidden: true,
+      render: (value: string | null) => <Typography.Text type="secondary">{value || 'No comments'}</Typography.Text>,
+    },
+    {
+      key: 'created_at',
+      dataIndex: 'created_at',
+      title: 'Created',
+      sorter: true,
+      defaultSortOrder: getDefaultSortOrder('created_at', sorters),
+      width: 130,
+      defaultHidden: true,
+      render: (value: string) => day(value),
+    },
+    {
+      key: 'actions',
+      title: 'Actions',
+      fixed: 'right',
+      fixedVisible: true,
+      width: 130,
+      render: (_, o) => (
+        <RowActions
+          resource={ORDERS}
+          id={o.id}
+          label={`order ${o.order_number}`}
+          basePath="/orders"
+          deleteDescription={DELETE_DETAIL}
+          deleteNotifications={orderDeleteNotifications}
+        />
+      ),
+    },
+  ]
+}
 
 export default function OrdersPage() {
-  const [statusFilter, setStatusFilter] = useState<string>('In Process')
-  const [sort, setSort] = useState<OrderSort>('nearest_delivery')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 20
-  
-  // React Query hooks
-  const { data: ordersData, isLoading: loading, isError: loadFailed, error: loadError, refetch: fetchOrders } = useOrders({
-    page: currentPage,
-    pageSize: itemsPerPage,
-    status: statusFilter,
-    q: debouncedSearch,
-    sortBy: ORDER_SORTS[sort].sortBy,
-    sortDir: ORDER_SORTS[sort].sortDir,
+  const router = useRouter()
+  const { data: canCreate } = useCan({ resource: ORDERS, action: 'create' })
+  const { tableProps, searchFormProps, sorters, filters, tableQuery } = useTable<OrderRow, HttpError, SearchValues>({
+    resource: ORDERS,
+    pagination: { pageSize: PAGE_SIZE },
+    // Previous default: nearest delivery first, In Process only.
+    sorters: { initial: [{ field: 'delivery_date', order: 'asc' }] },
+    filters: { initial: [{ field: 'status', operator: 'eq', value: 'In Process' }] },
+    meta: { select: ORDER_LIST_SELECT },
+    onSearch: toFilters,
+    syncWithLocation: true,
   })
-  const createOrder = useCreateOrder()
-  const updateOrder = useUpdateOrder()
-  const deleteOrder = useDeleteOrder()
-  
-  const orders = ordersData?.data || []
-  const totalOrders = ordersData?.pagination?.total || 0
-  const totalPages = ordersData?.pagination?.pages || 1
-  
-  // Dialog states
-  const [orderDialog, setOrderDialog] = useState<{
-    open: boolean
-    order?: OrderWithCustomer | null
-  }>({ open: false, order: null })
-  
-  const [detailsDialog, setDetailsDialog] = useState<{
-    open: boolean
-    order: OrderWithCustomer | null
-  }>({ open: false, order: null })
-  
-  const [deleteDialog, setDeleteDialog] = useState<{
-    open: boolean
-    order?: OrderWithCustomer | null
-  }>({ open: false, order: null })
 
-  // Search on Enter key press — search across all statuses
-  const handleSearchSubmit = () => {
-    setDebouncedSearch(searchQuery)
-    if (searchQuery.trim()) setStatusFilter('all')
-    setCurrentPage(1)
-  }
-
-  // Listen for order creation events from header
-  useEffect(() => {
-    const handleOrderCreated = () => fetchOrders()
-    window.addEventListener('orderCreated', handleOrderCreated)
-    return () => window.removeEventListener('orderCreated', handleOrderCreated)
-  }, [fetchOrders])
-
-  // Handle create order
-  const handleCreateOrder = async (data: CreateOrderInput) => {
-    await createOrder.mutateAsync(data)
-  }
-
-  // Handle update order
-  const handleUpdateOrder = async (data: CreateOrderInput) => {
-    if (!orderDialog.order) return
-    await updateOrder.mutateAsync({ id: orderDialog.order.id, data })
-  }
-
-  // Handle delete order
-  const handleDeleteOrder = async () => {
-    if (!deleteDialog.order) return
-    await deleteOrder.mutateAsync(deleteDialog.order.id)
-  }
-
-  // Column actions
-  const handleView = (order: OrderWithCustomer) => {
-    setDetailsDialog({ open: true, order })
-  }
-
-  const handleEdit = (order: OrderWithCustomer) => {
-    setOrderDialog({ open: true, order })
-  }
-
-  const handleDelete = (order: OrderWithCustomer) => {
-    setDeleteDialog({ open: true, order })
-  }
-
-  const handleRowClick = (order: OrderWithCustomer) => {
-    setDetailsDialog({ open: true, order })
-  }
-
-  // Server handles pagination, filtering, and sorting — just use orders directly
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = Math.min(startIndex + orders.length, startIndex + itemsPerPage)
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PK', {
-      style: 'currency',
-      currency: 'PKR',
-    }).format(amount)
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    })
-  }
-
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
-      'In Process': 'default',
-      'Delivered': 'secondary',
-      'Cancelled': 'destructive',
-    }
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>
-  }
-
-  // Reset to first page when status or sort change (search is handled in debounce)
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [statusFilter, sort])
-
-  if (loading && orders.length === 0) {
-    return (
-      <div className="space-y-4 sm:space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Orders</h2>
-            <p className="text-sm sm:text-base text-muted-foreground">Manage all orders and measurements.</p>
-          </div>
-          <Button disabled size="sm" className="w-full sm:w-auto">
-            <Plus className="h-4 w-4 mr-2" />
-            New Order
-          </Button>
-        </div>
-        <div className="bg-card rounded-lg border p-4 sm:p-6">
-          <p className="text-sm sm:text-base text-muted-foreground">Loading orders...</p>
-        </div>
-      </div>
-    )
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const columns = useMemo(() => orderColumns(sorters), [])
+  const filtering = filters.some((f) => 'field' in f && f.field !== 'status' && f.value !== undefined && f.value !== '')
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Orders</h2>
-          <p className="text-sm sm:text-base text-muted-foreground">Manage all orders and measurements.</p>
-        </div>
-        <Button onClick={() => setOrderDialog({ open: true, order: null })} size="sm" className="w-full sm:w-auto">
-          <Plus className="h-4 w-4 mr-2" />
+    <List
+      title="Orders"
+      headerProps={withSubtitle('Manage all orders, measurements and payments.')}
+      headerButtons={
+        <CreateButton type="primary" icon={<PlusOutlined />}>
           New Order
-        </Button>
-      </div>
+        </CreateButton>
+      }
+      contentProps={transparentContent}
+    >
+      <FilterBar
+        formProps={{
+          ...searchFormProps,
+          // Searching looks across every status, as before.
+          onValuesChange: (changed: Partial<SearchValues>) => {
+            if (changed.q?.trim()) searchFormProps.form?.setFieldValue('status', ALL)
+          },
+        }}
+        label="Order filters"
+      >
+        <Form.Item name="q" label="Order number or customer">
+          <Input allowClear prefix={<SearchOutlined />} placeholder="e.g. AR-00042, Ayesha or 0300" />
+        </Form.Item>
+        <Form.Item name="status" label="Status" initialValue="In Process">
+          <Select
+            aria-label="Status"
+            options={[{ value: ALL, label: 'All Orders' }, ...ORDER_STATUSES.map((s) => ({ value: s, label: s }))]}
+          />
+        </Form.Item>
+        <Form.Item name="delivery_range" label="Delivery date" {...dateRangeItemProps}>
+          <DateRangeFilter aria-label="Delivery between" />
+        </Form.Item>
+        <Form.Item name="booking_range" label="Booking date" {...dateRangeItemProps}>
+          <DateRangeFilter aria-label="Booked between" />
+        </Form.Item>
+      </FilterBar>
 
-      {/* Search Bar */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search by order number, customer name, or phone... (press Enter)"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSearchSubmit()}
-          className="pl-10"
-        />
-      </div>
-
-      {loadFailed && orders.length === 0 ? (
-        <ErrorState
-          title="Couldn't load orders"
-          detail={loadError instanceof Error ? loadError.message : undefined}
-          onRetry={() => fetchOrders()}
-        />
-      ) : (
-      <>
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <CardTitle>All Orders ({totalOrders})</CardTitle>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Label htmlFor="status-filter" className="text-sm font-normal whitespace-nowrap">Status:</Label>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger id="status-filter" className="w-full sm:w-[180px]">
-                    <SelectValue placeholder="All Orders" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Orders</SelectItem>
-                    <SelectItem value="In Process">In Process</SelectItem>
-                    <SelectItem value="Delivered">Delivered</SelectItem>
-                    <SelectItem value="Cancelled">Cancelled</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Label htmlFor="order-sort" className="text-sm font-normal whitespace-nowrap">Sort:</Label>
-                <Select value={sort} onValueChange={(v) => setSort(v as OrderSort)}>
-                  <SelectTrigger id="order-sort" className="w-full sm:w-[190px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(ORDER_SORTS) as OrderSort[]).map((key) => (
-                      <SelectItem key={key} value={key}>{ORDER_SORTS[key].label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Table stack>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Order #</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Delivery Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Total Amount</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {orders.map((order) => (
-                <TableRow 
-                  key={order.id} 
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => handleRowClick(order)}
-                >
-                  <TableCell data-label="Order #" className="font-medium">{order.order_number}</TableCell>
-                  <TableCell data-label="Customer">
-                    <div>
-                      <div className="font-medium">{order.customers.name}</div>
-                      <div className="text-xs text-muted-foreground">{order.customers.phone}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell data-label="Delivery Date">{formatDate(order.delivery_date)}</TableCell>
-                  <TableCell data-label="Status">{getStatusBadge(order.status)}</TableCell>
-                  <TableCell data-label="Total Amount" className="text-right font-medium">
-                    {formatCurrency(order.total_amount || 0)}
-                  </TableCell>
-                  <TableCell data-label="Actions" className="text-right">
-                    <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleView(order)}
-                        aria-label={`View order ${order.order_number}`}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(order)}
-                        aria-label={`Edit order ${order.order_number}`}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(order)}
-                        aria-label={`Delete order ${order.order_number}`}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-
-          {orders.length === 0 && !loading && (
-            <div className="text-center py-12 text-muted-foreground">
-              No orders found
-            </div>
-          )}
-
-          {/* Pagination */}
-          {totalOrders > 0 && (
-            <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-muted-foreground">
-                Showing {startIndex + 1} to {Math.min(endIndex, totalOrders)} of {totalOrders} orders
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 sm:flex-none"
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                >
-                  Previous
+      <ResourceTable<OrderRow>
+        tableKey="orders"
+        icon={<ShoppingOutlined />}
+        title={`All Orders (${tableQuery.data?.total ?? 0})`}
+        columns={columns}
+        tableProps={tableProps}
+        rowKey="id"
+        onRefresh={() => tableQuery.refetch()}
+        refreshing={tableQuery.isFetching}
+        error={tableQuery.isError && !tableQuery.data ? tableQuery.error : null}
+        empty={{
+          description: filtering ? 'No orders match these filters.' : 'No orders found.',
+          action:
+            !filtering && canCreate?.can ? (
+              <Link href="/orders/create">
+                <Button type="primary" icon={<PlusOutlined />}>
+                  New Order
                 </Button>
-                {/* Phones: "Page x of y" instead of a row of page buttons. */}
-                <span className="px-2 text-sm tabular-nums text-muted-foreground sm:hidden" aria-live="polite">
-                  Page {currentPage} of {totalPages}
-                </span>
-                <div className="hidden items-center gap-1 sm:flex">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter(page => {
-                      // Show first page, last page, current page, and pages around current
-                      return page === 1 || 
-                             page === totalPages || 
-                             (page >= currentPage - 1 && page <= currentPage + 1)
-                    })
-                    .map((page, index, array) => (
-                      <div key={page} className="flex items-center">
-                        {index > 0 && array[index - 1] !== page - 1 && (
-                          <span className="px-2 text-muted-foreground">...</span>
-                        )}
-                        <Button
-                          variant={currentPage === page ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setCurrentPage(page)}
-                        >
-                          {page}
-                        </Button>
-                      </div>
-                    ))
-                  }
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 sm:flex-none"
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      </>
-      )}
-
-      {/* Create/Edit Order Dialog */}
-      <OrderDialog
-        open={orderDialog.open}
-        onOpenChange={(open) => setOrderDialog({ open, order: null })}
-        order={orderDialog.order}
-        onSubmit={orderDialog.order ? handleUpdateOrder : handleCreateOrder}
+              </Link>
+            ) : undefined,
+        }}
+        onRow={(o) => ({ onClick: () => router.push(`/orders/show/${o.id}`), style: { cursor: 'pointer' } })}
+        renderMobile={(o) => (
+          <Card size="small" hoverable style={{ width: '100%' }} onClick={() => router.push(`/orders/show/${o.id}`)}>
+            <Space direction="vertical" size={4} style={{ width: '100%' }}>
+              <Flex justify="space-between" align="start" gap={8}>
+                <Typography.Text strong style={mono}>
+                  {o.order_number}
+                </Typography.Text>
+                <Tag color={STATUS_COLOR[o.status]} style={{ marginInlineEnd: 0 }}>
+                  {o.status}
+                </Tag>
+              </Flex>
+              <Typography.Text>{o.customers?.name}</Typography.Text>
+              <Flex justify="space-between" gap={8}>
+                <Typography.Text type="secondary">Delivery {day(o.delivery_date)}</Typography.Text>
+                <Typography.Text strong>{pkr(o.total_amount || 0)}</Typography.Text>
+              </Flex>
+              <Flex justify="space-between" align="center">
+                <PaymentCell order={o} />
+                <RowActions
+                  resource={ORDERS}
+                  id={o.id}
+                  label={`order ${o.order_number}`}
+                  basePath="/orders"
+                  deleteDescription={DELETE_DETAIL}
+                  deleteNotifications={orderDeleteNotifications}
+                />
+              </Flex>
+            </Space>
+          </Card>
+        )}
       />
-
-      {/* Order Details Dialog */}
-      <OrderDetailsDialog
-        open={detailsDialog.open}
-        onOpenChange={(open) => setDetailsDialog({ open, order: open ? detailsDialog.order : null })}
-        order={detailsDialog.order}
-      />
-
-      {/* Delete Confirmation Dialog */}
-      <DeleteConfirmationDialog
-        open={deleteDialog.open}
-        onOpenChange={(open) => setDeleteDialog({ open, order: null })}
-        title="Delete Order"
-        description={`Are you sure you want to delete order ${deleteDialog.order?.order_number}? This action cannot be undone.`}
-        onConfirm={handleDeleteOrder}
-      />
-    </div>
+    </List>
   )
 }

@@ -139,11 +139,12 @@ export async function PUT(
   }
 }
 
+// Admin only, as in RLS (20261119000000).
 export async function DELETE(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const scope = await requireBusiness(request);
+  const scope = await requireBusiness(request, { roles: ['admin'] });
   if (scope instanceof NextResponse) return scope;
 
   try {

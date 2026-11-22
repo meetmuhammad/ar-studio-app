@@ -1,226 +1,200 @@
-"use client"
+'use client'
 
-import { ErrorState } from '@/components/dashboard/error-state'
-import { useState, useRef } from "react"
-import { Button } from '@/components/ui/button'
-import { Plus } from 'lucide-react'
-import { useCustomers, useCreateCustomer, useUpdateCustomer, useDeleteCustomer } from '@/hooks/use-api'
+import { useMemo } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { CreateButton, List, getDefaultSortOrder, useTable } from '@refinedev/antd'
+import { useCan, type CrudFilter, type CrudSort, type HttpError } from '@refinedev/core'
+import { Button, Card, Form, Input, Space, Tag, Typography } from 'antd'
+import { PlusOutlined, SearchOutlined, TeamOutlined } from '@ant-design/icons'
+import dayjs from 'dayjs'
+import { FilterBar, DateRangeFilter, dateRangeItemProps } from '@/components/refine/filter-bar'
+import { ResourceTable, type ResourceColumn } from '@/components/refine/resource-table'
+import { RowActions } from '@/components/refine/row-actions'
+import { transparentContent, withSubtitle } from '@/components/refine/page-parts'
+import { deleteNotifications } from '@/components/customers/customer-form-fields'
+import { CUSTOMERS, CUSTOMER_LIST_SELECT, orderCount, type CustomerRow } from '@/components/customers/types'
 
-import { DataTable } from '@/components/data-table/data-table'
-import { createCustomerColumns } from '@/components/data-table/columns/customer-columns'
-import { CustomerDialog } from '@/components/dialogs/customer-dialog'
-import { CustomerDetailDialog } from '@/components/dialogs/customer-detail-dialog'
-import { DeleteConfirmationDialog } from '@/components/dialogs/delete-confirmation-dialog'
-import { CreateCustomerInput } from '@/lib/validators'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import type { Customer } from '@/lib/supabase-client'
+const PAGE_SIZE = 20
 
-interface CustomerWithOrderCount extends Customer {
-  orders?: { count: number }
+interface SearchValues {
+  /** Name or phone contains (virtual filter "q"). */
+  q?: string
+  /** [startIso, endIso] (virtual filter "created_range"). */
+  created_range?: [string, string]
+}
+
+/**
+ * Filter-form values -> filters. The field names are the data provider's
+ * virtual filters, so Refine's URL sync restores the form as typed.
+ */
+const toFilters = ({ q, created_range }: SearchValues): CrudFilter[] => [
+  { field: 'q', operator: 'contains', value: q?.trim() || undefined },
+  { field: 'created_range', operator: 'between', value: created_range },
+]
+
+const mono = { fontFamily: 'var(--font-geist-mono), monospace' }
+
+function customerColumns(sorters: CrudSort[]): ResourceColumn<CustomerRow>[] {
+  return [
+    {
+      key: 'name',
+      dataIndex: 'name',
+      title: 'Name',
+      sorter: true,
+      defaultSortOrder: getDefaultSortOrder('name', sorters),
+      width: 200,
+      render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
+    },
+    {
+      key: 'phone',
+      dataIndex: 'phone',
+      title: 'Phone',
+      width: 170,
+      onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
+      render: (value: string) => <Typography.Text style={mono}>{value}</Typography.Text>,
+    },
+    {
+      key: 'address',
+      dataIndex: 'address',
+      title: 'Address',
+      ellipsis: true,
+      width: 240,
+      render: (value: string | null) => <Typography.Text type="secondary">{value || 'No address'}</Typography.Text>,
+    },
+    {
+      key: 'orders',
+      title: 'Orders',
+      width: 110,
+      render: (_, record) => {
+        const count = orderCount(record)
+        return <Tag color={count > 0 ? 'blue' : 'default'}>{count} order{count !== 1 ? 's' : ''}</Tag>
+      },
+    },
+    {
+      key: 'created_at',
+      dataIndex: 'created_at',
+      title: 'Created',
+      sorter: true,
+      defaultSortOrder: getDefaultSortOrder('created_at', sorters),
+      width: 140,
+      render: (value: string) => <Typography.Text type="secondary">{dayjs(value).format('MMM D, YYYY')}</Typography.Text>,
+    },
+    {
+      key: 'actions',
+      title: 'Actions',
+      fixed: 'right',
+      fixedVisible: true,
+      width: 130,
+      render: (_, record) => (
+        <RowActions
+          resource={CUSTOMERS}
+          id={record.id}
+          label={record.name}
+          basePath="/customers"
+          deleteNotifications={deleteNotifications}
+        />
+      ),
+    },
+  ]
 }
 
 export default function CustomersPage() {
-  const [currentPage, setCurrentPage] = useState(1)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null)
-  const pageSize = 20
-  
-  // React Query hooks
-  const { data: customersData, isLoading: loading, isError: loadFailed, error: loadError, refetch: refetchCustomers } = useCustomers({
-    page: currentPage,
-    pageSize,
-    q: debouncedSearch,
-  })
-  const createCustomerMutation = useCreateCustomer()
-  const updateCustomerMutation = useUpdateCustomer()
-  const deleteCustomerMutation = useDeleteCustomer()
-  
-  const customers = (customersData?.data || []) as CustomerWithOrderCount[]
-  const totalCustomers = customersData?.pagination?.total || 0
-  const totalPages = customersData?.pagination?.pages || 1
-  
-  // Dialog states
-  const [customerDialog, setCustomerDialog] = useState<{
-    open: boolean
-    customer?: CustomerWithOrderCount | null
-  }>({ open: false, customer: null })
-  
-  const [deleteDialog, setDeleteDialog] = useState<{
-    open: boolean
-    customer?: CustomerWithOrderCount | null
-  }>({ open: false, customer: null })
-  
-  const [detailDialog, setDetailDialog] = useState<{
-    open: boolean
-    customer?: CustomerWithOrderCount | null
-  }>({ open: false, customer: null })
-
-  // Debounce search input
-  const handleSearchChange = (value: string) => {
-    setSearchQuery(value)
-    if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    debounceTimer.current = setTimeout(() => {
-      setDebouncedSearch(value)
-      setCurrentPage(1)
-    }, 300)
-  }
-
-  // Handle create customer
-  const handleCreateCustomer = async (data: CreateCustomerInput) => {
-    await createCustomerMutation.mutateAsync(data)
-  }
-
-  // Handle update customer
-  const handleUpdateCustomer = async (data: CreateCustomerInput) => {
-    if (!customerDialog.customer) return
-    await updateCustomerMutation.mutateAsync({ id: customerDialog.customer.id, data })
-  }
-
-  // Handle delete customer
-  const handleDeleteCustomer = async () => {
-    if (!deleteDialog.customer) return
-    await deleteCustomerMutation.mutateAsync(deleteDialog.customer.id)
-  }
-
-  // Column actions
-  const handleEdit = (customer: CustomerWithOrderCount) => {
-    setCustomerDialog({ open: true, customer })
-  }
-
-  const handleDelete = (customer: CustomerWithOrderCount) => {
-    setDeleteDialog({ open: true, customer })
-  }
-
-  const handleRowClick = (customer: CustomerWithOrderCount) => {
-    setDetailDialog({ open: true, customer })
-  }
-
-  const columns = createCustomerColumns({
-    onEdit: handleEdit,
-    onDelete: handleDelete,
-    onRowClick: handleRowClick,
+  const router = useRouter()
+  const { data: canCreate } = useCan({ resource: CUSTOMERS, action: 'create' })
+  const { tableProps, searchFormProps, sorters, filters, tableQuery } = useTable<CustomerRow, HttpError, SearchValues>({
+    resource: CUSTOMERS,
+    pagination: { pageSize: PAGE_SIZE },
+    sorters: { initial: [{ field: 'created_at', order: 'desc' }] },
+    meta: { select: CUSTOMER_LIST_SELECT },
+    onSearch: toFilters,
+    syncWithLocation: true,
   })
 
-  if (loading && customers.length === 0) {
-    return (
-      <div className="space-y-4 sm:space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Customers</h2>
-            <p className="text-sm sm:text-base text-muted-foreground">Manage all customers and their information.</p>
-          </div>
-          <Button disabled size="sm" className="w-full sm:w-auto">
-            <Plus className="h-4 w-4 mr-2" />
-            New Customer
-          </Button>
-        </div>
-        <div className="bg-card rounded-lg border p-4 sm:p-6">
-          <p className="text-sm sm:text-base text-muted-foreground">Loading customers...</p>
-        </div>
-      </div>
-    )
-  }
+  // Columns depend only on the initial sort; antd keeps the live sort state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const columns = useMemo(() => customerColumns(sorters), [])
+  const filtering = filters.some((f) => 'field' in f && f.value !== undefined && f.value !== '')
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Customers</h2>
-          <p className="text-sm sm:text-base text-muted-foreground">Manage all customers and their information.</p>
-        </div>
-        <Button onClick={() => setCustomerDialog({ open: true, customer: null })} size="sm" className="w-full sm:w-auto">
-          <Plus className="h-4 w-4 mr-2" />
+    <List
+      title="Customers"
+      headerProps={withSubtitle('Manage all customers and their information.')}
+      headerButtons={
+        <CreateButton type="primary" icon={<PlusOutlined />}>
           New Customer
-        </Button>
-      </div>
+        </CreateButton>
+      }
+      contentProps={transparentContent}
+    >
+      <FilterBar formProps={searchFormProps} label="Customer filters">
+        <Form.Item name="q" label="Name or phone">
+          <Input allowClear prefix={<SearchOutlined />} placeholder="e.g. Ayesha or 0300" />
+        </Form.Item>
+        <Form.Item name="created_range" label="Created" {...dateRangeItemProps}>
+          <DateRangeFilter aria-label="Created between" />
+        </Form.Item>
+      </FilterBar>
 
-      {/* Search Bar */}
-      <div className="relative">
-        <input
-          type="text"
-          placeholder="Search customers by name or phone..."
-          value={searchQuery}
-          onChange={(e) => handleSearchChange(e.target.value)}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 pl-10 text-sm pointer-coarse:h-11 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
-        <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-      </div>
-
-      {loadFailed && customers.length === 0 ? (
-        <ErrorState
-          title="Couldn't load customers"
-          detail={loadError instanceof Error ? loadError.message : undefined}
-          onRetry={() => refetchCustomers()}
-        />
-      ) : (
-      <>
-      <Card>
-        <CardHeader>
-          <CardTitle>All Customers ({totalCustomers})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DataTable
-            columns={columns}
-            data={customers}
-            searchPlaceholder="Filter this page..."
-            onRowClick={handleRowClick}
-          />
-
-          {/* Server-side Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-4">
-              <div className="text-sm text-muted-foreground">
-                Page {currentPage} of {totalPages} ({totalCustomers} total)
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                >
-                  Previous
+      <ResourceTable<CustomerRow>
+        tableKey="customers"
+        icon={<TeamOutlined />}
+        title={`All Customers (${tableQuery.data?.total ?? 0})`}
+        columns={columns}
+        tableProps={tableProps}
+        rowKey="id"
+        onRefresh={() => tableQuery.refetch()}
+        refreshing={tableQuery.isFetching}
+        error={tableQuery.isError && !tableQuery.data ? tableQuery.error : null}
+        empty={{
+          description: filtering ? 'No customers match these filters.' : 'No customers yet.',
+          action:
+            !filtering && canCreate?.can ? (
+              <Link href="/customers/create">
+                <Button type="primary" icon={<PlusOutlined />}>
+                  New Customer
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      </>
-      )}
-
-      {/* Create/Edit Customer Dialog */}
-      <CustomerDialog
-        open={customerDialog.open}
-        onOpenChange={(open) => setCustomerDialog({ open, customer: null })}
-        customer={customerDialog.customer}
-        onSubmit={customerDialog.customer ? handleUpdateCustomer : handleCreateCustomer}
+              </Link>
+            ) : undefined,
+        }}
+        onRow={(record) => ({
+          onClick: () => router.push(`/customers/show/${record.id}`),
+          style: { cursor: 'pointer' },
+        })}
+        renderMobile={(record) => (
+          <Card
+            size="small"
+            style={{ width: '100%' }}
+            hoverable
+            onClick={() => router.push(`/customers/show/${record.id}`)}
+          >
+            <Space direction="vertical" size={2} style={{ width: '100%' }}>
+              <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start">
+                <Typography.Text strong>{record.name}</Typography.Text>
+                <Tag color={orderCount(record) > 0 ? 'blue' : 'default'}>
+                  {orderCount(record)} order{orderCount(record) !== 1 ? 's' : ''}
+                </Tag>
+              </Space>
+              <Typography.Text style={mono}>{record.phone}</Typography.Text>
+              <Typography.Text type="secondary" ellipsis>
+                {record.address || 'No address'}
+              </Typography.Text>
+              <Space style={{ width: '100%', justifyContent: 'space-between', marginTop: 6 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {dayjs(record.created_at).format('MMM D, YYYY')}
+                </Typography.Text>
+                <RowActions
+                  resource={CUSTOMERS}
+                  id={record.id}
+                  label={record.name}
+                  basePath="/customers"
+                  deleteNotifications={deleteNotifications}
+                />
+              </Space>
+            </Space>
+          </Card>
+        )}
       />
-
-      {/* Customer Detail Dialog */}
-      <CustomerDetailDialog
-        open={detailDialog.open}
-        onOpenChange={(open) => setDetailDialog({ open, customer: null })}
-        customer={detailDialog.customer || null}
-      />
-
-      {/* Delete Confirmation Dialog */}
-      <DeleteConfirmationDialog
-        open={deleteDialog.open}
-        onOpenChange={(open) => setDeleteDialog({ open, customer: null })}
-        title="Delete Customer"
-        description={`Are you sure you want to delete ${deleteDialog.customer?.name}? This action cannot be undone.`}
-        onConfirm={handleDeleteCustomer}
-      />
-    </div>
+    </List>
   )
 }

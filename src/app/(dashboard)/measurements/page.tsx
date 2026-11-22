@@ -1,272 +1,210 @@
-"use client";
+'use client'
 
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { DataTable } from "@/components/data-table/data-table";
-import { MeasurementForm } from "@/components/forms/measurement-form";
-import { createMeasurementColumns } from "@/components/tables/measurement-columns";
-import { Measurement, MeasurementFormValues } from "@/types/measurements";
-import { Customer } from "@/lib/supabase-client";
-import { Plus, Ruler } from "lucide-react";
-import { toast } from "sonner";
-import { authFetch } from '@/lib/auth-fetch';
+import { useMemo } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { CreateButton, List, getDefaultSortOrder, useTable } from '@refinedev/antd'
+import { useCan, type CrudFilter, type CrudSort, type HttpError } from '@refinedev/core'
+import { Button, Card, Form, Input, Space, Tag, Typography } from 'antd'
+import { ColumnHeightOutlined, PlusOutlined, SearchOutlined, StarFilled, UserOutlined } from '@ant-design/icons'
+import dayjs from 'dayjs'
+import { DateRangeFilter, FilterBar, dateRangeItemProps } from '@/components/refine/filter-bar'
+import { ResourceTable, type ResourceColumn } from '@/components/refine/resource-table'
+import { RowActions } from '@/components/refine/row-actions'
+import { transparentContent, withSubtitle } from '@/components/refine/page-parts'
+import { measurementDeleteNotifications } from '@/components/measurements/measurement-form-fields'
+import { MEASUREMENTS, MEASUREMENT_SELECT, formatReading, type MeasurementRow } from '@/components/measurements/types'
 
+const PAGE_SIZE = 20
+const DELETE_DETAIL = 'This action cannot be undone and may affect related orders.'
+
+interface SearchValues {
+  /** Customer name or phone contains (virtual filter "customer"). */
+  customer?: string
+  /** Measurement set name contains (virtual filter "q"). */
+  q?: string
+  /** [startIso, endIso] (virtual filter "created_range"). */
+  created_range?: [string, string]
+}
+
+const toFilters = ({ customer, q, created_range }: SearchValues): CrudFilter[] => [
+  { field: 'customer', operator: 'contains', value: customer?.trim() || undefined },
+  { field: 'q', operator: 'contains', value: q?.trim() || undefined },
+  { field: 'created_range', operator: 'between', value: created_range },
+]
+
+const mono = { fontFamily: 'var(--font-geist-mono), monospace' }
+
+/** Key readings, available from column settings (hidden by default). */
+const READING_COLUMNS = (['chest', 'waist', 'shoulder', 'sleeves'] as const).map(
+  (key): ResourceColumn<MeasurementRow> => ({
+    key,
+    title: key.charAt(0).toUpperCase() + key.slice(1),
+    width: 100,
+    defaultHidden: true,
+    render: (_, record) => <Typography.Text style={mono}>{formatReading(record, key)}</Typography.Text>,
+  })
+)
+
+function measurementColumns(sorters: CrudSort[]): ResourceColumn<MeasurementRow>[] {
+  return [
+    {
+      key: 'customer',
+      title: 'Customer',
+      width: 220,
+      render: (_, record) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text strong>{record.customer?.name ?? '—'}</Typography.Text>
+          <Typography.Text type="secondary" style={mono}>
+            {record.customer?.phone}
+          </Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      key: 'name',
+      dataIndex: 'name',
+      title: 'Measurement Name',
+      sorter: true,
+      defaultSortOrder: getDefaultSortOrder('name', sorters),
+      width: 260,
+      render: (_, record) => (
+        <Space size={6} wrap>
+          <span>{record.name}</span>
+          {record.is_default && (
+            <Tag icon={<StarFilled />} color="gold">
+              Default
+            </Tag>
+          )}
+        </Space>
+      ),
+    },
+    ...READING_COLUMNS,
+    {
+      key: 'created_at',
+      dataIndex: 'created_at',
+      title: 'Created',
+      sorter: true,
+      defaultSortOrder: getDefaultSortOrder('created_at', sorters),
+      width: 140,
+      render: (value: string) => <Typography.Text type="secondary">{dayjs(value).format('MMM D, YYYY')}</Typography.Text>,
+    },
+    {
+      key: 'actions',
+      title: 'Actions',
+      fixed: 'right',
+      fixedVisible: true,
+      width: 130,
+      render: (_, record) => (
+        <RowActions
+          resource={MEASUREMENTS}
+          id={record.id}
+          label={record.name}
+          basePath="/measurements"
+          deleteDescription={DELETE_DETAIL}
+          deleteNotifications={measurementDeleteNotifications}
+        />
+      ),
+    },
+  ]
+}
 
 export default function MeasurementsPage() {
-  const [measurements, setMeasurements] = useState<Measurement[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  
-  // Modal states
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [showEditDialog, setShowEditDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [selectedMeasurement, setSelectedMeasurement] = useState<Measurement | null>(null);
+  const router = useRouter()
+  const { data: canCreate } = useCan({ resource: MEASUREMENTS, action: 'create' })
+  const { tableProps, searchFormProps, sorters, filters, tableQuery } = useTable<MeasurementRow, HttpError, SearchValues>({
+    resource: MEASUREMENTS,
+    pagination: { pageSize: PAGE_SIZE },
+    sorters: { initial: [{ field: 'created_at', order: 'desc' }] },
+    meta: { select: MEASUREMENT_SELECT },
+    onSearch: toFilters,
+    syncWithLocation: true,
+  })
 
-  // Fetch measurements with server-side pagination
-  const fetchMeasurements = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams({
-        page: '1',
-        limit: '100', // Measurements are lightweight, 100 per page is fine
-      });
-      const response = await authFetch(`/api/measurements?${params}`);
-      if (!response.ok) throw new Error("Failed to fetch measurements");
-      
-      const data = await response.json();
-      setMeasurements(data.measurements || []);
-    } catch (error) {
-      console.error("Error fetching measurements:", error);
-      toast.error("Failed to load measurements");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Fetch customers for the form (only id, name, phone needed)
-  const fetchCustomers = async () => {
-    try {
-      const response = await authFetch("/api/customers?pageSize=1000");
-      if (!response.ok) throw new Error("Failed to fetch customers");
-      
-      const data = await response.json();
-      setCustomers(data.data || []);
-    } catch (error) {
-      console.error("Error fetching customers:", error);
-      toast.error("Failed to load customers");
-    }
-  };
-
-  useEffect(() => {
-    fetchMeasurements();
-    fetchCustomers();
-  }, []);
-
-  // Create measurement
-  const handleCreateMeasurement = async (data: MeasurementFormValues) => {
-    try {
-      setSubmitting(true);
-      const response = await authFetch("/api/measurements", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to create measurement");
-      }
-
-      setShowAddDialog(false);
-      fetchMeasurements();
-    } catch (error) {
-      console.error("Error creating measurement:", error);
-      throw error;
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // Update measurement
-  const handleUpdateMeasurement = async (data: MeasurementFormValues) => {
-    if (!selectedMeasurement) return;
-
-    try {
-      setSubmitting(true);
-      const response = await authFetch(`/api/measurements/${selectedMeasurement.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to update measurement");
-      }
-
-      setShowEditDialog(false);
-      setSelectedMeasurement(null);
-      fetchMeasurements();
-    } catch (error) {
-      console.error("Error updating measurement:", error);
-      throw error;
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // Delete measurement
-  const handleDeleteMeasurement = async () => {
-    if (!selectedMeasurement) return;
-
-    try {
-      setSubmitting(true);
-      const response = await authFetch(`/api/measurements/${selectedMeasurement.id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to delete measurement");
-      }
-
-      setShowDeleteDialog(false);
-      setSelectedMeasurement(null);
-      fetchMeasurements();
-      toast.success("Measurement deleted successfully");
-    } catch (error) {
-      console.error("Error deleting measurement:", error);
-      toast.error("Failed to delete measurement");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const columns = createMeasurementColumns({
-    onEdit: (measurement) => {
-      setSelectedMeasurement(measurement);
-      setShowEditDialog(true);
-    },
-    onDelete: (measurement) => {
-      setSelectedMeasurement(measurement);
-      setShowDeleteDialog(true);
-    },
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const columns = useMemo(() => measurementColumns(sorters), [])
+  const filtering = filters.some((f) => 'field' in f && f.value !== undefined && f.value !== '')
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Header */}
-      <div className="flex flex-col space-y-2 sm:space-y-3">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center space-x-2">
-            <Ruler className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
-            <h1 className="text-xl sm:text-2xl font-bold">Measurements</h1>
-          </div>
-          <Button onClick={() => setShowAddDialog(true)} size="sm" className="w-full sm:w-auto">
-            <Plus className="h-4 w-4 mr-2" />
-            New Measurement
-          </Button>
-        </div>
-        <p className="text-sm sm:text-base text-muted-foreground">
-          Manage customer body measurements for accurate tailoring
-        </p>
-      </div>
+    <List
+      title="Measurements"
+      headerProps={withSubtitle('Manage customer body measurements for accurate tailoring.')}
+      headerButtons={
+        <CreateButton type="primary" icon={<PlusOutlined />}>
+          New Measurement
+        </CreateButton>
+      }
+      contentProps={transparentContent}
+    >
+      <FilterBar formProps={searchFormProps} label="Measurement filters">
+        <Form.Item name="customer" label="Customer name or phone">
+          <Input allowClear prefix={<UserOutlined />} placeholder="e.g. Ayesha or 0300" />
+        </Form.Item>
+        <Form.Item name="q" label="Measurement name">
+          <Input allowClear prefix={<SearchOutlined />} placeholder="e.g. Formal" />
+        </Form.Item>
+        <Form.Item name="created_range" label="Created" {...dateRangeItemProps}>
+          <DateRangeFilter aria-label="Created between" />
+        </Form.Item>
+      </FilterBar>
 
-      {/* Measurements Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>All Measurements</CardTitle>
-          <CardDescription>
-            View and manage customer body measurements
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <DataTable
-            columns={columns}
-            data={measurements}
-            searchPlaceholder="Search measurements by customer name or measurement set name..."
-          />
-        </CardContent>
-      </Card>
-
-      {/* Add Measurement Dialog */}
-      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent 
-          className="max-sm:w-full w-[95vw] max-w-none sm:w-[90vw] md:w-[80vw] lg:w-[70vw] max-h-[95vh] overflow-y-auto"
-          onInteractOutside={(e) => e.preventDefault()}
-        >
-          <DialogHeader>
-            <DialogTitle>Add New Measurement</DialogTitle>
-          </DialogHeader>
-          <MeasurementForm
-            customers={customers}
-            onSubmit={handleCreateMeasurement}
-            onCancel={() => setShowAddDialog(false)}
-            isLoading={submitting}
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Measurement Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent 
-          className="max-sm:w-full w-[95vw] max-w-none sm:w-[90vw] md:w-[80vw] lg:w-[70vw] max-h-[95vh] overflow-y-auto"
-          onInteractOutside={(e) => e.preventDefault()}
-        >
-          <DialogHeader>
-            <DialogTitle>Edit Measurement</DialogTitle>
-          </DialogHeader>
-          {selectedMeasurement && (
-            <MeasurementForm
-              measurement={selectedMeasurement}
-              customers={customers}
-              onSubmit={handleUpdateMeasurement}
-              onCancel={() => {
-                setShowEditDialog(false);
-                setSelectedMeasurement(null);
-              }}
-              isLoading={submitting}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Measurement</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete &ldquo;{selectedMeasurement?.name}&rdquo; for {selectedMeasurement?.customer?.name}?
-              This action cannot be undone and may affect related orders.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteMeasurement}
-              disabled={submitting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {submitting ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
-  );
+      <ResourceTable<MeasurementRow>
+        tableKey="measurements"
+        icon={<ColumnHeightOutlined />}
+        title={`All Measurements (${tableQuery.data?.total ?? 0})`}
+        columns={columns}
+        tableProps={tableProps}
+        rowKey="id"
+        onRefresh={() => tableQuery.refetch()}
+        refreshing={tableQuery.isFetching}
+        error={tableQuery.isError && !tableQuery.data ? tableQuery.error : null}
+        empty={{
+          description: filtering ? 'No measurements match these filters.' : 'No measurements yet.',
+          action:
+            !filtering && canCreate?.can ? (
+              <Link href="/measurements/create">
+                <Button type="primary" icon={<PlusOutlined />}>
+                  New Measurement
+                </Button>
+              </Link>
+            ) : undefined,
+        }}
+        onRow={(record) => ({
+          onClick: () => router.push(`/measurements/show/${record.id}`),
+          style: { cursor: 'pointer' },
+        })}
+        renderMobile={(record) => (
+          <Card size="small" hoverable style={{ width: '100%' }} onClick={() => router.push(`/measurements/show/${record.id}`)}>
+            <Space direction="vertical" size={2} style={{ width: '100%' }}>
+              <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start">
+                <Typography.Text strong>{record.name}</Typography.Text>
+                {record.is_default && (
+                  <Tag icon={<StarFilled />} color="gold">
+                    Default
+                  </Tag>
+                )}
+              </Space>
+              <Typography.Text>{record.customer?.name ?? '—'}</Typography.Text>
+              <Typography.Text type="secondary" style={mono}>
+                {record.customer?.phone}
+              </Typography.Text>
+              <Space style={{ width: '100%', justifyContent: 'space-between', marginTop: 6 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {dayjs(record.created_at).format('MMM D, YYYY')}
+                </Typography.Text>
+                <RowActions
+                  resource={MEASUREMENTS}
+                  id={record.id}
+                  label={record.name}
+                  basePath="/measurements"
+                  deleteDescription={DELETE_DETAIL}
+                  deleteNotifications={measurementDeleteNotifications}
+                />
+              </Space>
+            </Space>
+          </Card>
+        )}
+      />
+    </List>
+  )
 }

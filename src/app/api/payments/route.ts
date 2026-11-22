@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { inScope, requireBusiness, requireBusinessRead } from "@/lib/business-context";
+import { callerSupabaseClient, rpcErrorStatus } from "@/lib/api-auth";
+import { readAll } from "@/lib/read-all";
 
 export async function GET(request: NextRequest) {
   const scope = await requireBusinessRead(request);
@@ -12,35 +14,33 @@ export async function GET(request: NextRequest) {
     const orderId = searchParams.get("order_id");
     const customerId = searchParams.get("customer_id");
 
-    let query = inScope(supabase
-      .from("payments")
-      .select(`
-        *,
-        order:orders(
-          id,
-          order_number,
-          total_amount,
-          advance_paid,
-          balance,
-          booking_date,
-          customer:customers(id, name, phone)
-        )
-      `), scope)
-      .order("payment_date", { ascending: false });
-
-    // Filter by order if provided
-    if (orderId) {
-      query = query.eq("order_id", orderId);
-    }
-
-    // Filter by customer if provided
-    if (customerId) {
-      query = query.eq("customer_id", customerId);
-    }
-
-    const { data: payments, error } = await query;
-
-    if (error) {
+    // Every matching payment, newest first. Read in pages: one PostgREST
+    // response stops at 1,000 rows, and an unfiltered list passes that.
+    // id breaks ties so pages neither skip nor repeat rows.
+    let payments: unknown[];
+    try {
+      payments = await readAll("payments", (from, to) => {
+        let query = inScope(supabase
+          .from("payments")
+          .select(`
+            *,
+            order:orders(
+              id,
+              order_number,
+              total_amount,
+              advance_paid,
+              balance,
+              booking_date,
+              customer:customers(id, name, phone)
+            )
+          `), scope)
+          .order("payment_date", { ascending: false })
+          .order("id", { ascending: true });
+        if (orderId) query = query.eq("order_id", orderId);
+        if (customerId) query = query.eq("customer_id", customerId);
+        return query.range(from, to);
+      });
+    } catch (error) {
       console.error("Error fetching payments:", error);
       return NextResponse.json(
         { error: "Failed to fetch payments" },
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      payments: payments || [],
+      payments,
     });
   } catch (error) {
     console.error("Payments API error:", error);
@@ -60,10 +60,23 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// The payment as the mobile app has always received it (with its order).
+const PAYMENT_WITH_ORDER = `
+  *,
+  order:orders(
+    id,
+    order_number,
+    total_amount,
+    advance_paid,
+    balance,
+    customer:customers(id, name, phone)
+  )
+`;
+
 export async function POST(request: NextRequest) {
-  // Staff record payments, and this handler writes the matching ledger row
-  // server-side, so staff never need the ledger endpoints themselves.
-  const scope = await requireBusiness(request);
+  // Recording a payment (and its ledger row) is admin only, as in RLS
+  // (20261119000000) and record_payment (20261119000100). Staff may read.
+  const scope = await requireBusiness(request, { roles: ['admin'] });
   if (scope instanceof NextResponse) return scope;
 
   try {
@@ -80,7 +93,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate that the order exists and belongs to the customer
+    // Validate that the order exists, belongs to the customer and is in the
+    // business of this request (X-Business-Id). record_payment checks
+    // membership of the order's business, not which business was selected.
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .select("id, customer_id, booking_date, total_amount, advance_paid, balance")
@@ -102,35 +117,28 @@ export async function POST(request: NextRequest) {
     // The advance_paid field should only be set during order creation
     console.log(`[PAYMENT CREATE] Order ${order_id} current advance_paid: ${order.advance_paid}`);
 
-    // Create the payment
-    const paymentData = {
-      // From the verified context, never the body; must equal the order's.
-      business_id: scope.businessId,
-      order_id,
-      customer_id,
-      amount: parseFloat(amount),
-      payment_method: payment_method || "other",
-      payment_date: payment_date || new Date().toISOString().split('T')[0],
-      notes: notes || null,
-    };
-
-    const { data: payment, error: paymentError } = await supabase
-      .from("payments")
-      .insert([paymentData])
-      .select(`
-        *,
-        order:orders(
-          id,
-          order_number,
-          total_amount,
-          advance_paid,
-          balance,
-          customer:customers(id, name, phone)
-        )
-      `)
-      .single();
+    // The payment and its linked general_ledger row are written in one
+    // transaction by record_payment (20261119000100 + 20261119000500), as the
+    // caller, so the database applies the same admin/member checks as the web app.
+    const { data: recorded, error: paymentError } = await callerSupabaseClient(request).rpc("record_payment", {
+      p_order_id: order_id,
+      p_payment: {
+        customer_id,
+        amount: parseFloat(amount),
+        payment_method: payment_method || "other",
+        payment_date: payment_date || new Date().toISOString().split('T')[0],
+        notes: notes || null,
+      },
+    });
 
     if (paymentError) {
+      const status = rpcErrorStatus(paymentError);
+      if (status === 404) {
+        return NextResponse.json({ error: "Order not found or does not belong to customer" }, { status });
+      }
+      if (status === 400) return NextResponse.json({ error: paymentError.message }, { status });
+      if (status === 401) return NextResponse.json({ error: "Unauthorized - Please sign in" }, { status });
+      if (status === 403) return NextResponse.json({ error: "Forbidden - Insufficient permissions" }, { status });
       console.error("Error creating payment:", paymentError);
       return NextResponse.json(
         { error: "Failed to create payment" },
@@ -138,20 +146,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create ledger entry for this payment
-    const { error: ledgerError } = await supabase.from('general_ledger').insert({
-      business_id: scope.businessId,
-      entry_date: paymentData.payment_date,
-      particulars: `Payment for Order #${payment.order.order_number}`,
-      debit: paymentData.amount,
-      entry_type: 'order_payment',
-      order_id: order_id,
-      notes: paymentData.notes || `Payment via ${paymentData.payment_method}`,
-    });
+    // Same response as before: the payment with its order.
+    const { data: payment, error: readError } = await supabase
+      .from("payments")
+      .select(PAYMENT_WITH_ORDER)
+      .eq("id", recorded.id)
+      .single();
 
-    if (ledgerError) {
-      console.error("Error creating ledger entry:", ledgerError);
-      // Don't fail the payment creation if ledger entry fails
+    if (readError || !payment) {
+      // The payment is recorded; answering 500 would invite a duplicate retry.
+      console.error("Payment recorded but could not be read back:", readError);
+      return NextResponse.json({ payment: recorded }, { status: 201 });
     }
 
     return NextResponse.json({ payment }, { status: 201 });

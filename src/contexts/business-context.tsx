@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/contexts/auth-context'
-import { authFetch } from '@/lib/auth-fetch'
+import { loadMyBusinesses } from '@/lib/business-memberships'
 import { ALL_BUSINESSES, type Business, type MyBusinessesResponse } from '@/lib/business-shared'
 import { setActiveBusiness } from '@/lib/business-store'
 import { getUserPreference, setUserPreference } from '@/lib/user-preferences'
@@ -11,8 +11,10 @@ import { getUserPreference, setUserPreference } from '@/lib/user-preferences'
 /**
  * Which business the dashboard shows, and the switcher's options.
  *
- * - Options are the caller's memberships only (GET /api/me/businesses): staff
- *   see Ahsan Tariq Couture, admins see ATC and Techlink Co.
+ * - Options are the caller's memberships only, read with the browser Supabase
+ *   client under RLS (src/lib/business-memberships.ts, same result as GET
+ *   /api/me/businesses): staff see Ahsan Tariq Couture, admins see ATC and
+ *   Techlink Co.
  * - The last choice is remembered in user_metadata.preferences (via
  *   src/lib/user-preferences.ts). It is a convenience only; the server checks
  *   membership on every request regardless of what the browser sends.
@@ -66,12 +68,10 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false
     ;(async () => {
       try {
-        // Runs once per signed-in user. Nothing is selected yet, so this call
-        // carries no header (the endpoint does not need one).
+        // Runs once per signed-in user, with the user's own Supabase session
+        // (same shape and ordering as GET /api/me/businesses).
         setActiveBusiness(null)
-        const res = await authFetch('/api/me/businesses')
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const body = (await res.json()) as MyBusinessesResponse
+        const body: MyBusinessesResponse = await loadMyBusinesses()
         const remembered = await getUserPreference(PREF_KEY).catch(() => undefined)
 
         const choice: string | null =

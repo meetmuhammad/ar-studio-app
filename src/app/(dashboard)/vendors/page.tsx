@@ -1,278 +1,214 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Plus, Eye, Edit, Trash2, Search, Tags } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { RoleGuard } from '@/components/auth/role-guard'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import type { VendorWithCategory } from '@/lib/supabase-client'
-import { toast } from 'sonner'
-import { VendorDialog } from '@/components/dialogs/vendor-dialog'
-import { VendorCategoriesDialog } from '@/components/dialogs/vendor-categories-dialog'
-import { DeleteConfirmationDialog } from '@/components/dialogs/delete-confirmation-dialog'
-import { authFetch } from '@/lib/auth-fetch'
-import { ALL_VENDOR_CATEGORIES, filterVendors } from '@/lib/vendor-filter'
-import { useVendorCategories } from '@/hooks/use-api'
-import { useBusiness, useBusinessLabel } from '@/contexts/business-context'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { CreateButton, List, getDefaultSortOrder, useTable } from '@refinedev/antd'
+import { useCan, type CrudFilter, type CrudSort, type HttpError } from '@refinedev/core'
+import { Button, Card, Flex, Form, Input, Space, Tag, Tooltip, Typography } from 'antd'
+import { PlusOutlined, SearchOutlined, ShopOutlined, TagsOutlined } from '@ant-design/icons'
+import dayjs from 'dayjs'
+import { useBusiness } from '@/contexts/business-context'
+import { FilterBar } from '@/components/refine/filter-bar'
+import { ResourceTable, type ResourceColumn } from '@/components/refine/resource-table'
+import { RowActions } from '@/components/refine/row-actions'
+import { ResourceGuard } from '@/components/refine/resource-guard'
+import { transparentContent, withSubtitle } from '@/components/refine/page-parts'
+import { deleteNotificationsFor } from '@/lib/refine/notifications'
+import { CategorySelect } from '@/components/vendors/category-select'
+import { ManageCategoriesDrawer } from '@/components/vendors/manage-categories-drawer'
+import { VENDORS, VENDOR_CATEGORIES, VENDOR_SELECT, type VendorRow } from '@/components/vendors/constants'
+
+const PAGE_SIZE = 20
+const vendorDeleteNotifications = deleteNotificationsFor('Vendor')
+
+interface SearchValues {
+  /** Name, category, notes, contact or phone (virtual filter "q"). */
+  q?: string
+  category_id?: string
+  /** Tag contains (virtual filter "tag"). */
+  tag?: string
+}
+
+const toFilters = ({ q, category_id, tag }: SearchValues): CrudFilter[] => [
+  { field: 'q', operator: 'contains', value: q?.trim() || undefined },
+  { field: 'category_id', operator: 'eq', value: category_id || undefined },
+  { field: 'tag', operator: 'contains', value: tag?.trim() || undefined },
+]
+
+function TagList({ tags }: { tags?: { id: string; tag_name: string }[] }) {
+  if (!tags?.length) return <Typography.Text type="secondary">—</Typography.Text>
+  return (
+    <Flex wrap gap={4}>
+      {tags.map((t) => (
+        <Tag key={t.id} style={{ marginInlineEnd: 0 }}>
+          {t.tag_name}
+        </Tag>
+      ))}
+    </Flex>
+  )
+}
+
+function vendorColumns(sorters: CrudSort[], businessName: (id?: string) => string | undefined, isAll: boolean): ResourceColumn<VendorRow>[] {
+  return [
+    {
+      key: 'name',
+      dataIndex: 'name',
+      title: 'Name',
+      sorter: true,
+      defaultSortOrder: getDefaultSortOrder('name', sorters),
+      width: 220,
+      render: (_, v) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text strong>{v.name}</Typography.Text>
+          {isAll && <Typography.Text type="secondary">{businessName(v.business_id)}</Typography.Text>}
+        </Space>
+      ),
+    },
+    {
+      key: 'category',
+      title: 'Category',
+      width: 170,
+      render: (_, v) =>
+        v.vendor_categories ? <Tag color="blue">{v.vendor_categories.name}</Tag> : <Typography.Text type="secondary">—</Typography.Text>,
+    },
+    { key: 'tags', title: 'Tags', width: 220, render: (_, v) => <TagList tags={v.vendor_tags} /> },
+    {
+      key: 'notes',
+      dataIndex: 'notes',
+      title: 'Description',
+      ellipsis: true,
+      width: 260,
+      render: (value: string | null) => <Typography.Text type={value ? undefined : 'secondary'}>{value || '—'}</Typography.Text>,
+    },
+    { key: 'contact_person', dataIndex: 'contact_person', title: 'Contact Person', width: 170, defaultHidden: true, render: (v) => v || '—' },
+    { key: 'phone', dataIndex: 'phone', title: 'Phone', width: 160, defaultHidden: true, render: (v) => v || '—' },
+    {
+      key: 'created_at',
+      dataIndex: 'created_at',
+      title: 'Added',
+      sorter: true,
+      defaultSortOrder: getDefaultSortOrder('created_at', sorters),
+      width: 130,
+      defaultHidden: true,
+      render: (value: string) => dayjs(value).format('MMM D, YYYY'),
+    },
+    {
+      key: 'actions',
+      title: 'Actions',
+      fixed: 'right',
+      fixedVisible: true,
+      width: 130,
+      render: (_, v) => (
+        <RowActions resource={VENDORS} id={v.id} label={v.name} basePath="/vendors" deleteNotifications={vendorDeleteNotifications} />
+      ),
+    },
+  ]
+}
 
 export default function VendorsPage() {
-  // Vendors belong to one business; the combined view is read-only.
-  const { isAll, businesses } = useBusiness()
-  const businessLabel = useBusinessLabel()
-  const businessName = (id?: string) => businesses.find((b) => b.id === id)?.name
-  const router = useRouter()
-  const [vendors, setVendors] = useState<VendorWithCategory[]>([])
-  const [searchQuery, setSearchQuery] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState(ALL_VENDOR_CATEGORIES)
-  const { data: categories = [] } = useVendorCategories()
-  // Search matches every category name, archived and empty ones included, so
-  // typing a category's name always gives the same vendors as choosing it.
-  const { data: allCategories = [] } = useVendorCategories(true)
-  const [isLoading, setIsLoading] = useState(true)
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingVendor, setEditingVendor] = useState<VendorWithCategory | null>(null)
-  const [categoriesDialogOpen, setCategoriesDialogOpen] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<VendorWithCategory | null>(null)
-
-  useEffect(() => {
-    fetchVendors()
-  }, [])
-
-  const filteredVendors = useMemo(
-    () => filterVendors(vendors, { categoryId: categoryFilter, search: searchQuery, categories: allCategories }),
-    [vendors, categoryFilter, searchQuery, allCategories]
+  return (
+    <ResourceGuard resource={VENDORS}>
+      <VendorsList />
+    </ResourceGuard>
   )
+}
 
-  const fetchVendors = async () => {
-    try {
-      const response = await authFetch('/api/vendors')
-      if (!response.ok) throw new Error('Failed to fetch vendors')
-      const data = await response.json()
-      setVendors(data)
-    } catch (error) {
-      console.error('Error fetching vendors:', error)
-      toast.error('Failed to load vendors')
-    } finally {
-      setIsLoading(false)
-    }
-  }
+function VendorsList() {
+  const router = useRouter()
+  const { isAll, businesses } = useBusiness()
+  const [categoriesOpen, setCategoriesOpen] = useState(false)
+  const { data: canCreate } = useCan({ resource: VENDORS, action: 'create' })
+  const { data: canManageCategories } = useCan({ resource: VENDOR_CATEGORIES, action: 'edit' })
+  const { tableProps, searchFormProps, sorters, filters, tableQuery } = useTable<VendorRow, HttpError, SearchValues>({
+    resource: VENDORS,
+    pagination: { pageSize: PAGE_SIZE },
+    sorters: { initial: [{ field: 'name', order: 'asc' }] },
+    meta: { select: VENDOR_SELECT },
+    onSearch: toFilters,
+    syncWithLocation: true,
+  })
 
-  const handleEdit = (vendor: VendorWithCategory) => {
-    setEditingVendor(vendor)
-    setDialogOpen(true)
-  }
-
-  // Asks first (in-app dialog, not the browser's confirm()); confirmDelete does the delete.
-  const handleDelete = (vendor: VendorWithCategory) => setDeleteTarget(vendor)
-
-  const confirmDelete = async () => {
-    const vendor = deleteTarget
-    if (!vendor) return
-
-    try {
-      const response = await authFetch(`/api/vendors/${vendor.id}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) throw new Error('Failed to delete vendor')
-
-      toast.success('Vendor deleted successfully')
-      fetchVendors()
-    } catch (error) {
-      console.error('Error deleting vendor:', error)
-      toast.error('Failed to delete vendor')
-    }
-  }
-
-  const handleCloseDialog = () => {
-    setDialogOpen(false)
-    setEditingVendor(null)
-  }
-
-  if (isLoading) {
-    return (
-      <RoleGuard allowedRoles={['admin']}>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold sm:text-3xl">Vendors</h1>
-        </div>
-        <div className="text-center py-12">Loading vendors...</div>
-      </div>
-      </RoleGuard>
-    )
-  }
+  const businessName = (id?: string) => businesses.find((b) => b.id === id)?.name
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const columns = useMemo(() => vendorColumns(sorters, businessName, isAll), [isAll, businesses])
+  const filtering = filters.some((f) => 'field' in f && f.value !== undefined && f.value !== '')
 
   return (
-    <RoleGuard allowedRoles={['admin']}>
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold sm:text-3xl">Vendors</h1>
-          <p className="text-muted-foreground mt-1">
-            <span className="font-medium text-foreground">{businessLabel}</span>
-            {' · '}Manage your vendors and supplier relationships
-          </p>
-        </div>
-        <div className="flex gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
-          <Button variant="outline" onClick={() => setCategoriesDialogOpen(true)} disabled={isAll}>
-            <Tags className="h-4 w-4 mr-2" />
-            Manage Categories
-          </Button>
-          <Button onClick={() => setDialogOpen(true)} disabled={isAll}>
-            <Plus className="h-4 w-4 mr-2" />
+    <List
+      title="Vendors"
+      headerProps={withSubtitle('Manage your vendors and supplier relationships.')}
+      headerButtons={
+        <Space wrap>
+          <Tooltip title={canManageCategories?.can === false ? canManageCategories.reason : undefined}>
+            <Button icon={<TagsOutlined />} onClick={() => setCategoriesOpen(true)} disabled={canManageCategories?.can === false}>
+              Manage Categories
+            </Button>
+          </Tooltip>
+          <CreateButton type="primary" icon={<PlusOutlined />}>
             Add Vendor
-          </Button>
-        </div>
-      </div>
+          </CreateButton>
+        </Space>
+      }
+      contentProps={transparentContent}
+    >
+      <FilterBar formProps={searchFormProps} label="Vendor filters">
+        <Form.Item name="q" label="Search vendors">
+          <Input allowClear prefix={<SearchOutlined />} placeholder="Name, category, notes, contact or phone" />
+        </Form.Item>
+        <Form.Item name="category_id" label="Category">
+          <CategorySelect allowClear placeholder="All categories" aria-label="Category" />
+        </Form.Item>
+        <Form.Item name="tag" label="Tag">
+          <Input allowClear prefix={<TagsOutlined />} placeholder="e.g. fabric" />
+        </Form.Item>
+      </FilterBar>
 
-      {/* Search + Category filter */}
-      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-[1fr_auto]">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search vendors by name, category, notes, contact, or phone..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-          <Label htmlFor="vendor-category-filter" className="text-sm text-muted-foreground whitespace-nowrap">Category</Label>
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger id="vendor-category-filter" className="w-full sm:w-[200px]">
-              <SelectValue placeholder="All" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VENDOR_CATEGORIES}>All</SelectItem>
-              {categories.map((category) => (
-                <SelectItem key={category.id} value={category.id}>
-                  {category.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>All Vendors ({filteredVendors.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table stack>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredVendors.map((vendor) => (
-                <TableRow key={vendor.id}>
-                  <TableCell data-label="Name" className="font-medium">
-                    {vendor.name}
-                    {isAll && (
-                      <div className="text-xs font-normal text-muted-foreground">{businessName(vendor.business_id)}</div>
-                    )}
-                  </TableCell>
-                  <TableCell data-label="Category">
-                    {vendor.vendor_categories ? (
-                      <Badge variant="secondary">{vendor.vendor_categories.name}</Badge>
-                    ) : (
-                      <span className="text-muted-foreground text-sm">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell data-label="Description" className="max-w-md">{vendor.notes || '-'}</TableCell>
-                  <TableCell data-label="Actions" className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => router.push(`/vendors/${vendor.id}`)}
-                      >
-                        <Eye className="h-4 w-4 mr-2" />
-                        View Ledger
-                      </Button>
-                      {!isAll && (<>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(vendor)}
-                        aria-label={`Edit ${vendor.name}`}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(vendor)}
-                        aria-label={`Delete ${vendor.name}`}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                      </>)}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-
-          {filteredVendors.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">
-                {searchQuery ? 'No vendors match your search' : 'No vendors found'}
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <VendorDialog
-        open={dialogOpen}
-        onOpenChange={handleCloseDialog}
-        vendor={editingVendor}
-        onSuccess={() => {
-          toast.success(editingVendor ? 'Vendor updated successfully' : 'Vendor created successfully')
-          handleCloseDialog()
-          fetchVendors()
+      <ResourceTable<VendorRow>
+        tableKey="vendors"
+        icon={<ShopOutlined />}
+        title={`All Vendors (${tableQuery.data?.total ?? 0})`}
+        columns={columns}
+        tableProps={tableProps}
+        rowKey="id"
+        onRefresh={() => tableQuery.refetch()}
+        refreshing={tableQuery.isFetching}
+        error={tableQuery.isError && !tableQuery.data ? tableQuery.error : null}
+        empty={{
+          description: filtering ? 'No vendors match these filters.' : 'No vendors found.',
+          action:
+            !filtering && canCreate?.can ? (
+              <Link href="/vendors/create">
+                <Button type="primary" icon={<PlusOutlined />}>
+                  Add Vendor
+                </Button>
+              </Link>
+            ) : undefined,
         }}
+        onRow={(v) => ({ onClick: () => router.push(`/vendors/show/${v.id}`), style: { cursor: 'pointer' } })}
+        renderMobile={(v) => (
+          <Card size="small" hoverable style={{ width: '100%' }} onClick={() => router.push(`/vendors/show/${v.id}`)}>
+            <Space direction="vertical" size={4} style={{ width: '100%' }}>
+              <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start">
+                <Typography.Text strong>{v.name}</Typography.Text>
+                {v.vendor_categories && <Tag color="blue">{v.vendor_categories.name}</Tag>}
+              </Space>
+              {isAll && <Typography.Text type="secondary">{businessName(v.business_id)}</Typography.Text>}
+              {v.notes && (
+                <Typography.Text type="secondary" ellipsis>
+                  {v.notes}
+                </Typography.Text>
+              )}
+              {!!v.vendor_tags?.length && <TagList tags={v.vendor_tags} />}
+              <Flex justify="flex-end">
+                <RowActions resource={VENDORS} id={v.id} label={v.name} basePath="/vendors" deleteNotifications={vendorDeleteNotifications} />
+              </Flex>
+            </Space>
+          </Card>
+        )}
       />
 
-      <VendorCategoriesDialog
-        open={categoriesDialogOpen}
-        onOpenChange={setCategoriesDialogOpen}
-      />
-
-      <DeleteConfirmationDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
-        title="Delete Vendor"
-        description={`Are you sure you want to delete ${deleteTarget?.name ?? 'this vendor'}?`}
-        onConfirm={confirmDelete}
-      />
-    </div>
-    </RoleGuard>
+      <ManageCategoriesDrawer open={categoriesOpen} onClose={() => setCategoriesOpen(false)} />
+    </List>
   )
 }

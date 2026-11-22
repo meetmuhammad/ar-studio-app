@@ -1,307 +1,352 @@
-"use client"
+'use client'
 
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { format } from 'date-fns'
+import { useRouter } from 'next/navigation'
+import { CanAccess } from '@refinedev/core'
 import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  XAxis,
-  YAxis,
-} from 'recharts'
-import {
-  ArrowUpRight,
-  Calendar,
-  CreditCard,
-  PackageCheck,
-  ShoppingCart,
-  TrendingUp,
-  Users,
-} from 'lucide-react'
-
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { RoleGuard } from '@/components/auth/role-guard'
-import { PageHeader } from '@/components/dashboard/page-header'
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Col,
+  Empty,
+  Flex,
+  Grid,
+  List as AntdList,
+  Result,
+  Row,
+  Skeleton,
+  Space,
+  Spin,
+  Tabs,
+  Tag,
+  Typography,
+  theme,
+} from 'antd'
+import { ArrowRightOutlined, CalendarOutlined, WarningOutlined } from '@ant-design/icons'
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import dayjs from 'dayjs'
 import { useBusinessLabel } from '@/contexts/business-context'
-import { StatCard } from '@/components/dashboard/stat-card'
-import { StatSparkline } from '@/components/dashboard/stat-sparkline'
-import { EmptyState } from '@/components/dashboard/empty-state'
-import { ErrorState } from '@/components/dashboard/error-state'
-import { DeliveryRow, type UpcomingOrder } from '@/components/dashboard/delivery-row'
-import {
-  SectionCard,
-  SectionCardAction,
-  SectionCardContent,
-  SectionCardDescription,
-  SectionCardHeader,
-  SectionCardTitle,
-} from '@/components/dashboard/section-card'
-import { useDashboardStats } from '@/hooks/use-api'
-import { useReducedMotion } from '@/hooks/use-reduced-motion'
-import {
-  formatCompactNumber,
-  formatCompactPKR,
-  formatPKR,
-  monthOverMonth,
-  percentOf,
-} from '@/lib/format'
+import { useColorMode } from '@/components/providers/color-mode-provider'
+import { cardShadow } from '@/lib/refine/theme'
+import { formatCompactNumber, formatPKR } from '@/lib/format'
+import { useDashboardSummary, type DashboardMonth } from '@/lib/refine/reporting'
+import { ChartCard, Trend } from '@/components/refine/chart-card'
+import { PeriodPicker, previousPeriod, resolvePeriod, PERIOD_LABEL, type Period } from '@/components/refine/period-picker'
 
-export default function DashboardPage() {
+const monthLabel = (key: string) => dayjs(`${key}-01`).format('MMM YY')
+
+function RedirectTo({ href }: { href: string }) {
+  const router = useRouter()
+  useEffect(() => router.replace(href), [href, router])
+  return (
+    <Flex justify="center" style={{ padding: 64 }}>
+      <Spin />
+    </Flex>
+  )
+}
+
+/**
+ * Admin dashboard in the Ant Design Pro "analysis" layout: four KPI cards with
+ * a trend against the previous period, a 12-month chart with a ranking, and
+ * the deliveries due soon. Every figure comes from dashboard_summary (exact
+ * SQL sums, no row cap), for the selected business or all of them; all-time
+ * figures from its `all_time` block, the same numbers /api/dashboard-stats
+ * reports to the mobile app. Nothing is summed here.
+ */
+function Dashboard() {
+  const { token } = theme.useToken()
+  const { mode } = useColorMode()
+  const screens = Grid.useBreakpoint()
   const businessLabel = useBusinessLabel()
-  const {
-    data: stats,
-    isPending,
-    isError,
-    error,
-    refetch,
-    dataUpdatedAt,
-  } = useDashboardStats()
+  const [period, setPeriod] = useState<Period>({ preset: 'this_month', custom: {} })
+  const range = resolvePeriod(period)
+  const prevRange = useMemo(() => (range ? previousPeriod(period.preset, range) : null), [period.preset, range])
 
-  const chartData = stats?.chartData ?? []
-  const upcomingOrders = (stats?.upcomingOrders ?? []) as UpcomingOrder[]
+  const current = useDashboardSummary(range)
+  const previous = useDashboardSummary(prevRange)
+  const d = current.data
+  const p = previous.data
+  const loading = current.isLoading
 
-  const delta = monthOverMonth(chartData)
-  const collectionRate = percentOf(stats?.totalReceived ?? 0, stats?.totalRevenue ?? 0)
-  const windowTotal = chartData.reduce((sum, point) => sum + point.revenue, 0)
-  const hasRevenue = chartData.some((point) => point.revenue > 0)
+  const months = d?.monthly ?? []
+  const mini = (pick: (m: DashboardMonth) => number) => months.map((m) => ({ label: monthLabel(m.month), value: pick(m) }))
+  const chartData = months.map((m) => ({
+    month: monthLabel(m.month),
+    'Order value': Number(m.order_value),
+    'Cash received': Number(m.cash_advances) + Number(m.cash_payments),
+    Orders: Number(m.orders),
+  }))
+  const byStatus = d?.orders.by_status ?? {}
+  const periodText = range ? `${dayjs(range.start).format('MMM D, YYYY')} – ${dayjs(range.end).format('MMM D, YYYY')}` : 'Choose dates'
 
-  return (
-    <RoleGuard allowedRoles={['admin']}>
-      <div className="mx-auto max-w-[1600px] space-y-6">
-        <PageHeader
-          title="Dashboard"
-          description={
-            isPending || !dataUpdatedAt
-              ? businessLabel
-              : `${businessLabel} · Last updated ${format(new Date(dataUpdatedAt), 'HH:mm')}`
-          }
-        />
+  const axis = { stroke: token.colorTextTertiary, fontSize: 12, tickLine: false, axisLine: false }
+  const tooltipStyle = {
+    contentStyle: { background: token.colorBgElevated, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 6 },
+    labelStyle: { color: token.colorText },
+    itemStyle: { color: token.colorText },
+  }
 
-        {isError ? (
-          <ErrorState
-            detail={error instanceof Error ? error.message : undefined}
-            onRetry={() => refetch()}
-          />
-        ) : (
-          <>
-            {/* KPI row — ordered by what drives action: money first, counts after */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <StatCard
-                label="Revenue"
-                value={formatPKR(stats?.totalRevenue ?? 0)}
-                icon={TrendingUp}
-                href="/ledger"
-                linkLabel="View ledger"
-                delta={delta ?? undefined}
-                sparkline={<StatSparkline data={chartData} />}
-                isLoading={isPending}
-              />
-
-              <StatCard
-                label="Outstanding"
-                value={formatPKR(stats?.outstandingBalance ?? 0)}
-                icon={CreditCard}
-                href="/ledger"
-                linkLabel="View ledger"
-                emphasis="warning"
-                progress={
-                  collectionRate === null
-                    ? undefined
-                    : { percent: collectionRate, label: `${collectionRate}% collected` }
-                }
-                isLoading={isPending}
-              />
-
-              <StatCard
-                label="Orders"
-                value={String(stats?.totalOrders ?? 0)}
-                icon={ShoppingCart}
-                href="/orders"
-                linkLabel="View all orders"
-                footnote={`+${stats?.recentOrdersCount ?? 0} this month`}
-                isLoading={isPending}
-              />
-
-              {/* No delta: the payload carries no historical customer series */}
-              <StatCard
-                label="Customers"
-                value={String(stats?.totalCustomers ?? 0)}
-                icon={Users}
-                href="/customers"
-                linkLabel="View all customers"
-                isLoading={isPending}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-              <RevenueOverview
-                data={chartData}
-                total={windowTotal}
-                hasRevenue={hasRevenue}
-                isLoading={isPending}
-              />
-              <UpcomingDeliveries orders={upcomingOrders} isLoading={isPending} />
-            </div>
-          </>
-        )}
-      </div>
-    </RoleGuard>
-  )
-}
-
-function RevenueOverview({
-  data,
-  total,
-  hasRevenue,
-  isLoading,
-}: {
-  data: Array<{ month: string; revenue: number }>
-  total: number
-  hasRevenue: boolean
-  isLoading: boolean
-}) {
-  const reducedMotion = useReducedMotion()
+  if (current.isError) {
+    return (
+      <Result
+        status="warning"
+        title="Couldn't load the dashboard"
+        subTitle={current.error.message}
+        extra={<Button onClick={() => current.refetch()}>Retry</Button>}
+      />
+    )
+  }
 
   return (
-    <SectionCard className="lg:col-span-8">
-      <SectionCardHeader>
-        <SectionCardTitle className="text-base">Revenue Overview</SectionCardTitle>
-        <SectionCardDescription className="text-xs">
-          Monthly revenue for the last 6 months, in PKR
-        </SectionCardDescription>
-        {!isLoading && hasRevenue ? (
-          <SectionCardAction className="font-mono text-xs tabular-nums text-muted-foreground">
-            6-mo: {formatCompactPKR(total)}
-          </SectionCardAction>
-        ) : null}
-      </SectionCardHeader>
+    <Flex vertical gap={24}>
+      <Flex justify="space-between" align="center" wrap gap={12}>
+        <div>
+          <Typography.Title level={3} style={{ margin: 0 }}>
+            Dashboard
+          </Typography.Title>
+          <Typography.Text type="secondary">
+            {businessLabel} · {PERIOD_LABEL[period.preset]} · {periodText}
+          </Typography.Text>
+        </div>
+        <PeriodPicker value={period} onChange={setPeriod} />
+      </Flex>
 
-      <SectionCardContent>
-        {isLoading ? (
-          <Skeleton className="h-[240px] w-full sm:h-[280px] lg:h-[300px]" />
-        ) : !hasRevenue ? (
-          <EmptyState
-            icon={TrendingUp}
-            message="No revenue recorded in the last 6 months"
-            action={
-              <Link href="/ledger" className="text-xs no-underline">
-                <Button variant="outline" size="sm">
-                  View ledger
-                </Button>
-              </Link>
-            }
+      <Row gutter={[24, 24]}>
+        <Col xs={24} sm={12} xl={6}>
+          <ChartCard
+            title="Revenue"
+            tooltip="Total value of orders booked in the period."
+            loading={loading}
+            value={formatPKR(Number(d?.revenue_in_range ?? 0))}
+            trend={<Trend current={Number(d?.revenue_in_range ?? 0)} previous={p ? Number(p.revenue_in_range) : undefined} />}
+            chart={{ kind: 'area', data: mini((m) => Number(m.order_value)), color: token.colorPrimary, format: formatPKR }}
+            footer={`All time ${formatPKR(Number(d?.all_time?.revenue ?? d?.revenue_all_time ?? 0))}`}
           />
-        ) : (
-          <ChartContainer
-            config={{
-              // Bare token: --chart-1 is an oklch value, so wrapping it in hsl()
-              // yields an invalid colour and the series silently loses its fill.
-              revenue: { label: 'Revenue', color: 'var(--chart-1)' },
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <ChartCard
+            title="Cash received"
+            tooltip={`Money received from customers: advances on orders booked in the period plus payments dated in the period (advances ${formatPKR(Number(d?.cash_received.advances ?? 0))}, payments ${formatPKR(Number(d?.cash_received.payments ?? 0))}). All time: every advance and payment.`}
+            loading={loading}
+            value={formatPKR(Number(d?.cash_received.total ?? 0))}
+            trend={<Trend current={Number(d?.cash_received.total ?? 0)} previous={p ? Number(p.cash_received.total) : undefined} />}
+            chart={{
+              kind: 'bar',
+              data: mini((m) => Number(m.cash_advances) + Number(m.cash_payments)),
+              color: token.colorSuccess,
+              format: formatPKR,
             }}
-            className="h-[240px] w-full sm:h-[280px] lg:h-[300px]"
-            role="img"
-            aria-label={`Monthly revenue for the last 6 months, in PKR: ${data
-              .map((point) => `${point.month} ${formatCompactNumber(point.revenue)}`)
-              .join(', ')}. Total ${formatCompactPKR(total)}.`}
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid
-                  vertical={false}
-                  stroke="var(--border)"
-                  strokeDasharray="3 3"
-                />
-                <XAxis
-                  dataKey="month"
-                  stroke="var(--muted-foreground)"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  stroke="var(--muted-foreground)"
-                  fontSize={12}
-                  width={44}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value: number) => formatCompactNumber(value)}
-                />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Area
-                  type="monotone"
-                  dataKey="revenue"
-                  strokeWidth={2}
-                  stroke="var(--color-revenue)"
-                  fill="var(--color-revenue)"
-                  fillOpacity={0.2}
-                  activeDot={{ r: 5 }}
-                  isAnimationActive={!reducedMotion}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </ChartContainer>
+            footer={`Total received, all time ${formatPKR(Number(d?.all_time?.received.total ?? 0))}`}
+          />
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <ChartCard
+            title="Orders"
+            tooltip="Orders booked in the period."
+            loading={loading}
+            value={Number(d?.orders.in_range ?? 0).toLocaleString()}
+            trend={<Trend current={Number(d?.orders.in_range ?? 0)} previous={p ? Number(p.orders.in_range) : undefined} />}
+            chart={{ kind: 'bar', data: mini((m) => Number(m.orders)), color: token.colorPrimary }}
+            footer={`In process ${byStatus['In Process'] ?? 0} · Delivered ${byStatus.Delivered ?? 0} · Cancelled ${byStatus.Cancelled ?? 0}`}
+          />
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <ChartCard
+            title="Outstanding balance"
+            tooltip="Still to collect, all time, on orders that are not cancelled: total minus advance minus payments (never below 0 per order), today."
+            loading={loading}
+            value={formatPKR(Number(d?.all_time?.outstanding ?? d?.outstanding ?? 0))}
+            trend={
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {Number(d?.all_time?.customers ?? d?.customers.total ?? 0).toLocaleString()} customers · {Number(d?.customers.new_in_range ?? 0)} new in period
+              </Typography.Text>
+            }
+            footer={
+              <span style={{ color: d?.overdue_deliveries ? token.colorError : undefined }}>
+                {d?.overdue_deliveries ?? 0} overdue {d?.overdue_deliveries === 1 ? 'delivery' : 'deliveries'}
+              </span>
+            }
+          />
+        </Col>
+      </Row>
+
+      <Card
+        role="region"
+        aria-label="Sales charts"
+        style={{ boxShadow: cardShadow(mode) }}
+        styles={{ body: { padding: '0 24px 24px' } }}
+      >
+        <Tabs
+          size="large"
+          items={[
+            { key: 'revenue', label: 'Revenue' },
+            { key: 'orders', label: 'Orders' },
+          ].map((tab) => ({
+            ...tab,
+            children: loading ? (
+              <Skeleton active paragraph={{ rows: 8 }} />
+            ) : (
+              <Row gutter={[32, 24]}>
+                <Col xs={24} lg={16}>
+                  <Typography.Title level={5} style={{ marginTop: 0 }}>
+                    {tab.key === 'revenue' ? 'Order value and cash received, last 12 months' : 'Orders booked, last 12 months'}
+                  </Typography.Title>
+                  <div style={{ height: 300 }} role="img" aria-label={`${tab.label} by month, last 12 months`}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid vertical={false} stroke={token.colorBorderSecondary} strokeDasharray="3 3" />
+                        <XAxis dataKey="month" {...axis} />
+                        <YAxis
+                          {...axis}
+                          width={52}
+                          tickFormatter={(v: number) => (tab.key === 'revenue' ? formatCompactNumber(v) : String(v))}
+                        />
+                        <Tooltip
+                          {...tooltipStyle}
+                          cursor={{ fill: token.colorFillTertiary }}
+                          formatter={(v, name) => [tab.key === 'revenue' ? formatPKR(Number(v)) : String(v), String(name)]}
+                        />
+                        {/* No fragments here: recharts 2 finds its series with its own
+                            react-is 18, which does not recognise React 19 fragments, so
+                            series wrapped in <>...</> are silently dropped. */}
+                        {tab.key === 'revenue' && <Legend wrapperStyle={{ color: token.colorText }} />}
+                        {tab.key === 'revenue' && (
+                          <Bar dataKey="Order value" fill={token.colorPrimary} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                        )}
+                        {tab.key === 'revenue' && (
+                          <Bar dataKey="Cash received" fill={token.colorSuccess} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                        )}
+                        {tab.key === 'orders' && (
+                          <Bar dataKey="Orders" fill={token.colorPrimary} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                        )}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Col>
+                <Col xs={24} lg={8}>
+                  <Typography.Title level={5} style={{ marginTop: 0 }}>
+                    Top customers by order value
+                  </Typography.Title>
+                  {(d?.top_customers.length ?? 0) === 0 ? (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No orders in this period." />
+                  ) : (
+                    <ol style={{ listStyle: 'none', margin: 0, padding: 0 }} aria-label="Top customers by order value">
+                      {d!.top_customers.map((c, i) => (
+                        <li key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
+                          <span
+                            style={{
+                              width: 22,
+                              height: 22,
+                              borderRadius: '50%',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: 12,
+                              fontWeight: 600,
+                              background: i < 3 ? token.colorText : token.colorFillSecondary,
+                              color: i < 3 ? token.colorBgContainer : token.colorText,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {i + 1}
+                          </span>
+                          <Link href={`/customers/show/${c.id}`} style={{ flex: 1, minWidth: 0 }}>
+                            <Typography.Text ellipsis>{c.name}</Typography.Text>
+                          </Link>
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                            {c.orders} {Number(c.orders) === 1 ? 'order' : 'orders'}
+                          </Typography.Text>
+                          <Typography.Text strong style={{ whiteSpace: 'nowrap' }}>
+                            {screens.sm ? formatPKR(Number(c.order_value)) : formatCompactNumber(Number(c.order_value))}
+                          </Typography.Text>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </Col>
+              </Row>
+            ),
+          }))}
+        />
+      </Card>
+
+      <Card
+        title={
+          <Space>
+            <CalendarOutlined />
+            Upcoming deliveries (next 14 days)
+          </Space>
+        }
+        extra={
+          <Link href="/orders">
+            <Button type="link" icon={<ArrowRightOutlined />} iconPosition="end">
+              See all orders
+            </Button>
+          </Link>
+        }
+        style={{ boxShadow: cardShadow(mode) }}
+      >
+        {!!d?.overdue_deliveries && (
+          <Alert
+            type="error"
+            showIcon
+            icon={<WarningOutlined />}
+            style={{ marginBottom: 12 }}
+            message={`${d.overdue_deliveries} In Process ${d.overdue_deliveries === 1 ? 'order is' : 'orders are'} past the delivery date.`}
+          />
         )}
-      </SectionCardContent>
-    </SectionCard>
+        <AntdList
+          loading={loading}
+          dataSource={d?.upcoming_deliveries ?? []}
+          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No deliveries due in the next 14 days." /> }}
+          renderItem={(o) => {
+            const days = dayjs(o.delivery_date).diff(dayjs(d?.range.today), 'day')
+            return (
+              <AntdList.Item
+                extra={
+                  <Space direction="vertical" align="end" size={2}>
+                    <Typography.Text strong>{formatPKR(Number(o.balance))}</Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      balance due
+                    </Typography.Text>
+                  </Space>
+                }
+              >
+                <AntdList.Item.Meta
+                  avatar={<Badge status={days <= 1 ? 'error' : days <= 3 ? 'warning' : 'processing'} />}
+                  title={
+                    <Space wrap size={8}>
+                      <Link href={`/orders/show/${o.id}`} style={{ fontFamily: 'var(--font-geist-mono), monospace' }}>
+                        {o.order_number}
+                      </Link>
+                      <span>{o.customer_name}</span>
+                    </Space>
+                  }
+                  description={
+                    <Space size={8} wrap>
+                      <span>{dayjs(o.delivery_date).format('ddd, MMM D')}</span>
+                      <Tag color={days === 0 ? 'red' : days <= 3 ? 'orange' : 'blue'}>
+                        {days === 0 ? 'Due today' : days === 1 ? 'Tomorrow' : `In ${days} days`}
+                      </Tag>
+                    </Space>
+                  }
+                />
+              </AntdList.Item>
+            )
+          }}
+        />
+      </Card>
+    </Flex>
   )
 }
 
-function UpcomingDeliveries({
-  orders,
-  isLoading,
-}: {
-  orders: UpcomingOrder[]
-  isLoading: boolean
-}) {
+/** Admin-only, like before: other roles are sent to /customers. */
+export default function DashboardPage() {
   return (
-    <SectionCard className="lg:col-span-4">
-      <SectionCardHeader>
-        {/* "Next 5" not "Upcoming": the API hard-caps this list at five, so a
-            broader title would imply a completeness the data cannot back. */}
-        <SectionCardTitle className="flex items-center gap-2 text-base">
-          <PackageCheck className="size-4" aria-hidden="true" />
-          Next 5 Deliveries
-        </SectionCardTitle>
-        <SectionCardDescription className="text-xs">Soonest first</SectionCardDescription>
-      </SectionCardHeader>
-
-      <SectionCardContent>
-        {isLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-[68px] w-full" />
-            ))}
-          </div>
-        ) : orders.length === 0 ? (
-          <EmptyState
-            icon={Calendar}
-            message="No upcoming deliveries"
-            action={
-              <Link href="/orders" className="no-underline">
-                <Button variant="outline" size="sm">
-                  View all orders
-                </Button>
-              </Link>
-            }
-          />
-        ) : (
-          <div className="space-y-2">
-            {orders.map((order) => (
-              <DeliveryRow key={order.id} order={order} href="/orders" />
-            ))}
-            <Link
-              href="/orders"
-              className="flex items-center justify-center gap-1 pt-1 text-xs text-muted-foreground no-underline transition-colors hover:text-foreground"
-            >
-              View all orders
-              <ArrowUpRight className="size-3" aria-hidden="true" />
-            </Link>
-          </div>
-        )}
-      </SectionCardContent>
-    </SectionCard>
+    <CanAccess resource="dashboard" action="list" fallback={<RedirectTo href="/customers" />}>
+      <Dashboard />
+    </CanAccess>
   )
 }

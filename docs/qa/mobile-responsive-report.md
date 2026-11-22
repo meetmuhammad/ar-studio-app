@@ -64,7 +64,7 @@ All local. Server: `next start -p 3100` of the **production build**, `LEDGER_MCP
 | `normalize.check` / MCP `auth.check` / `check-order-validators` | 14/14, all passed, all passed |
 | `protocol.check` (MCP over HTTP, SDK client) | **31/31** |
 | `security/db-privileges`, `api-auth`, `auth-fetch` | 14/14, 95/95, 11/11 |
-| `scripts/qa/api-matrix.check.ts` (real HTTP) | **185/186**; the one FAIL is pre-existing (section 6) |
+| `scripts/qa/api-matrix.check.ts` (real HTTP) | **181/182**; the one FAIL is pre-existing (section 6) |
 | `scripts/ledger-mcp/timezone.check.ts` | **BLOCKED**: needs a server started *without* `BUSINESS_TIMEZONE` on another port |
 
 Spec files (`e2e/`): `audit` (layout sweep), `nav`, `workflows`, `dialogs`, `states`, `pwa`. Helpers: `cleanup.mjs`,
@@ -111,8 +111,7 @@ keyboard up, confirm the field and the main button stay visible; (7) pinch to zo
 
 ## 6. Endpoints and MCP
 
-Full matrix: `docs/qa/endpoint-matrix.md` (47 method+path pairs, **45 PASS, 1 FAIL, 1 split**; the split is
-`sync-payments`: rejections PASS, admin path **BLOCKED** because it deletes and rebuilds every `order_payment` ledger row).
+Full matrix: `docs/qa/endpoint-matrix.md` (46 method+path pairs, **45 PASS, 1 FAIL**).
 Real HTTP with real Supabase tokens against the local database; `qa-staff` / `qa-admin` / `qa-norole`. Tenant isolation is
 **N/A** (the data model has no tenants). MCP: discovery metadata correct (resource, issuer, scopes `openid email profile`),
 `/api/mcp` answers 401 without a token and for ordinary web tokens, `protocol.check` 31/31 including the synthetic

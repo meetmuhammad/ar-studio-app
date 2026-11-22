@@ -1,0 +1,557 @@
+# Ahsan Tariq Studio: Refine app shell
+
+The root Next.js 15 App Router app is a Refine app. Refine (`@refinedev/core` 5) with the
+Ant Design UI kit (`@refinedev/antd` 6, `antd` 5) provides the shell (sidebar, header, theme),
+auth, access control and data access. Customers, Measurements, Vendors, Orders (with payments),
+the Dashboard, Ledger, P&L and the sign-in page are on Refine + antd. Refine pages read through
+the Supabase data provider (or, for the admin reports, read-only Postgres functions) and write
+either to tables (RLS) or, for orders, payments, ledger entries and vendor bills, through
+admin-checked Postgres functions. No page calls the `/api` routes any more; they stay for the
+mobile app and the MCP server. Every screen is Refine + antd (the OAuth consent page is untouched).
+
+**Architecture in one line:** browser → Refine (antd UI, React Query) → Supabase with the user's
+JWT → RLS for table reads and simple writes, `SECURITY DEFINER` functions for multi-row writes
+and reports. The `/api` routes (service role) serve the mobile app with the same role rules
+([API-ROLES.md](API-ROLES.md)). Their changes on this branch are that role alignment; for
+payments and for creating and deleting orders, calling the same functions as the web app, as
+the caller (see "API routes" under Orders and payments); and, for `/api/dashboard-stats` and
+`/api/general-ledger/stats`, reading their figures from the same reporting functions as the web
+app instead of summing rows (see "No row cap" under Reports).
+`src/app/.well-known/**`, `src/app/oauth/**` and `src/lib/pnl.ts` are unchanged;
+`src/lib/ledger-service.ts` only changed so that `listLedgerEntries` with no page reads every
+row in pages (it stopped at 1,000 rows; the MCP server always asks for a page and is not
+affected); `src/lib/ledger-mcp/**` only had its wording about the removed order-payment sync
+updated (`normalize.ts`).
+
+## Database functions and migrations on this branch
+
+| Migration | What it adds | Check script (rolls back) |
+| --- | --- | --- |
+| `20261119000000_role_scoped_rls.sql` | `current_user_is_admin()` (`users.role = 'admin'`) and role-scoped RLS: members read and write customers, measurements, orders, order items; deletes of those, payment writes, vendors, tags and category writes are admin-only. | `supabase/tests/role_scoped_rls_check.sql` |
+| `20261119000100_order_payment_functions.sql` | `create_order`, `update_order`, `delete_order`, `record_payment`, `update_payment`, `delete_payment` (atomic, ledger kept in step). | `supabase/tests/order_payment_functions_check.sql` |
+| `20261119000200_reporting_functions.sql` | `dashboard_summary`, `ledger_entries`, `pnl_input` (read-only, admin-only). | `supabase/tests/reporting_functions_check.sql` |
+| `20261119000300_ledger_entry_functions.sql` | `create_ledger_entry`, `update_ledger_entry`, `delete_ledger_entry`, `record_vendor_bill`, `update_vendor_bill`, `delete_vendor_bill`, `vendor_ledger_entries` (admin-only). | `supabase/tests/ledger_entry_functions_check.sql` |
+| `20261119000400_drop_sync_order_payment_ledger.sql` | Drops the order-payment sync function added in `20261119000300` (the "Sync Payments" feature is removed). | — |
+| `20261119000500_payment_ledger_link.sql` | `general_ledger.payment_id` (FK to `payments`, `ON DELETE CASCADE`, unique, `order_payment` rows only), a one-off report-only backfill of existing payments, and `record_payment` / `update_payment` / `delete_payment` working by that link. | `supabase/tests/order_payment_functions_check.sql` (section 6b); per-order report: `scripts/sql/payment_ledger_mismatches.sql` (read-only) |
+| `20261119000600_dashboard_single_source.sql` | `dashboard_summary` rebuilt as the single source of dashboard figures for the web app and `/api/dashboard-stats`: new `all_time`, `upcoming_orders` and `monthly_receipts_6m` blocks, `ledger_net` / `outstanding_api` removed; internal `report_order_balances` / `report_customer_receipts` (the only copies of the per-order balance and money-received formulas); `customer_order_summary` for the customer page (admin or staff, member); index on `payments(order_id)` if none exists. | `supabase/tests/reporting_functions_check.sql` (second block) |
+| `20261119000700_payment_method_matches_table.sql` | `record_payment` / `update_payment` accept exactly the methods the `payments` CHECK allows (`cash`, `bank`, `card`, `online`, `other`; case-sensitive) through the internal `payment_method_is_valid(text)`, so mobile clients sending `card` / `online` to `POST /api/payments` / `PATCH /api/payments/[id]` are no longer refused. `create_order` / `update_order` keep the orders list (`cash`, `bank`, `other`). The web UI still offers only cash / bank / other for payments. | `supabase/tests/order_payment_functions_check.sql` (end of section 3) |
+
+Details for each are in the module sections below.
+
+## Structure
+
+```
+src/app/layout.tsx                      AntdRegistry(layer) > next-themes > React Query > AuthContext
+                                        > ColorModeProvider (antd ConfigProvider + App) > RefineProvider
+src/app/(dashboard)/layout.tsx          <Authenticated> + BusinessProvider + ThemedLayout (sider + ShellHeader)
+src/app/(dashboard)/page.tsx            Dashboard, Ant Design Pro analysis layout (admin only)
+src/app/(dashboard)/ledger/page.tsx     General ledger over ledger_entries (admin only)
+src/app/(dashboard)/pnl/page.tsx        Profit & Loss over pnl_input + computePnl (admin only)
+src/app/(dashboard)/customers/**        list / create / edit/[id] / show/[id] (Refine + antd)
+src/app/(dashboard)/measurements/**     list / create[?customer_id=] / edit/[id] / show/[id] (Refine + antd)
+src/app/(dashboard)/vendors/**          list / create / edit/[id] / show/[id] (Refine + antd, admin only);
+                                        /vendors/[id] redirects to /vendors/show/[id]
+src/app/(dashboard)/orders/**           list / create[?customer_id=] (3 steps) / edit/[id] / show/[id]
+                                        (items, payments, receipt and measurement print)
+src/components/orders/                  constants + payment math, OrderStepsForm, useOrderForm, PaymentModal
+src/app/sign-in/page.tsx                Ant Design Pro style sign-in through Refine useLogin
+
+src/components/providers/refine-provider.tsx      <Refine> root (+ AuthSync, BusinessScopeSync)
+src/components/providers/color-mode-provider.tsx  light/dark for antd and the legacy pages
+src/components/refine/                  shell (header, business switcher, logo) and the shared UX
+                                        baseline: FilterBar, ResourceTable (+ TableToolbar),
+                                        RowActions, page-parts (FormSection, PageSkeleton, ...),
+                                        CardWithTitle, WriteGuard, ChartCard (+ Trend),
+                                        PeriodPicker (presets + custom range)
+src/components/customers/               customers types, form fields (rules from the zod schema)
+src/components/measurements/            measurements types, form fields, CustomerSelect
+src/components/vendors/                 constants + zod schemas, vendor form (with tags), CategorySelect,
+                                        ManageCategoriesDrawer, VendorTagsEditor, VendorLedgerCard,
+                                        VendorBillModal
+src/components/ledger/                  entry types, LedgerEntryDrawer (add / edit manual entries)
+src/components/print-*.tsx + src/lib/print-utils.tsx
+                                        receipt and measurement sheets, self-contained print window
+src/components/dashboard/nav-items.ts   NAV_ITEMS (module roles)
+src/components/ui/                      button, card (OAuth consent page) and sonner (root toaster)
+
+src/lib/refine/zod-rule.ts              antd Form rule from a zod schema
+src/lib/refine/notifications.ts         "<Entity> created/updated/deleted successfully" builders
+
+src/lib/refine/auth-provider.ts         login / logout / check / getIdentity / getPermissions / onError
+src/lib/refine/access-control.ts        role rules (canRoleAccess) + accessControlProvider
+src/lib/refine/resources.tsx            resources: routes, labels, icons, sidebar order
+src/lib/refine/data-provider.ts         @refinedev/supabase wrapped with business scoping
+src/lib/refine/business-scope.ts        membership ids for the "All businesses" view
+src/lib/refine/theme.ts                 antd theme: ACCENT, light/dark algorithm, tokens
+src/lib/refine/reporting.ts             typed React Query hooks over the reporting functions
+src/lib/read-all.ts                     reads every page of a list past PostgREST's 1,000-row cap (API routes)
+src/lib/auth/role.ts                    role lookup + cache shared by AuthContext and Refine
+```
+
+## Providers
+
+| Provider | Implementation |
+| --- | --- |
+| routerProvider | `@refinedev/nextjs-router` (App Router) |
+| dataProvider | `@refinedev/supabase` on the shared browser client (`src/lib/supabase-client.ts`), so requests carry the user's JWT and RLS applies. Wrapped in `data-provider.ts` (see Business scoping). |
+| authProvider | Supabase email + password on the same client. `check` redirects to `/sign-in`. `getPermissions` returns `public.users.role` (`admin` or `staff`, `staff` on any failure, as before). |
+| accessControlProvider | `access-control.ts` |
+| notificationProvider | `useNotificationProvider` from `@refinedev/antd`, inside antd `<App>`. Legacy pages keep their sonner toasts. |
+| React Query | Refine is given the app's existing `QueryClient` (`options.reactQuery.clientConfig`), so the Refine hooks and the legacy `useQuery` hooks share one cache. A business switch clears that cache for both. |
+
+Refine telemetry is disabled (`disableTelemetry: true`).
+
+`AuthSync` re-runs Refine's auth and access checks when the session or role changes (sign-out
+in another tab, role refresh). The legacy `AuthContext` stays because the business context and
+legacy pages read it. Both resolve the role through `src/lib/auth/role.ts`, so they agree.
+
+The sign-in page handles the post-login redirect itself and does not use Refine's default
+`?to=` redirect, which is unvalidated. Only `/oauth/consent?authorization_id=…` may be
+returned to, as before.
+
+## Theme, accent and dark mode
+
+- **Brand:** Ahsan Tariq Studio ("ATS" where space is short). Name, assets and colours live in
+  `src/lib/brand.ts`; the sidebar shows the lion mark (alone when collapsed) and the wordmark, the
+  sign-in page the lion, wordmark and name. Details and contrast ratios: [THEMING.md](THEMING.md).
+- Base theme: `RefineThemes.Blue` layout tokens through antd `ConfigProvider` (`getAntdTheme` in
+  `src/lib/refine/theme.ts`), with the accent replaced by the brand gold.
+- **Accent:** `ACCENT` in `src/lib/refine/theme.ts` is the one place the theme takes it from (values
+  in `src/lib/brand.ts`): deep gold `#8A6A12` with white button text in light mode, bright gold
+  `#D4AF37` with `#141414` button text in dark mode. The sidebar highlight, buttons, links, tags,
+  focus rings and dashboard charts all read the antd token. Check changes with
+  `node scripts/brand/contrast.mjs`.
+- **Light / dark**: `next-themes` is the single source of truth. It saves the choice in
+  `localStorage` (`theme`), follows `prefers-color-scheme` while nothing is saved
+  (`defaultTheme="system"`), and sets the `dark` class used by the legacy shadcn pages.
+  `ColorModeProvider` passes the resolved mode to antd (`theme.darkAlgorithm` /
+  `theme.defaultAlgorithm`). The header toggle switches both UI kits together.
+- **Tailwind v4 and antd**: `AntdRegistry layer` puts every antd style into `@layer antd`, and
+  `globals.css` begins with `@layer theme, base, antd, components, utilities;`. Preflight
+  (`base`) therefore cannot reset antd components, and Tailwind utilities can still adjust an
+  antd element. The legacy base rules for links and 44px touch targets apply outside the antd
+  UI (`.ar-antd`) and inside legacy pages (`.legacy-page`, set by the dashboard layout).
+- Card look: use `CardWithTitle` (icon + title on the left, optional action on the right, soft
+  shadow) and `ChartCard` (title with info tooltip, big number, trend, mini area/bar chart, footer).
+
+## Access control (roles)
+
+The `/api` routes (used by the mobile app) follow the same rules; every route and method with
+its required role, and the staff requests that changed, are in [API-ROLES.md](API-ROLES.md).
+
+Which roles may open a module is defined once, in `NAV_ITEMS`
+(`src/components/dashboard/nav-items.ts`). `resources.tsx` copies those roles into each
+resource's `meta.roles`.
+
+| Resource | Route(s) | Roles |
+| --- | --- | --- |
+| dashboard | `/` | admin |
+| customers | `/customers`, `/customers/create`, `/customers/edit/:id`, `/customers/show/:id` | admin, staff |
+| orders | `/orders`, `/orders/create`, `/orders/edit/:id`, `/orders/show/:id` | admin, staff (delete: admin) |
+| payments | (no pages; on the order page and the header "Add New Payment") | read: admin, staff; write: admin |
+| measurements | `/measurements`, `/measurements/create`, `/measurements/edit/:id`, `/measurements/show/:id` | admin, staff |
+| vendors | `/vendors`, `/vendors/create`, `/vendors/edit/:id`, `/vendors/show/:id` | admin |
+| vendor_tags, vendor_categories | (no pages; managed from Vendors) | admin |
+| ledger | `/ledger` | admin |
+| pnl | `/pnl` | admin |
+
+Rules (`canRoleAccess`), matching the database policies in
+`supabase/migrations/20261119000000_role_scoped_rls.sql` (verify with
+`supabase/tests/role_scoped_rls_check.sql`):
+
+1. Unknown resource, or no role: denied.
+2. Role not in `meta.roles`: denied.
+3. Per-action roles from `meta.actionRoles`:
+   - **Delete** on customers, orders and measurements is admin-only.
+   - **Payments** (a resource without a page): readable by members; create, edit and delete are admin-only. The header's "Add New Payment" button follows this rule.
+   - Everything else in an allowed module is open to both roles.
+4. In the admin "All businesses" view, `create` / `edit` / `delete` / `clone` on a business-scoped resource is denied with the read-only reason. This matches `authFetch` and the API.
+
+Where the rules apply:
+
+- **Sidebar:** `ThemedSider` wraps every item in `CanAccess`, so staff never see Dashboard, Vendors, Ledger or P&L.
+- **Buttons:** Refine buttons (`CreateButton`, `EditButton`, `DeleteButton`, `ShowButton`) and the table `RowActions` are disabled with the reason as a tooltip when not allowed (e.g. staff: "Only an admin can delete this").
+- **Create/edit pages:** wrapped in `WriteGuard`, which shows the reason instead of the form.
+- **Dashboard:** wrapped in `CanAccess` and sends other roles to `/customers`.
+- **Admin-only pages (Vendors):** wrapped in `ResourceGuard`, which shows a 403 result with a "Go to Customers" button for other roles (direct or shared URLs).
+- **Ledger and P&L:** wrapped in `CanAccess` with a 403 result. The reporting functions refuse non-admins as well (42501), so a direct URL shows no data either.
+
+Hiding UI is only an affordance. The API and RLS still enforce everything.
+
+## Business scoping
+
+The switcher's options come from `src/lib/business-memberships.ts`. It reads `user_businesses`
+joined to `businesses` with the browser client and the user's session (RLS: own rows,
+member-readable businesses). It returns the same shape and ordering as `GET /api/me/businesses`
+(active only, ATC first then by name, ATC as default, `canViewAll` for admins with more than
+one business). The Refine shell, Customers and Dashboard therefore never need the
+service-role API. That route is unchanged for the mobile app.
+
+`data-provider.ts` applies these rules to every scoped table (customers, orders, measurements,
+vendors, payments, general_ledger, vendor_ledger), mirroring `src/lib/business-context.ts`:
+
+- **Reads:** filtered to `business_id IN (selected business)`, or to all of the user's memberships in "All businesses".
+- **Inserts:** stamped with the selected `business_id`. A `business_id` sent by the caller is ignored.
+- **Updates and deletes:** match `id` and `business_id`. A row from another business returns 404.
+- **"All businesses" view:** writes are refused.
+
+The selected business comes from `src/lib/business-store.ts`, the same value `authFetch` sends as `X-Business-Id`.
+
+Resource-specific rules mirror the API routes and live in `RULES`:
+
+- **Customers:** a duplicate phone (unique `(business_id, phone)`) becomes "Phone number already exists". The message also appears inline on the phone field.
+- **Customers:** an empty address is stored as `null`.
+- **Customers:** delete is refused with "Customer has orders; reassign or delete orders first" when the customer has orders.
+- **Measurements:** empty readings and notes are stored as `null`. Saving a set with "Set as Default" on clears the flag on that customer's other sets in the same business, as `src/app/api/measurements/**` does (two writes, not atomic, same as the API). The customer must be in the business: the picker only offers scoped customers, and the `enforce_business_scope` trigger rejects a cross-business link.
+
+### Virtual filters
+
+List filters use form field names that are not columns. `data-provider.ts` expands them into
+real filters before querying. Because the form field name equals the filter's `field`,
+Refine's `syncWithLocation` restores the filter form from the URL with no extra code.
+
+| Field | Where | Expands to |
+| --- | --- | --- |
+| `created_range` | every scoped table | `created_at >= start` and `created_at <= end` (ISO strings) |
+| `q` | customers | name ilike *term* OR phone like *term* (same as `GET /api/customers?q=`) |
+| `q` | measurements | measurement name ilike *term* |
+| `customer` | measurements | customer name or phone contains *term*, resolved to `customer_id IN (...)` within the scope (PostgREST cannot OR across an embedded table) |
+| `q` | vendors | as the previous list: a term that is exactly a category name means that category; otherwise name, notes, contact person, phone or category name contains *term* |
+| `tag` | vendors | vendors with a tag containing *term*, resolved to `id IN (...)` |
+
+The vendors category filter uses the real column (`category_id`), so it needs no expansion.
+
+## Vendors (admin only)
+
+- **Data access.** Vendors, tags and categories are read and written through the Supabase data provider (RLS: admin-only; categories are readable by every signed-in user). Rules in `RULES`, mirroring `src/app/api/vendors/**`, `vendor-tags/**` and `vendor-categories/**`:
+  - **vendors:** strings trimmed and empty optional fields stored as `null`. A vendor always has a category; when none is chosen it is Uncategorized (fixed id `00000000-0000-0000-0000-000000000000`, the column default). If the database refuses a delete because ledger rows reference the vendor, the message is "This vendor has ledger entries and cannot be deleted."
+  - **vendor_tags:** no `business_id` (RLS scopes a tag through its vendor). Writes are refused in "All businesses". A duplicate tag on one vendor gives "Tag already exists for this vendor".
+  - **vendor_categories:** one list shared by every business.
+    - Add/rename: trimmed, required, max 120, unique ignoring case ("A category with that name already exists").
+    - Archive/restore: sets or clears `archived_at`.
+    - Delete: a used category is refused by the database (both foreign keys are `ON DELETE RESTRICT`), with "This category is in use and cannot be deleted. Archive it instead."
+    - No API needed: the API's extra delete step is only a pre-count, and rename does not touch the ledger in either path, so writing the table directly has the same effect.
+    - Difference from the API: the delete message has no counts. The browser cannot count other businesses' vendors or the ledger.
+    - Not editable from "All businesses", as before.
+    - Uncategorized cannot be archived or deleted from the app (it is the default every vendor falls back to).
+- **Tags** are edited on the vendor form (`Select mode="tags"`, saved after the vendor) and on the vendor page (add with suggestions, remove with confirmation).
+- **Ledger and bills.** The vendor page's "Ledger" card (`src/components/vendors/vendor-ledger-card.tsx`) reads `vendor_ledger_entries` and shows Billed, Paid and Balance owed (billed − paid), then each bill and payment with what is owed after it. "Add bill" (`VendorBillModal`, `record_vendor_bill`) and "Record payment" (`LedgerEntryDrawer` as a vendor payment, `create_ledger_entry`) are admin-only, as are edit and delete. Lines written by an order are read-only and link to it. See "Ledger entry functions" below.
+- **List.** There is no balance column, as on the previous list (no ledger reads needed).
+
+## Orders and payments
+
+### Database functions (`supabase/migrations/20261119000100_order_payment_functions.sql`)
+
+All are `SECURITY DEFINER` (`search_path = public, pg_temp`), executable by `authenticated`
+only, and do every write of one operation in one transaction. They raise SQLSTATE `42501`
+(not signed in, no role, not a member, admin only), `P0002` (not found), `22023` / `23514`
+(invalid input). The data provider maps these to 403 / 404 / 400 with the function's message.
+
+| Function | Mirrors | Who | Writes |
+| --- | --- | --- | --- |
+| `create_order(p_business_id, p_order, p_items, p_advance)` | POST /api/orders | admin, staff (member) | order (number `<code>-#####`, race-free under an advisory lock), items, advance → `general_ledger` ("Advance payment for Order #n") |
+| `update_order(p_order_id, p_patch, p_items)` | PATCH /api/orders/[id] | admin, staff (member) | order fields present in the patch, items replaced when given, advance ledger row kept in step |
+| `delete_order(p_order_id)` | DELETE /api/orders/[id] | admin (member) | order, its items, payments and `order_payment` ledger rows |
+| `record_payment(p_order_id, p_payment)` | POST /api/payments | admin (member) | payment + ledger row ("Payment for Order #n", notes or "Payment via <method>") |
+| `update_payment(p_payment_id, p_patch)` | PATCH /api/payments/[id] | admin (member) | payment fields + its ledger row |
+| `delete_payment(p_payment_id)` | DELETE /api/payments/[id] | admin (member) | payment + its ledger row |
+
+Running balances are kept by the existing `general_ledger` triggers. `supabase/tests/order_payment_functions_check.sql`
+exercises all of them as the disposable admin and staff users inside a transaction that rolls back.
+
+### Payment ↔ ledger link (`20261119000500_payment_ledger_link.sql`)
+
+Each payment owns exactly one `general_ledger` row, recorded in `general_ledger.payment_id`
+(partial unique index; a CHECK allows it only on `order_payment` rows; advances have no payment
+and are never linked).
+
+- `record_payment` writes the row with `payment_id`. `update_payment` / `delete_payment` find it
+  by `payment_id`. Only for a legacy payment without a linked row do they fall back to the old
+  match (order, "Payment for Order #n", amount, date, preferring the notes), restricted to
+  unlinked rows, and link what they find. Two equal payments on the same day therefore each keep
+  their own row.
+- The foreign key is `ON DELETE CASCADE`: deleting a payment by any path (function, service-role
+  API, RLS, SQL editor) deletes its row. The cascade is an ordinary `DELETE` on `general_ledger`,
+  so the per-business lock and the running-balance recalculation triggers fire as for any delete.
+  `delete_payment` still deletes the row explicitly, in the same transaction.
+- **Backfill (one-off, report-only):** existing payments were linked to existing unlinked
+  "Payment for Order #n" rows with the same business, order, amount and date, one-to-one: equal
+  keys are paired oldest-with-oldest by `(created_at, id)`, first requiring the notes, then
+  without. No row was created or deleted; the migration prints how many payments and rows stayed
+  unmatched. `scripts/sql/payment_ledger_mismatches.sql` lists, per order, payments without a
+  row, payment rows without a payment, drifted links, unexpected or wrong advance rows, and
+  expected (advance + payments) vs ledger net. It runs in a read-only transaction.
+- Admins can still insert or update `payments` directly through RLS (the web app does not); such
+  a write does not touch the ledger. A delete is covered by the cascade.
+
+### API routes (mobile app)
+
+`POST /api/payments`, `PATCH` / `DELETE /api/payments/[id]`, `POST /api/orders` and
+`DELETE /api/orders/[id]` call `record_payment`, `update_payment`, `delete_payment`,
+`create_order` and `delete_order` with a client acting as the caller
+(`callerSupabaseClient` in `src/lib/api-auth.ts`: anon key + the request's bearer token, no
+session), so `auth.uid()` is the user and the database applies the same checks as for the web
+app. The routes keep their own role check, their business check (`X-Business-Id`, which the
+functions do not know) and their status codes and JSON; they read the row back with the service
+role to return the same shape as before. Function errors map through `rpcErrorStatus`
+(42501 → 403, P0002 → 404, invalid input → 400, anything else → the route's own 500).
+
+`PATCH /api/orders/[id]` still writes the tables directly: its body semantics differ from
+`update_order` (absent amounts, method and measurement are set to null), so switching would
+change either the stored order or the books for existing mobile clients. It does not touch the
+ledger, so an advance edited through it is not reflected there (as before this branch).
+
+**Deliberate differences from the API** (also in the migration header):
+- **Atomic writes:** all writes of one operation are in one transaction. (Before `20261119000500` the API kept a payment whose ledger insert failed, and an order whose items or advance failed; those routes now call the functions.)
+- **Ledger kept in step:** order advance edits, payment edits and deletes, and order deletes update or remove the matching ledger rows immediately. Of the API routes only `PATCH /api/orders/[id]` still leaves the ledger stale (see "API routes" above).
+- **Admin-only operations:** deleting orders and all payment writes are admin-only, as in RLS and the API routes (see [API-ROLES.md](API-ROLES.md)).
+- **Partial updates:** `update_order` changes only the keys sent. The API's PATCH nulls amounts, method and measurement when they are absent from the body.
+- **Balance on create:** `create_order` stores `total - advance` as the balance when none is sent.
+- **No payments row for the advance:** as in the API, the advance lives on the order and in the ledger only.
+
+### UI
+
+- **Data provider:** `orders` and `payments` writes go through `writeVia` in `data-provider.ts` (`supabase.rpc`). Refine's `useForm`, `useDelete`, `RowActions` and `PaymentModal` therefore all use the functions, and Refine invalidates the lists as usual. Reads are plain RLS-scoped selects.
+- **List filters:**
+  - "Order number or customer" (virtual `q`: order number contains the term, or the customer's name/phone does).
+  - Status: defaults to In Process, as before. Typing a search switches it to All Orders.
+  - Delivery date and Booking date ranges (virtual `delivery_range` / `booking_range`).
+- **List sorting:** delivery date (default, ascending), booking date or created. Payment status is computed per row: paid = advance + payments, then Paid / Partial / Unpaid / No total.
+- **Create/edit:** antd `Steps`, mirroring the previous multi-step form.
+  - **General Information:** customer, dates, status, comments, and up to 4 items with unique types.
+  - **Measurements:** the customer's default set is preselected; "New measurement" opens a modal with the measurement form. Also fitting preferences.
+  - **Payment:** method, total, advance, and a calculated balance.
+  - **Navigation:** Next validates the current step; Enter moves on; submitting validates every step. `/orders/create?customer_id=` preselects the customer.
+- **Show page:**
+  - Totals, details, items, and the payments table.
+  - Payment actions: "Record Payment", edit and delete (admin; disabled with a tooltip for staff).
+  - Printing: "Print Receipt" (existing `openPrintPreview`) and "Print Measurement" when a set is linked.
+- **Header:** "Create New Order" opens `/orders/create`. "Add New Payment" opens the payment modal with an order picker (admin only).
+
+## Reports: Dashboard, Ledger and P&L (admin only)
+
+### Database functions (`supabase/migrations/20261119000200_reporting_functions.sql`)
+
+`general_ledger` and `vendor_ledger` have no client grants, and reports need exact totals (no
+1,000-row cap), so the three report screens read through read-only functions. All are `STABLE`,
+`SECURITY DEFINER` (`search_path = public, pg_temp`), executable by `authenticated` only, and
+check `current_user_is_admin()` and that every requested business id is one of
+`current_user_business_ids()` (SQLSTATE `42501` otherwise). They take an array of business ids:
+the selected business, or every membership in "All businesses". Dates are inclusive; "today" is
+Asia/Karachi.
+
+| Function | Returns | Mirrors |
+| --- | --- | --- |
+| `dashboard_summary(p_business_ids, p_from, p_to)` | jsonb: `all_time` (customers, orders, revenue, received {advances, payments, total}, outstanding, orders created this month), customers, orders (total, in range, by status), revenue in range, cash received in range (advances / payments / total), 12-month series, 6-month receipts, top 5 customers, upcoming deliveries (14 days), next 5 upcoming orders, overdue deliveries | The single source for the web dashboard **and** `GET /api/dashboard-stats` (20261119000600) |
+| `customer_order_summary(p_customer_id)` | jsonb `{orders, revenue, received: {advances, payments, total}, outstanding}` for one customer, every order | The customer page's totals (admin or staff, member of the customer's business; 20261119000600) |
+| `ledger_entries(p_business_ids, p_from, p_to, p_search, p_entry_type, p_vendor_id, p_limit, p_offset, p_vendor_category_id)` | jsonb `{rows, total, combined, opening_balance, totals: {debit, credit, net, entry_count}}` | `ledger-service.ts`: `listLedgerEntries` (filters, newest first), `getRangeRunningBalances` (`range_balance`, one business only) and `getLedgerTotals` (date range only). `GET /api/general-ledger/stats` now reads its totals from here (`p_limit` 0). |
+| `pnl_input(p_business_ids, p_from, p_to)` | jsonb `{orders, payments, ledger, vendorLedger, vendors}` | `/api/pnl` `fetchRows`, for both bases at once |
+
+`supabase/tests/reporting_functions_check.sql` impersonates disposable admin and staff users
+inside a transaction that rolls back: staff gets 42501 from all three, an admin asking for a
+business they don't belong to gets 42501, and the admin's figures equal direct sums (cash received
+= advances + payments, ledger debit / credit / count, running balance, opening balance). Its
+second block (20261119000600) checks every `all_time` figure, `upcoming_orders`,
+`monthly_receipts_6m` and `customer_order_summary` against direct SQL sums over every row, for
+one business and for all of the admin's businesses, and that staff, a non-member business in the
+array and a user with no membership are refused.
+
+**One definition of the money.** `report_order_balances` (per order: payments total, received =
+advance + payments, balance due = max(total − advance − payments, 0), 0 when Cancelled) and
+`report_customer_receipts` (advances by booking date, payments by payment date) are the only
+places those formulas exist. Received (in a range or all time), outstanding, the monthly series,
+the customer totals and the upcoming-deliveries balance are all sums over them. Both are internal
+(not executable by clients).
+
+**No row cap.** Report figures are summed in SQL; no page or route adds up rows in JavaScript.
+Where a full row list is genuinely needed (CSV export, legacy "everything" API responses) it is
+read in 1,000-row pages (`src/lib/read-all.ts`) or returned whole by a function. The audit of every
+place is in [qa/row-cap-audit.md](qa/row-cap-audit.md).
+
+`src/lib/refine/reporting.ts` wraps them in React Query hooks (`useDashboardSummary`,
+`useLedgerPage`, `usePnlInput`, query key `['report', fn, businessIds, args]`). If the migration
+has not been applied (PostgREST `PGRST202`), the screens say so instead of failing silently.
+
+### Dashboard (`/`)
+
+- **Period:** `PeriodPicker` (This Month / This Quarter / This Year / Custom), default This Month. Trends compare with the previous month / quarter / year, or the same number of days before a custom range.
+- **KPI cards:** Revenue (orders booked in the period; footer: all time), Cash received (money received from customers in the period: advances on orders booked in it + payments dated in it, split in the tooltip; footer: total received, all time), Orders (booked in the period), Outstanding balance (still to collect on every order that is not Cancelled, today). The first three have a trend and a 12-month mini chart; Outstanding shows customers and overdue deliveries instead (it is a balance today, not a period figure).
+- **All-time figures** (revenue, total received, outstanding, customers) come from the `all_time` block, the same numbers `GET /api/dashboard-stats` sends the mobile app.
+- **Sales card:** tabs Revenue / Orders with a 12-month bar chart and "Top customers by order value" for the period.
+- **Upcoming deliveries (next 14 days):** In Process orders, nearest first, with the balance due, plus a warning for overdue ones, and "See all orders".
+- Loading skeletons, empty states and light/dark come from antd. Every figure is computed in SQL; the page only formats.
+
+**Shared with `/api/dashboard-stats`.** The API calls `dashboard_summary` as the caller (all
+time, the request's business or, with `X-Business-Id: all`, every membership) and only renames
+keys: `totalCustomers` / `totalOrders` / `totalRevenue` = `all_time.customers` / `.orders` /
+`.revenue`, `totalReceived` = `all_time.received.total`, `outstandingBalance` =
+`all_time.outstanding`, `recentOrdersCount` = `all_time.recent_orders_this_month`,
+`upcomingOrders` = `upcoming_orders`, `chartData` = `monthly_receipts_6m` as `{month: label,
+revenue: total}`. The mobile-facing definition changes are listed in [API-ROLES.md](API-ROLES.md).
+The web dashboard keeps its own period figures, 12-month series and 14-day deliveries list; those
+are views the mobile app does not have, not different definitions.
+
+### Customer page (`/customers/show/:id`)
+
+The Orders, Revenue, Received and Outstanding cards come from `customer_order_summary` (every
+order of the customer, same definitions as the dashboard). They used to sum at most 100 loaded
+orders in the browser, with "Paid" = advances only and "Balance" = the stored `orders.balance`
+(set at booking, never updated by payments). The order history still lists the latest 100 and
+says so when there are more; each order's "pending" is total − advance − payments (not for
+Cancelled orders), as on the order pages.
+
+### Ledger (`/ledger`)
+
+- **Reads:** `ledger_entries`, paged on the server (page and size in the URL with the filters: `from`, `to`, `q`, `type`, `vendor`, `category`).
+- **Filters** ("Ledger filters"): Dates (range picker with Last 7 days / Last 30 days / This month / This year presets), Search particulars, Entry type, Vendor, Category.
+- **Table** (`ResourceTable`, key `ledger`): Date, Particulars (links to the order), Type, Vendor / Category, Debit, Credit, Balance (the running balance within the date range, as before; Business instead in "All businesses"), Notes (hidden by default), Actions. Sticky header, density and column settings. Summary rows: opening balance, totals for the dates, closing balance.
+- **Stat cards:** Total Debit, Total Credit, Current Balance (Net in "All businesses"), Total Entries, over the date range only, as `/api/general-ledger/stats`.
+- **Export CSV:** every row of the current filter (same columns as the previous export).
+- **Writes (admin only):** "Add Entry" and edit open `LedgerEntryDrawer` (`src/components/ledger/`), and delete is a popconfirm. All go through the functions below via the data provider (`general_ledger` resource) with Refine notifications. Rows written by an order or a payment are read-only and link to the order.
+
+### Ledger entry functions (`supabase/migrations/20261119000300_ledger_entry_functions.sql`)
+
+Admin-only `SECURITY DEFINER` functions (`search_path` pinned, execute granted to `authenticated` only; 42501 for non-admins and non-members). Each call is one transaction under the business's ledger lock. Check: `supabase/tests/ledger_entry_functions_check.sql` (ends in an exception, so it always rolls back).
+
+| Function | Replaces | Notes |
+| --- | --- | --- |
+| `create_ledger_entry(p_business_id, p_entry)` | POST /api/general-ledger | Opening balance, vendor payment (needs a vendor; particulars default to its name) or miscellaneous; exactly one of debit / credit, > 0. A vendor's entry gets one mirror row in `vendor_ledger` (debit and credit swapped). |
+| `update_ledger_entry(p_entry_id, p_entry)` | PUT /api/general-ledger/[id] | Rewrites the vendor mirror; keeps `tag_id` unless sent. |
+| `delete_ledger_entry(p_entry_id)` | DELETE /api/general-ledger/[id] | Deletes the mirror first. |
+| `record_vendor_bill` / `update_vendor_bill` / `delete_vendor_bill` | POST /api/vendor-ledger (edit and delete are new) | Bill-only `vendor_ledger` rows (credit); mirror rows are refused. |
+| `vendor_ledger_entries(p_vendor_id)` | GET /api/vendor-ledger | Rows newest first with `owed_after`, `kind` (bill / ledger / order) and totals. |
+
+Running balances: `general_ledger.balance` stays with the existing per-business triggers; `vendor_ledger.balance` (cumulative debit − credit per vendor) is recomputed for each vendor a call touches. Differences from the routes: atomic; order-owned rows (`order_payment`, or linked to an order) cannot be created, edited or deleted manually (23514) and `order_id` is not accepted; amounts must be > 0.
+
+### P&L (`/pnl`)
+
+- `pnl_input` returns the API's rows for the period; `computePnl` from `src/lib/pnl.ts` (unchanged) builds the statement in the browser. Switching basis needs no new request.
+- **Controls:** Basis (Cash basis / Accrual basis) and Period (This Month / This Quarter / This Year / Custom).
+- **Cards:** Statement (Revenue, Cost of sales / production, Gross profit, Staff, Overheads, Other expenses, Other income, Net profit), By month (revenue and net profit chart), Monthly breakdown table with a period total row, Not in profit (opening balances, owner withdrawals, transfers, and in accrual the vendor payments replaced by bills), Read this with the figures (limitations and unknown categories).
+- Same figures as `GET /api/pnl` for the same business, basis and dates.
+
+## UX baseline (Ant Design Pro patterns)
+
+Shared components in `src/components/refine/`, used by Customers and Measurements:
+
+- **Page header** (Refine `List` / `Create` / `Edit` / `Show`): breadcrumb, title, subtitle (`withSubtitle(...)`), actions on the right. Content is a stack of cards on the gray page (`transparentContent`). Subtitles are hidden below 768px so the title keeps its room.
+- **`FilterBar`**: query form above the table. Fields sit in a responsive grid (stacked on phones), with Search, Reset, and Expand / Collapse when there are more than two fields. It is wired to `useTable`'s `onSearch` (server-side), and with `syncWithLocation` the filters, sort and page live in the URL. `DateRangeFilter` + `dateRangeItemProps` keep a date range as ISO strings, so it survives the URL round trip.
+- **`ResourceTable`**: card + toolbar + table.
+  - **Toolbar:** Refresh, Density (Default / Medium / Compact), and Column settings (show/hide, All columns, Reset).
+  - **Persistence:** density and hidden columns are saved in `localStorage` under `ar-table:<tableKey>`.
+  - **Table:** sticky header under the shell header, horizontal scroll, page-size changer, and an `Empty` state with a call to action.
+  - **Phones:** below 768px the table collapses into a list of cards (`renderMobile`).
+- **`RowActions`**: inline View / Edit / Delete with Popconfirm on delete. Each action is checked with the access control provider; a denied action stays visible but disabled, with the reason as its tooltip.
+- **Forms**: sections in cards (`FormSection`), first field auto-focused, Enter submits (`EnterToSubmit`, since Refine's Save button is outside the `<form>`), validation from the API's zod schemas (`zodRule`), success/error notifications from `notifications.ts`. Edit and show pages show a `PageSkeleton` while loading; the edit form stays mounted (hidden) so Refine can fill it.
+- **Sign-in**: the lion mascot, wordmark and "Ahsan Tariq Studio" above a centred card with Email / Password with icons, an inline error `Alert`, and a loading Sign In button. Works in light and dark mode.
+
+## Browser tests (Playwright)
+
+Two suites share the selectors and small flows in `e2e/support/ui.ts` (sign in, sider/drawer
+menu, FilterBar search, row delete with its confirm, create/remove records). Tests assert what a
+user sees: roles, labels, button text, URLs. antd icon buttons include the icon's name in their
+accessible name ("search Search", "right Next"), so buttons are matched with `btn(scope, 'Search')`,
+which accepts an optional icon word.
+
+### Local suite (default): `npm run test:e2e`
+
+- Config `playwright.config.ts`, specs `e2e/*.spec.ts` (chromium and webkit), `e2e/staging/**` ignored.
+- Runs against a local app (`E2E_BASE_URL`, default `http://localhost:3100`) pointed at the **local** Supabase stack, with the local QA accounts (`qa-admin`, `qa-staff`, `qa-signout` `@arstudio.test`) seeded there.
+- Guard: `e2e/global-guard.ts` runs as `globalSetup` and again in each test. It refuses to run unless `.env.local`'s `NEXT_PUBLIC_SUPABASE_URL` and `E2E_BASE_URL` are localhost / 127.0.0.1.
+- Specs:
+  - `nav`: sider menu per role, drawer below 992px, header actions, account menu, theme toggle persistence, staff 403 / redirect, sign-in, sign-out, expired session.
+  - `workflows`: customers, measurements (customer deep link), vendors (categories, tags), orders (Steps) with payments, and ledger entries, at 1440 and 1024; staff limits.
+  - `states`: long names, empty states, and a failed read with Retry.
+  - `dialogs`: payment modal, categories drawer, ledger entry dialog and the new-measurement modal fit every width and close with Escape.
+  - `audit`: responsive sweep with screenshots.
+  - `pwa`: manifest, icons, no caching, focus, reduced motion.
+- Records are named `QA-E2E … <unique suffix>` and removed through the UI in `finally`.
+
+### Staging suite (opt-in): `npm run test:e2e:staging`
+
+```
+E2E_ADMIN_EMAIL=… E2E_ADMIN_PASSWORD=… E2E_STAFF_EMAIL=… E2E_STAFF_PASSWORD=… \
+E2E_BASE_URL=http://localhost:3100 npm run test:e2e:staging
+```
+
+- Config `playwright.staging.config.ts`, specs `e2e/staging/*.spec.ts`, chromium, one worker, in order.
+- For the dummy/staging Supabase project only. Start the app against it first (`npm run build && npm start` with that project's public URL and anon key).
+- **Guard** (`e2e/staging/guard.ts`, `globalSetup`). It refuses to start unless:
+  - the host of `NEXT_PUBLIC_SUPABASE_URL` (environment, else `.env.local`) is exactly `ohgqgkraybpvnfdbgmvl.supabase.co`;
+  - neither that URL nor `E2E_BASE_URL` contains the production ref `drdnqsjjxmqiklwfadmk`;
+  - the app served at `E2E_BASE_URL` has only the staging project in its client bundle;
+  - all four credential variables are set.
+- In every test, requests to the production project are blocked, and the test fails if the page calls any Supabase project other than staging.
+- Credentials are read from the environment only and never written to the repo. Sessions are saved to `e2e/.auth/staging-*.json` (gitignored). Traces are off because they would record typed passwords.
+- Coverage, as admin and staff:
+  - sign-in, including the wrong-password alert;
+  - role menus, phone drawer, header actions and account menu;
+  - light/dark persistence;
+  - customers CRUD and search (staff cannot delete);
+  - measurements created from the customer page deep link, then edited;
+  - vendors with tags and the categories drawer (staff get 403);
+  - an order through the three steps with an item and an advance;
+  - recording, editing and deleting a payment, then deleting the order (staff cannot);
+  - dashboard, ledger (filters, CSV export) and P&L rendering (staff get 403 or the redirect);
+  - ledger entries through the drawer (add, find, edit, totals, delete), order-owned rows read-only, and a vendor's bills and payments with billed / paid / owed (`ledger.spec.ts`; screenshots when `E2E_SHOTS_DIR` is set).
+- **Data:** each spec creates its own records named `E2E-STG … <unique suffix>` and deletes them through the UI as admin in `afterAll`. Cleanup only matches those unique names and phone numbers, so existing rows are never touched. The reports spec creates nothing.
+
+### API role check: `e2e/staging/api-roles.mjs`
+
+Checks the `/api` role rules ([API-ROLES.md](API-ROLES.md)) with an admin and a staff access token,
+removes what it creates and prints a pass/fail table (never the tokens):
+`BASE_URL=… E2E_ADMIN_TOKEN=… E2E_STAFF_TOKEN=… node e2e/staging/api-roles.mjs`.
+
+### Leftover test data and row counts
+
+- `node e2e/cleanup.mjs` (local, `QA-E2E…` records) or `node e2e/cleanup.mjs --staging` (dummy project only, `E2E-STG…` records, credentials from `E2E_ADMIN_EMAIL` / `E2E_ADMIN_PASSWORD`; refuses any other host and the production ref). Add `--dry-run` to list without removing. It signs in as an admin with the anon key and removes test orders (`delete_order`), vendors with their bills and ledger lines (`delete_vendor_bill`, `delete_ledger_entry`), prefixed manual ledger entries, measurements, customers and categories. No service role, no `/api`.
+- `node e2e/db-counts.mjs baseline|check`: row counts of the tables the tests touch, LOCAL stack only (it needs the local service-role key), to prove a run left nothing behind.
+
+## Porting the next module
+
+1. Add any extra routes (`create`, `edit`, `show`) to the module's entry in `MODULES` in `src/lib/refine/resources.tsx`. Roles stay in `NAV_ITEMS`.
+2. If the table has resource-specific rules (error wording, delete preconditions, value normalisation), add them to `RULES` in `data-provider.ts`. Scoping is already automatic for the scoped tables.
+3. Build the pages with `List` / `Create` / `Edit` / `Show` and `useTable` / `useForm` / `useShow` from `@refinedev/antd`, following `src/app/(dashboard)/measurements/**`:
+   - **List:** `FilterBar` + `ResourceTable` + `RowActions`, with `syncWithLocation: true`. Name filter fields after virtual filters.
+   - **Create/edit:** `FormSection`s, `EnterToSubmit`, `PageSkeleton`, and `WriteGuard`.
+   - **Validation:** `zodRule` over the API's zod schema.
+4. Add the module's base path to `REFINE_MODULES` in `src/app/(dashboard)/layout.tsx` so the legacy styles stop applying there.
+5. Run `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+
+Multi-table writes that must be atomic (orders with items and payments, ledger postings,
+running balances) go through a `SECURITY DEFINER` function wired into `RULES[...].writeVia`
+in `data-provider.ts` (as orders, payments, ledger entries and vendor bills do), never through
+several client-side writes.
+
+## Removed in the cleanup
+
+Deleted because nothing (pages, components, tests, scripts, config) imported them any more:
+
+- `src/components/data-table/data-table.tsx` (and the empty `columns/`), `src/components/filters/date-range-filter.tsx`, `src/components/theme-demo.tsx`, `src/components/theme-toggle.tsx`.
+- `src/hooks/use-debounce.ts`, `src/hooks/use-date-range-preference.ts`, `src/lib/theme-config.ts`.
+- shadcn `src/components/ui/`: `alert-dialog`, `calendar`, `checkbox`, `command`, `date-picker`, `dialog`, `dropdown-menu`, `form`, `input`, `label`, `popover`, `radio-group`, `select`, `separator`, `sheet`, `switch`, `table`, `tabs`, `textarea`, `tooltip`.
+- The classic `/overview` page (replaced by the Refine dashboard) and its link, with what only it used: `src/components/dashboard/*` except `nav-items.ts`, `src/components/auth/role-guard.tsx`, `src/hooks/use-api.ts`, `src/hooks/use-reduced-motion.ts`, `ui/skeleton`, `ui/chart`, `ui/badge`.
+- Earlier units: the shadcn dialogs and forms (`src/components/dialogs/*`, `src/components/forms/*`) and `src/components/refine/kpi-card.tsx`.
+- `NAV_ITEMS`: the phone tab-bar fields (`tab`, `tabLabel`, `icon`) and the unused helpers `itemsFor`, `tabItemsFor`, `moreItemsFor`, `isActivePath`.
+- The print window no longer loads Tailwind from `cdn.tailwindcss.com`: `src/lib/print-utils.tsx` inlines the styles the receipt and measurement sheets use, so printing works offline.
+
+Kept on purpose: `ui/sonner` (root toaster), `ui/button` / `ui/card` (OAuth consent page), `src/lib/auth-fetch.ts` and `src/lib/query-client.ts` (business context and Refine), `src/lib/vendor-filter.ts` (used by `scripts/checks/filters.check.ts`). `GET /api/dashboard-stats` stays for the mobile app.
+
+Unused npm packages removed with `npm uninstall` (nothing imports them any more): `@hookform/resolvers`, `react-hook-form`, `@tanstack/react-table`, `cmdk`, `react-day-picker`, `use-debounce`, `lucide-react`, `@radix-ui/react-alert-dialog`, `@radix-ui/react-checkbox`, `@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu`, `@radix-ui/react-label`, `@radix-ui/react-popover`, `@radix-ui/react-radio-group`, `@radix-ui/react-select`, `@radix-ui/react-separator`, `@radix-ui/react-switch`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip`. Still used: `recharts` (dashboard, P&L), `date-fns` (print sheets), `sonner`, `next-themes`, `class-variance-authority`, `@radix-ui/react-slot`, `clsx`, `tailwind-merge`.
+
+## Deferred
+
+
+- **Vendor ledger card:** filters entries client-side, as before (one vendor's rows).
+- **Vendor list:** the `tag` and `q` filters resolve at most 1000 matching tags or categories (see [qa/row-cap-audit.md](qa/row-cap-audit.md)).
+- **Reporting functions:** written against the API and the migrations in this repo. Run `supabase/tests/reporting_functions_check.sql` after applying.
+- **Orders "Nearest delivery" sort:** the previous list put upcoming deliveries first and past-due ones after, using three server queries. The Refine list sorts by delivery date ascending, so past-due orders come first. The delivery date is shown in red when an In Process order is late. Restoring the exact order needs a sort expression, which means a view or function.
+- **`orders_with_payment_status` view:** not used. Its definition is not in the repo, so the list computes payment status from the order and its payments, with the same formula as the receipt.
+- **Order functions:** written against the API and the migrations in this repo. The base table definitions (column types, foreign-key actions) predate `supabase/migrations`, so run `supabase/tests/order_payment_functions_check.sql` after applying.
+- **OAuth consent:** untouched (shadcn).
+- **Sign-in "Remember me":** not added. Supabase always keeps the session in `localStorage`, so the checkbox would have had no effect.
+- **Measurement print:** reuses `PrintMeasurement` / `openMeasurementPrintPreview`. `order` is optional, so a measurement prints on its own (no order number or items). The print window is self-contained (no network).
+- **Measurement list sorting by customer** is not offered (PostgREST orders embedded rows, not parents). The customer filter resolves at most 1000 matching customers.
+- **Phone layout:** the shell uses Refine's drawer menu on phones; the previous bottom tab bar is gone.
+- **Notifications bell:** static.
+- **Existing auth wait:** `AuthContext` awaits the role lookup inside Supabase's `onAuthStateChange`, which can hold the first session read for up to the 10 s role timeout if that query hangs. The previous guard waited on the same path; changing it means touching `AuthContext` timing and was left as is.

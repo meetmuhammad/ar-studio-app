@@ -1,7 +1,7 @@
 import { createAdminSupabaseClient } from './supabase'
 import type { Customer, Order, OrderWithCustomer, OrderItem } from './supabase-client'
 import { todayInBusinessZone } from './date-range'
-import type { Business } from './business-shared'
+import { readAll } from './read-all'
 
 /**
  * Every function here takes the business it acts on (or, for reads, the list
@@ -20,42 +20,6 @@ const inBusinesses = <Q>(query: Q, scope: Scope): Q => {
 }
 
 const NOT_FOUND = 'PGRST116'
-
-/**
- * Next order number WITHIN one business: `<code>-#####`, continuing that
- * business's own sequence. Default (not specified by the client): ATC keeps
- * AR-00001..., Techlink Co starts at TL-00001. Uniqueness is
- * (business_id, order_number), so the sequences never collide.
- */
-export async function nextOrderNumber(business: Pick<Business, 'id' | 'code'>): Promise<string> {
-  const supabase = createAdminSupabaseClient()
-  const prefix = business.code || 'AR'
-
-  // Get the latest order number to increment
-  const { data: latestOrder, error } = await supabase
-    .from('orders')
-    .select('order_number')
-    .eq('business_id', business.id)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (error) {
-    console.error('Error fetching latest order:', error)
-    throw new Error('Failed to generate order number')
-  }
-
-  let nextNumber = 1
-  if (latestOrder?.order_number) {
-    // Extract number from order_number (e.g., "AR-00001" -> 1)
-    const match = latestOrder.order_number.match(/^[A-Z]+-(\d+)/)
-    if (match) {
-      nextNumber = parseInt(match[1]) + 1
-    }
-  }
-
-  return `${prefix}-${nextNumber.toString().padStart(5, '0')}`
-}
 
 // Customer operations
 export async function getCustomers({
@@ -233,7 +197,9 @@ export async function deleteCustomer(id: string, businessId: string): Promise<bo
   return true
 }
 
-// Order operations
+// Order operations. Orders are created and deleted by the create_order /
+// delete_order database functions (20261119000100), called as the user from
+// the API routes; reads and the legacy PATCH path stay here.
 // PostgREST splits an or() on commas and closes it on a paren, so an
 // unquoted search term containing either produces a filter that is either
 // malformed or quietly wrong. Quoting makes the value literal; inside quotes
@@ -455,34 +421,35 @@ export type OrderSummary = Pick<Order, 'id' | 'order_number' | 'customer_id' | '
   customers: Pick<Customer, 'id' | 'name' | 'phone'> | null
 }
 
+/**
+ * Every order in scope, newest first, for pickers (GET /api/orders/all). Read
+ * in pages: this used to stop at `.limit(1000)` (PostgREST's cap anyway), so a
+ * book past 1,000 orders lost its oldest ones. id breaks created_at ties.
+ */
 export async function getAllOrdersSimple(scope: Scope): Promise<OrderSummary[]> {
   const supabase = createAdminSupabaseClient()
 
-  const { data, error } = await inBusinesses(supabase
-    .from('orders')
-    .select(`
-      id,
-      order_number,
-      customer_id,
-      booking_date,
-      total_amount,
-      advance_paid,
-      created_at,
-      customers (
-        id,
-        name,
-        phone
-      )
-    `), scope)
-    .order('created_at', { ascending: false })
-    .limit(1000)
-
-  if (error) {
-    throw new Error(`Failed to fetch orders: ${error.message}`)
-  }
-
   // customers is a to-one embed; the client has no generated schema, so it types it as an array.
-  return (data || []) as unknown as OrderSummary[]
+  return readAll<OrderSummary>('orders', (from, to) =>
+    inBusinesses(supabase
+      .from('orders')
+      .select(`
+        id,
+        order_number,
+        customer_id,
+        booking_date,
+        total_amount,
+        advance_paid,
+        created_at,
+        customers (
+          id,
+          name,
+          phone
+        )
+      `), scope)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, to))
 }
 
 export async function getOrder(id: string, scope: Scope): Promise<OrderWithCustomer | null> {
@@ -567,34 +534,6 @@ export async function updateOrderItems(orderId: string, orderItems: { order_type
   }
 }
 
-/**
- * The customer (and measurement, if any) must already be in `business`; the
- * route checks that so it can answer 404, and the database guard
- * (enforce_business_scope) refuses a mismatch regardless.
- */
-export async function createOrder(
-  business: Pick<Business, 'id' | 'code'>,
-  order: Omit<Order, 'id' | 'order_number' | 'created_at' | 'updated_at' | 'business_id'>
-): Promise<Order> {
-  const supabase = createAdminSupabaseClient()
-
-  // The number is read-then-insert, so two concurrent creates can pick the
-  // same one; the (business_id, order_number) unique turns that into 23505,
-  // and the next attempt reads the winner's number.
-  for (let attempt = 0; ; attempt++) {
-    const orderNumber = await nextOrderNumber(business)
-    const { data, error } = await supabase
-      .from('orders')
-      .insert([{ ...order, business_id: business.id, order_number: orderNumber }])
-      .select()
-      .single()
-
-    if (!error) return data
-    if (error.code === '23505' && attempt < 2) continue
-    throw new Error(`Failed to create order: ${error.message}`)
-  }
-}
-
 /** null when the order is not in this business. */
 export async function updateOrder(
   id: string,
@@ -620,23 +559,6 @@ export async function updateOrder(
   }
 
   return data
-}
-
-/** false when the order is not in this business. */
-export async function deleteOrder(id: string, businessId: string): Promise<boolean> {
-  const supabase = createAdminSupabaseClient()
-
-  const { data, error } = await supabase
-    .from('orders')
-    .delete()
-    .eq('id', id)
-    .eq('business_id', businessId)
-    .select('id')
-
-  if (error) {
-    throw new Error(`Failed to delete order: ${error.message}`)
-  }
-  return (data?.length ?? 0) > 0
 }
 
 /** True when every id given belongs to the business (nulls are ignored). */

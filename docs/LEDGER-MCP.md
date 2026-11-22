@@ -1,6 +1,6 @@
 # Ledger MCP pilot
 
-An MCP server that lets an AI assistant read the AR Studio general ledger and record
+An MCP server that lets an AI assistant read the Ahsan Tariq Studio general ledger and record
 **one ledger entry at a time, after the user has seen a preview and said yes**.
 Ledger only: no measurements, customers, orders, payments, edits or deletes.
 
@@ -24,10 +24,9 @@ Ledger only: no measurements, customers, orders, payments, edits or deletes.
 **Consequences for the pilot**
 
 * The MCP creates only `miscellaneous` (standalone receipt or expense) and `vendor_payment`.
-* `order_payment` is **refused with an explanation**. Those rows are derived: the Payments flow writes them, and
-  `POST /api/general-ledger/sync-payments` deletes every one and rebuilds it from orders and payments. An assistant-made
-  one would not update the order and would be deleted by the next sync. An advance or balance payment from a
-  customer must go through the Payments screen.
+* `order_payment` is **refused with an explanation**. Those rows are derived: the Payments flow writes and maintains
+  them from orders and payments. An assistant-made one would not update the order and would drift from the payment it
+  claims to record. An advance or balance payment from a customer must go through the Payments screen.
 * "Record 5,000 received from Ali as an advance" therefore cannot be a customer-linked record. The assistant is told to say so, and
   may record a clearly labelled **standalone** receipt only if the user explicitly wants that. The preview states it is not linked to any order or customer.
 * No customer lookup tool: the ledger does not need a customer id. A vendor lookup exists because a vendor payment does, and

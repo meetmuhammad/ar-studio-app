@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getOrder, updateOrder, deleteOrder, updateOrderItems, belongsToBusiness } from '@/lib/database'
+import { getOrder, updateOrder, updateOrderItems, belongsToBusiness } from '@/lib/database'
+import { callerSupabaseClient, rpcErrorStatus } from '@/lib/api-auth'
 import { UpdateOrderSchema } from '@/lib/validators'
 import { requireBusiness, requireBusinessRead } from '@/lib/business-context'
 import { omit } from '@/lib/utils'
@@ -124,18 +125,35 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/orders/[id] - Delete order
+// DELETE /api/orders/[id] - Delete order (with its items, payments and their
+// order_payment ledger rows). Admin only, as in RLS (20261119000000) and
+// delete_order (20261119000100), which does it in one transaction as the caller.
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const scope = await requireBusiness(request)
+  const scope = await requireBusiness(request, { roles: ['admin'] })
   if (scope instanceof NextResponse) return scope
 
   try {
     const { id } = await params
-    if (!(await deleteOrder(id, scope.businessId))) {
+    // In the business of this request (X-Business-Id); delete_order checks
+    // membership of the order's business, not which business was selected.
+    if (!(await belongsToBusiness('orders', [id], scope.businessId))) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+    }
+
+    const { error } = await callerSupabaseClient(request).rpc('delete_order', { p_order_id: id })
+    if (error) {
+      const status = rpcErrorStatus(error)
+      if (status === 404) return NextResponse.json({ error: 'Order not found' }, { status })
+      if (status === 401) return NextResponse.json({ error: 'Unauthorized - Please sign in' }, { status })
+      if (status === 403) return NextResponse.json({ error: 'Forbidden - Insufficient permissions' }, { status })
+      console.error('DELETE /api/orders/[id] delete_order error:', error)
+      return NextResponse.json(
+        { error: 'Failed to delete order' },
+        { status: 500 }
+      )
     }
     return NextResponse.json({ success: true })
   } catch (error) {

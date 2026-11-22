@@ -12,10 +12,9 @@
  *   - currency is PKR in every place it is displayed; there is no currency column
  *
  * What this file deliberately refuses to create:
- *   - order_payment: those rows are derived. The Payments flow writes them, and
- *     POST /api/general-ledger/sync-payments deletes and rebuilds every one from
- *     orders and payments, so an assistant-made row would not update the order
- *     and would be deleted by the next sync.
+ *   - order_payment: those rows are derived. The Payments flow writes and
+ *     maintains them from orders and payments, so an assistant-made row would
+ *     not update the order and would drift from the payment it claims to record.
  *   - opening_balance: a one-time set-up entry, not a daily one.
  *
  * Money is handled as integer cents. A cent count is exact in a JS number well
@@ -144,7 +143,7 @@ export function normalizeEntry(
   if (type === 'order_payment') {
     problems.push(
       'order_payment entries cannot be created here: they are derived from the order and payments records, ' +
-        'and the ledger sync would delete one made by hand. Record the payment against the order in the Payments screen.',
+        'so one made by hand would not be linked to any order. Record the payment against the order in the Payments screen.',
     )
   } else if (type === 'opening_balance') {
     problems.push('opening_balance is a one-time set-up entry and is not supported here')

@@ -54,6 +54,24 @@ export function createAdminSupabaseClient(): SupabaseClient {
   return _adminClient
 }
 
+/**
+ * A server-side Supabase client that acts AS the caller: the anon key plus the
+ * caller's own access token, so PostgREST runs as `authenticated` with that
+ * user's JWT. RLS applies and SECURITY DEFINER functions see `auth.uid()`, i.e.
+ * the same checks as the web app. No session is stored or refreshed: one
+ * client per request, for this token only. Verify the token first (requireRole).
+ */
+export function createCallerSupabaseClient(accessToken: string): SupabaseClient {
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  })
+}
+
 // Database types
 export interface Customer {
   id: string

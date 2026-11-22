@@ -86,7 +86,8 @@ export async function GET(request: Request) {
       })
     }
 
-    // Legacy: return flat array for backward compatibility (dashboard-stats, etc.)
+    // Legacy (no page): a flat array of EVERY matching row (listLedgerEntries
+    // reads it in pages, past PostgREST's 1,000-row cap). Same shape as always.
     return NextResponse.json(entries)
   } catch (error) {
     console.error('Error in GET /api/general-ledger:', error)

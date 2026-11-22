@@ -1,16 +1,18 @@
-# AR Dashboard - Customer & Order Management System
+# Ahsan Tariq Studio - Customer & Order Management System
 
-A production-ready Next.js dashboard for managing **Customers** and **Orders/Bookings** with search, CRUD operations, and detailed measurement fields. Built with **Supabase**, **App Router**, **shadcn/ui**, **TanStack Table**, and **react-hook-form + zod**.
+The back-office web app of **Ahsan Tariq Studio** ("ATS"): customers, orders and payments,
+measurements, vendors, the general ledger, P&L and a dashboard. Built with **Next.js**,
+**Refine + Ant Design** and **Supabase**. Architecture, modules and tests: [docs/REFINE.md](docs/REFINE.md);
+brand and theme: [docs/THEMING.md](docs/THEMING.md); API roles: [docs/API-ROLES.md](docs/API-ROLES.md).
 
 ## 🚀 Tech Stack
 
 - **Framework**: Next.js 15 (App Router, TypeScript)
-- **Database**: Supabase (PostgreSQL)
-- **UI**: TailwindCSS + shadcn/ui, lucide-react icons
-- **Tables**: TanStack Table (server-side pagination, sorting, filtering)
-- **Forms**: react-hook-form + zod validation
-- **State Management**: Next.js Server Actions & API Routes
-- **Authentication**: Supabase Auth (ready for admin/staff roles)
+- **Database**: Supabase (PostgreSQL, RLS, `SECURITY DEFINER` functions for multi-row writes and reports)
+- **UI**: Refine 5 + Ant Design 5 (light and dark), brand assets from `brand-src/` (`npm run brand:assets`)
+- **Forms and validation**: antd Form with rules from the zod schemas
+- **API**: Next.js route handlers for the mobile app and the ledger MCP server
+- **Authentication**: Supabase Auth with admin / staff roles
 
 ## 📋 Features
 
@@ -144,8 +146,8 @@ All endpoints support pagination, sorting, and filtering.
 - **Dashboard**: Overview with quick stats and navigation
 - **Customer Management**: Full CRUD with search and pagination
 - **Order Management**: Complex forms with measurements, date pickers
-- **Data Tables**: Server-side pagination with TanStack Table
-- **Forms**: Validated forms with react-hook-form and zod
+- **Data Tables**: Server-side pagination, filters in the URL, column settings (Refine + antd)
+- **Forms**: antd forms validated with the zod schemas
 - **Authentication Ready**: Supabase auth integration prepared
 - **Export**: CSV export functionality for orders
 - **Responsive**: Mobile-friendly design

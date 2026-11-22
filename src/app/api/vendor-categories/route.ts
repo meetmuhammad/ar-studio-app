@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-auth'
+import { requireAdmin, requireAuth } from '@/lib/api-auth'
 
 /**
  * Global vendor categories — the controlled list used to classify vendors for
@@ -9,18 +9,14 @@ import { requireAdmin } from '@/lib/api-auth'
  * Distinct from vendor_tags: tags are free-text labels a vendor may have many
  * of; a category is one classification chosen from this list.
  *
- * Ported from feat/vendor-categories (commit d207f91). That version wrapped
- * these routes in `withAdmin`, an admin-only guard used across its API
- * routes. That helper does not exist on main — none of main's API routes
- * (vendors, general-ledger, vendor-ledger, etc.) have a server-side auth
- * guard; access control is client-side only, via <RoleGuard>. These routes
- * follow that same existing (unguarded) pattern for consistency rather than
- * introducing a new, partial authorization layer.
+ * One list shared by every business. Any signed-in user with a role (admin or
+ * staff) may read it; only admins may create, rename, archive or delete
+ * categories. Same rules as RLS (20261119000000).
  */
 
 // GET /api/vendor-categories?include_archived=1
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request)
+  const auth = await requireAuth(request)
   if (auth instanceof NextResponse) return auth
 
   try {

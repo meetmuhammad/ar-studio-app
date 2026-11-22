@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getOrders, createOrder, createOrderItems, belongsToBusiness } from '@/lib/database'
+import { getOrders } from '@/lib/database'
 import { CreateOrderSchema, OrderQuerySchema } from '@/lib/validators'
 import { requireBusiness, requireBusinessRead } from '@/lib/business-context'
-import { omit } from '@/lib/utils'
+import { callerSupabaseClient, rpcErrorStatus } from '@/lib/api-auth'
+import { createAdminSupabaseClient } from '@/lib/supabase'
 
 // GET /api/orders - List orders with search and pagination
 export async function GET(request: NextRequest) {
@@ -82,81 +83,66 @@ export async function POST(request: NextRequest) {
 
     const validatedData = CreateOrderSchema.parse(body)
 
-    // Transform dates back to ISO strings for database storage
-    const orderData = {
-      ...validatedData,
-      booking_date: validatedData.bookingDate.toISOString().split('T')[0],
-      delivery_date: validatedData.deliveryDate.toISOString().split('T')[0], // Now mandatory
-      status: validatedData.status || 'In Process', // Default status
+    // Stored exactly as before: dates as YYYY-MM-DD, `value || null` for the
+    // optional fields. `balance` is always sent (null when absent) so
+    // create_order stores null like this route always has, instead of
+    // computing total - advance.
+    const order = {
       customer_id: validatedData.customerId,
-      // Payment fields
+      booking_date: validatedData.bookingDate.toISOString().split('T')[0],
+      delivery_date: validatedData.deliveryDate.toISOString().split('T')[0],
+      status: validatedData.status || 'In Process',
+      comments: validatedData.comments,
       total_amount: validatedData.totalAmount || null,
       advance_paid: validatedData.advancePaid || null,
       balance: validatedData.balance || null,
       payment_method: validatedData.paymentMethod || null,
-      // Reference to measurements table
       measurement_id: validatedData.measurementId || null,
-      // Fitting preferences as separate field
       fitting_preferences: validatedData.fittingPreferences,
     }
 
-    const { orderItems } = orderData
-    // Remove the camelCase fields that were transformed, and status (re-added
-    // below). balance has the same name in both forms, so it is removed too.
-    const finalOrderData = omit(orderData, [
-      'customerId',
-      'bookingDate',
-      'deliveryDate',
-      'totalAmount',
-      'advancePaid',
-      'balance',
-      'paymentMethod',
-      'measurementId',
-      'fittingPreferences',
-      'orderItems',
-      'status',
-    ])
-    
-    // Re-add status to final data
-    const orderWithStatus = {
-      ...finalOrderData,
-      status: orderData.status
+    // The order, its items and its advance ledger row are written in one
+    // transaction by create_order (20261119000100), as the caller: same
+    // numbering (<code>-#####), same advance row, same member check, and the
+    // customer / measurement must be in this business (P0002 -> 404).
+    const { data: created, error: createError } = await callerSupabaseClient(request).rpc('create_order', {
+      p_business_id: scope.businessId,
+      p_order: order,
+      p_items: validatedData.orderItems ?? [],
+      p_advance: null,
+    })
+
+    if (createError) {
+      const status = rpcErrorStatus(createError)
+      if (status === 404) {
+        return NextResponse.json({ error: 'Customer or measurement not found' }, { status })
+      }
+      if (status === 401) return NextResponse.json({ error: 'Unauthorized - Please sign in' }, { status })
+      if (status === 403) return NextResponse.json({ error: 'Forbidden - No access to this business' }, { status })
+      if (status === 400) {
+        return NextResponse.json({ error: 'Validation failed', details: createError.message }, { status })
+      }
+      console.error('POST /api/orders create_order error:', createError)
+      return NextResponse.json({ error: `Failed to create order: ${createError.message}` }, { status: 500 })
     }
 
-    // The customer and measurement must be in this business. One from another
-    // business is not found (the database guard refuses it too).
-    if (
-      !(await belongsToBusiness('customers', [orderWithStatus.customer_id], scope.businessId)) ||
-      !(await belongsToBusiness('measurements', [orderWithStatus.measurement_id], scope.businessId))
-    ) {
-      return NextResponse.json({ error: 'Customer or measurement not found' }, { status: 404 })
+    // Same response as before: the orders row alone (create_order also
+    // returns the items, which this route never did).
+    const createdOrder: Record<string, unknown> = { ...(created as Record<string, unknown>) }
+    delete createdOrder.order_items
+    const { data: saved, error: readError } = await createAdminSupabaseClient()
+      .from('orders')
+      .select('*')
+      .eq('id', createdOrder.id as string)
+      .single()
+
+    if (readError || !saved) {
+      // The order exists; answering 500 would invite a duplicate retry.
+      console.error('POST /api/orders: created but could not be read back:', readError)
+      return NextResponse.json(createdOrder, { status: 201 })
     }
 
-    // Create the order first (numbered within this business: AR-/TL-#####)
-    const order = await createOrder(scope.business, orderWithStatus)
-    
-    // Create order items if any
-    if (orderItems && orderItems.length > 0) {
-      await createOrderItems(order.id, orderItems)
-    }
-
-    // Create ledger entry if advance payment > 0
-    if (orderData.advance_paid && orderData.advance_paid > 0) {
-      const { createAdminSupabaseClient } = await import('@/lib/supabase')
-      const supabase = createAdminSupabaseClient()
-      
-      await supabase.from('general_ledger').insert({
-        business_id: scope.businessId,
-        entry_date: orderData.booking_date,
-        particulars: `Advance payment for Order #${order.order_number}`,
-        debit: orderData.advance_paid,
-        entry_type: 'order_payment',
-        order_id: order.id,
-        notes: `Initial advance payment during order creation`,
-      })
-    }
-
-    return NextResponse.json(order, { status: 201 })
+    return NextResponse.json(saved, { status: 201 })
   } catch (error) {
     console.error('POST /api/orders error:', error)
     

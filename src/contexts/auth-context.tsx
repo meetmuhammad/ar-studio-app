@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react'
 import { supabase } from '@/lib/supabase-client'
 import type { User } from '@supabase/supabase-js'
+import { AUTH_CHANNEL, clearCachedRole, getCachedRole, setCachedRole } from '@/lib/auth/role'
 
 interface AuthUser {
   id: string
@@ -18,46 +19,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
-const ROLE_CACHE_KEY = 'ar_user_role_cache'
-
-// Helper functions for role caching
-const getCachedRole = (userId: string): 'admin' | 'staff' | null => {
-  if (typeof window === 'undefined') return null
-  try {
-    const cached = localStorage.getItem(ROLE_CACHE_KEY)
-    if (!cached) return null
-    const { id, role, timestamp } = JSON.parse(cached)
-    // Cache is valid for 24 hours
-    if (id === userId && Date.now() - timestamp < 24 * 60 * 60 * 1000) {
-      return role
-    }
-  } catch (error) {
-    console.error('Error reading cached role:', error)
-  }
-  return null
-}
-
-const setCachedRole = (userId: string, role: 'admin' | 'staff') => {
-  if (typeof window === 'undefined') return
-  try {
-    localStorage.setItem(ROLE_CACHE_KEY, JSON.stringify({
-      id: userId,
-      role,
-      timestamp: Date.now()
-    }))
-  } catch (error) {
-    console.error('Error caching role:', error)
-  }
-}
-
-const clearCachedRole = () => {
-  if (typeof window === 'undefined') return
-  try {
-    localStorage.removeItem(ROLE_CACHE_KEY)
-  } catch (error) {
-    console.error('Error clearing cached role:', error)
-  }
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
@@ -163,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     // Setup BroadcastChannel for cross-tab communication
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      broadcastChannelRef.current = new BroadcastChannel('ar_auth_channel')
+      broadcastChannelRef.current = new BroadcastChannel(AUTH_CHANNEL)
       
       broadcastChannelRef.current.onmessage = (event) => {
         if (!mounted) return
