@@ -20,6 +20,7 @@ import { ManageCategoriesDrawer } from '@/components/vendors/manage-categories-d
 import { VENDORS, VENDOR_CATEGORIES, VENDOR_SELECT, type VendorRow } from '@/components/vendors/constants'
 
 const PAGE_SIZE = 20
+const LIVE_FIELDS = ['q'] as const
 const vendorDeleteNotifications = deleteNotificationsFor('Vendor')
 
 interface SearchValues {
@@ -152,7 +153,8 @@ function VendorsList() {
       }
       contentProps={transparentContent}
     >
-      <FilterBar formProps={searchFormProps} label="Vendor filters">
+      {/* The vendor search applies as you type, as the previous vendors list did. */}
+      <FilterBar formProps={searchFormProps} label="Vendor filters" liveFields={LIVE_FIELDS}>
         <Form.Item name="q" label="Search vendors">
           <Input allowClear prefix={<SearchOutlined />} placeholder="Name, category, notes, contact or phone" />
         </Form.Item>

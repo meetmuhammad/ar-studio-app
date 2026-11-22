@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { useSelect } from '@refinedev/antd'
 import { Select } from 'antd'
 import type { Customer } from '@/lib/supabase-client'
+import { useSearchSelect } from '@/components/refine/use-search-select'
 
 interface CustomerSelectProps {
   value?: string
@@ -25,7 +26,7 @@ type CustomerOption = Pick<Customer, 'id' | 'name' | 'phone'>
  * Accessible name: "Customer".
  */
 export function CustomerSelect({ value, onChange, onCustomer, disabled, autoFocus, id }: CustomerSelectProps) {
-  const { selectProps, query, defaultValueQuery } = useSelect<CustomerOption>({
+  const select = useSelect<CustomerOption>({
     resource: 'customers',
     optionLabel: (c) => `${c.name} · ${c.phone}`,
     optionValue: 'id',
@@ -36,6 +37,9 @@ export function CustomerSelect({ value, onChange, onCustomer, disabled, autoFocu
     meta: { select: 'id, name, phone' },
     debounce: 300,
   })
+  const { query, defaultValueQuery } = select
+  // The label holds name and phone, the two fields the server search matches.
+  const search = useSearchSelect(select)
 
   const find = (id?: string) =>
     [...(query.data?.data ?? []), ...(defaultValueQuery.data?.data ?? [])].find((c) => c.id === id) as Customer | undefined
@@ -53,10 +57,7 @@ export function CustomerSelect({ value, onChange, onCustomer, disabled, autoFocu
   // Controlled: the form owns the value; search and options come from useSelect.
   return (
     <Select<string>
-      options={selectProps.options as { label: string; value: string }[] | undefined}
-      onSearch={selectProps.onSearch}
-      filterOption={false}
-      loading={selectProps.loading}
+      {...search}
       id={id}
       value={value}
       onChange={(next) => {
@@ -64,7 +65,6 @@ export function CustomerSelect({ value, onChange, onCustomer, disabled, autoFocu
         onChange?.(nextId)
         onCustomer?.(find(nextId))
       }}
-      showSearch
       allowClear={false}
       disabled={disabled}
       autoFocus={autoFocus}

@@ -6,6 +6,8 @@ import { useCreate, useUpdate, type HttpError } from '@refinedev/core'
 import { Alert, Button, DatePicker, Drawer, Flex, Form, Grid, Input, InputNumber, Radio, Select, Space, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { errorMessage } from '@/lib/refine/notifications'
+import { useSearchSelect } from '@/components/refine/use-search-select'
+import { VENDOR_PICKER_SELECT, vendorSearchText, type VendorPickerRow } from '@/components/vendors/vendor-select-options'
 import { GENERAL_LEDGER, MANUAL_ENTRY_TYPES, type LedgerEntryValues, type ManualEntryType } from './constants'
 
 interface FormValues {
@@ -47,17 +49,22 @@ export function LedgerEntryDrawer({ open, onClose, entry, vendor, onSaved }: Led
   const editing = !!entry
   const type = Form.useWatch('entry_type', form) ?? 'vendor_payment'
 
-  const { selectProps: vendorSelect } = useSelect({
-    resource: 'vendors',
-    optionLabel: 'name',
-    optionValue: 'id',
-    onSearch: (term) => [{ field: 'q', operator: 'contains', value: term }],
-    sorters: [{ field: 'name', order: 'asc' }],
-    pagination: { pageSize: 50 },
-    defaultValue: entry?.vendor_id ?? vendor?.id ?? undefined,
-    meta: { select: 'id, name' },
-    queryOptions: { enabled: open },
-  })
+  // All vendors load in one request so typing filters them instantly; the
+  // server search still covers any vendor past the read cap.
+  const vendorSelect = useSearchSelect(
+    useSelect<VendorPickerRow>({
+      resource: 'vendors',
+      optionLabel: 'name',
+      optionValue: 'id',
+      onSearch: (term) => [{ field: 'q', operator: 'contains', value: term }],
+      sorters: [{ field: 'name', order: 'asc' }],
+      pagination: { mode: 'off' },
+      defaultValue: entry?.vendor_id ?? vendor?.id ?? undefined,
+      meta: { select: VENDOR_PICKER_SELECT },
+      queryOptions: { enabled: open },
+    }),
+    { searchText: vendorSearchText, open },
+  )
 
   const { mutateAsync: create, mutation: createState } = useCreate<LedgerEntryValues, HttpError>()
   const { mutateAsync: update, mutation: updateState } = useUpdate<LedgerEntryValues, HttpError>()
@@ -166,13 +173,9 @@ export function LedgerEntryDrawer({ open, onClose, entry, vendor, onSaved }: Led
             <Select
               aria-label="Vendor"
               allowClear={type !== 'vendor_payment'}
-              showSearch
-              filterOption={false}
+              {...vendorSelect}
               placeholder="Search vendors"
               disabled={!!vendor && !editing}
-              options={vendorSelect.options as { label: string; value: string }[] | undefined}
-              onSearch={vendorSelect.onSearch}
-              loading={vendorSelect.loading}
             />
           </Form.Item>
         )}

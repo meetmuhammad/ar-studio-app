@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useSelect } from '@refinedev/antd'
+import { useSearchSelect } from '@/components/refine/use-search-select'
+import { VENDOR_PICKER_SELECT, vendorSearchText, type VendorPickerRow } from '@/components/vendors/vendor-select-options'
 import { CanAccess, useCan, useDelete, type HttpError } from '@refinedev/core'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -130,16 +132,19 @@ function LedgerScreen() {
   const writesAllowed = canWrite?.can !== false
   const combined = data?.combined ?? scope.isAll
 
-  const { selectProps: vendorSelect } = useSelect({
-    resource: 'vendors',
-    optionLabel: 'name',
-    optionValue: 'id',
-    onSearch: (term) => [{ field: 'q', operator: 'contains', value: term }],
-    sorters: [{ field: 'name', order: 'asc' }],
-    pagination: { pageSize: 50 },
-    defaultValue: query.vendorId ?? undefined,
-    meta: { select: 'id, name' },
-  })
+  const vendorSelect = useSearchSelect(
+    useSelect<VendorPickerRow>({
+      resource: 'vendors',
+      optionLabel: 'name',
+      optionValue: 'id',
+      onSearch: (term) => [{ field: 'q', operator: 'contains', value: term }],
+      sorters: [{ field: 'name', order: 'asc' }],
+      pagination: { mode: 'off' },
+      defaultValue: query.vendorId ?? undefined,
+      meta: { select: VENDOR_PICKER_SELECT },
+    }),
+    { searchText: vendorSearchText },
+  )
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['report'] })
 
@@ -369,13 +374,9 @@ function LedgerScreen() {
         <Form.Item name="vendor" label="Vendor">
           <Select
             allowClear
-            showSearch
-            filterOption={false}
+            {...vendorSelect}
             placeholder="All vendors"
             aria-label="Vendor"
-            options={vendorSelect.options as { label: string; value: string }[] | undefined}
-            onSearch={vendorSelect.onSearch}
-            loading={vendorSelect.loading}
           />
         </Form.Item>
         <Form.Item name="category" label="Category">
